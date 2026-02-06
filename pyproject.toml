@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "callguard"
-version = "0.0.1"
+version = "0.1.0"
 description = "Runtime safety for AI agents. Stop agents before they break things."
 readme = "README.md"
 license = "MIT"
