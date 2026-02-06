@@ -69,6 +69,10 @@ class AuditEvent:
     # Mode
     mode: str = "enforce"
 
+    # Policy tracking
+    policy_version: str | None = None
+    policy_error: bool = False
+
 
 class RedactionPolicy:
     """Redact sensitive data from audit events.

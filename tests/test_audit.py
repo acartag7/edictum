@@ -166,6 +166,8 @@ class TestAuditEvent:
         assert event.tool_success is None
         assert event.hooks_evaluated == []
         assert event.contracts_evaluated == []
+        assert event.policy_version is None
+        assert event.policy_error is False
 
     def test_custom_fields(self):
         event = AuditEvent(
@@ -178,6 +180,25 @@ class TestAuditEvent:
         assert event.tool_name == "Bash"
         assert event.tool_success is True
         assert event.mode == "observe"
+
+    def test_policy_version_field(self):
+        event = AuditEvent(
+            action=AuditAction.CALL_ALLOWED,
+            tool_name="Read",
+            policy_version="sha256:abc123def456",
+        )
+        assert event.policy_version == "sha256:abc123def456"
+        assert event.policy_error is False
+
+    def test_policy_error_field(self):
+        event = AuditEvent(
+            action=AuditAction.CALL_DENIED,
+            tool_name="Bash",
+            policy_version="sha256:abc123def456",
+            policy_error=True,
+        )
+        assert event.policy_version == "sha256:abc123def456"
+        assert event.policy_error is True
 
 
 class TestAuditAction:
@@ -199,6 +220,32 @@ class TestStdoutAuditSink:
         data = json.loads(output)
         assert data["action"] == "call_allowed"
         assert data["tool_name"] == "Test"
+
+    async def test_emit_includes_policy_version(self, capsys):
+        sink = StdoutAuditSink()
+        event = AuditEvent(
+            action=AuditAction.CALL_ALLOWED,
+            tool_name="Read",
+            policy_version="sha256:abc123",
+            policy_error=False,
+        )
+        await sink.emit(event)
+        data = json.loads(capsys.readouterr().out)
+        assert data["policy_version"] == "sha256:abc123"
+        assert data["policy_error"] is False
+
+    async def test_emit_includes_policy_error(self, capsys):
+        sink = StdoutAuditSink()
+        event = AuditEvent(
+            action=AuditAction.CALL_DENIED,
+            tool_name="Bash",
+            policy_version="sha256:abc123",
+            policy_error=True,
+        )
+        await sink.emit(event)
+        data = json.loads(capsys.readouterr().out)
+        assert data["policy_version"] == "sha256:abc123"
+        assert data["policy_error"] is True
 
 
 class TestFileAuditSink:
@@ -225,3 +272,20 @@ class TestFileAuditSink:
 
         lines = Path(path).read_text().strip().split("\n")
         assert len(lines) == 2
+
+    async def test_emit_includes_policy_fields(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            path = f.name
+
+        sink = FileAuditSink(path)
+        event = AuditEvent(
+            action=AuditAction.CALL_DENIED,
+            tool_name="Bash",
+            policy_version="sha256:def789",
+            policy_error=True,
+        )
+        await sink.emit(event)
+
+        data = json.loads(Path(path).read_text().strip())
+        assert data["policy_version"] == "sha256:def789"
+        assert data["policy_error"] is True
