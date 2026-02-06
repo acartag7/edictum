@@ -1,0 +1,165 @@
+"""Tests for ToolEnvelope, create_envelope, ToolRegistry, BashClassifier."""
+
+from __future__ import annotations
+
+import pytest
+
+from callguard.envelope import (
+    BashClassifier,
+    SideEffect,
+    ToolRegistry,
+    create_envelope,
+)
+
+
+class TestCreateEnvelope:
+    def test_deep_copy_isolation(self):
+        original = {"nested": {"key": "value"}, "list": [1, 2, 3]}
+        envelope = create_envelope("TestTool", original)
+        original["nested"]["key"] = "mutated"
+        original["list"].append(4)
+        assert envelope.args["nested"]["key"] == "value"
+        assert envelope.args["list"] == [1, 2, 3]
+
+    def test_metadata_deep_copy(self):
+        meta = {"info": {"nested": True}}
+        envelope = create_envelope("TestTool", {}, metadata=meta)
+        meta["info"]["nested"] = False
+        assert envelope.metadata["info"]["nested"] is True
+
+    def test_frozen_immutability(self):
+        envelope = create_envelope("TestTool", {"key": "value"})
+        with pytest.raises(AttributeError):
+            envelope.tool_name = "Modified"
+
+    def test_factory_defaults(self):
+        envelope = create_envelope("TestTool", {})
+        assert envelope.tool_name == "TestTool"
+        assert envelope.args == {}
+        assert envelope.run_id == ""
+        assert envelope.call_index == 0
+        assert envelope.attempt == 0
+        assert envelope.side_effect == SideEffect.IRREVERSIBLE
+        assert envelope.idempotent is False
+        assert envelope.environment == "production"
+        assert envelope.call_id  # should be a UUID
+
+    def test_run_id_and_call_index(self):
+        envelope = create_envelope("TestTool", {}, run_id="run-1", call_index=5)
+        assert envelope.run_id == "run-1"
+        assert envelope.call_index == 5
+
+    def test_bash_command_extraction(self):
+        envelope = create_envelope("Bash", {"command": "ls -la /tmp"})
+        assert envelope.bash_command == "ls -la /tmp"
+        assert envelope.side_effect == SideEffect.READ
+
+    def test_read_file_path_extraction(self):
+        envelope = create_envelope("Read", {"file_path": "/tmp/test.txt"})
+        assert envelope.file_path == "/tmp/test.txt"
+
+    def test_write_file_path_extraction(self):
+        envelope = create_envelope("Write", {"file_path": "/tmp/out.txt"})
+        assert envelope.file_path == "/tmp/out.txt"
+
+    def test_glob_path_extraction(self):
+        envelope = create_envelope("Glob", {"path": "/src"})
+        assert envelope.file_path == "/src"
+
+    def test_non_serializable_args_fallback(self):
+        """Falls back to copy.deepcopy for non-JSON-serializable args."""
+
+        class Custom:
+            def __init__(self, val):
+                self.val = val
+
+        envelope = create_envelope("TestTool", {"obj": Custom(42)})
+        assert envelope.args["obj"].val == 42
+
+    def test_with_registry(self):
+        registry = ToolRegistry()
+        registry.register("MyTool", SideEffect.READ, idempotent=True)
+        envelope = create_envelope("MyTool", {}, registry=registry)
+        assert envelope.side_effect == SideEffect.READ
+        assert envelope.idempotent is True
+
+
+class TestToolRegistry:
+    def test_unregistered_defaults_to_irreversible(self):
+        registry = ToolRegistry()
+        side_effect, idempotent = registry.classify("Unknown", {})
+        assert side_effect == SideEffect.IRREVERSIBLE
+        assert idempotent is False
+
+    def test_registered_tool(self):
+        registry = ToolRegistry()
+        registry.register("SafeTool", SideEffect.PURE, idempotent=True)
+        side_effect, idempotent = registry.classify("SafeTool", {})
+        assert side_effect == SideEffect.PURE
+        assert idempotent is True
+
+    def test_register_defaults(self):
+        registry = ToolRegistry()
+        registry.register("WriteTool")
+        side_effect, idempotent = registry.classify("WriteTool", {})
+        assert side_effect == SideEffect.WRITE
+        assert idempotent is False
+
+
+class TestBashClassifier:
+    def test_empty_command_is_read(self):
+        assert BashClassifier.classify("") == SideEffect.READ
+        assert BashClassifier.classify("   ") == SideEffect.READ
+
+    def test_allowlist_exact_match(self):
+        assert BashClassifier.classify("ls") == SideEffect.READ
+        assert BashClassifier.classify("pwd") == SideEffect.READ
+        assert BashClassifier.classify("whoami") == SideEffect.READ
+
+    def test_allowlist_with_args(self):
+        assert BashClassifier.classify("ls -la /tmp") == SideEffect.READ
+        assert BashClassifier.classify("git status") == SideEffect.READ
+        assert BashClassifier.classify("git log --oneline") == SideEffect.READ
+        assert BashClassifier.classify("cat /etc/hosts") == SideEffect.READ
+
+    def test_shell_operators_force_irreversible(self):
+        assert BashClassifier.classify("echo hello > file.txt") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("cat file.txt | grep x") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("cmd1 && cmd2") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("cmd1 || cmd2") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("cmd1 ; cmd2") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("echo $(whoami)") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("echo `whoami`") == SideEffect.IRREVERSIBLE
+
+    def test_unknown_commands_are_irreversible(self):
+        assert BashClassifier.classify("rm -rf /") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("python script.py") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("curl https://example.com") == SideEffect.IRREVERSIBLE
+
+    def test_env_not_in_allowlist(self):
+        assert BashClassifier.classify("env") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("printenv") == SideEffect.IRREVERSIBLE
+
+    def test_git_read_commands(self):
+        assert BashClassifier.classify("git diff HEAD~1") == SideEffect.READ
+        assert BashClassifier.classify("git show abc123") == SideEffect.READ
+        assert BashClassifier.classify("git branch -a") == SideEffect.READ
+        assert BashClassifier.classify("git remote -v") == SideEffect.READ
+        assert BashClassifier.classify("git tag") == SideEffect.READ
+
+    def test_git_write_commands_are_irreversible(self):
+        assert BashClassifier.classify("git push") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("git commit -m 'x'") == SideEffect.IRREVERSIBLE
+        assert BashClassifier.classify("git checkout main") == SideEffect.IRREVERSIBLE
+
+
+class TestSideEffect:
+    def test_enum_values(self):
+        assert SideEffect.PURE.value == "pure"
+        assert SideEffect.READ.value == "read"
+        assert SideEffect.WRITE.value == "write"
+        assert SideEffect.IRREVERSIBLE.value == "irreversible"
+
+    def test_string_behavior(self):
+        assert SideEffect.PURE == "pure"
+        assert SideEffect("read") == SideEffect.READ
