@@ -20,22 +20,18 @@ class MyCustomSink:
 CallGuard checks conformance at runtime via `@runtime_checkable`, so there is no need
 to inherit from a base class. Implement `emit` and you are done.
 
-Register sinks when constructing your `CallGuard` instance:
+Register a sink when constructing your `CallGuard` instance:
 
 ```python
 from callguard import CallGuard
-from callguard.audit import FileAuditSink, StdoutAuditSink
+from callguard.audit import FileAuditSink
 
 guard = CallGuard(
-    audit_sinks=[
-        StdoutAuditSink(),
-        FileAuditSink("/var/log/callguard/events.jsonl"),
-    ],
+    audit_sink=FileAuditSink("/var/log/callguard/events.jsonl"),
 )
 ```
 
-Multiple sinks can be active simultaneously. Each event is emitted to every registered
-sink.
+If no `audit_sink` is provided, a `StdoutAuditSink` is used by default.
 
 ---
 
@@ -47,7 +43,7 @@ Every audit event contains the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | `str` | Event schema version (currently `"0.0.1"`) |
+| `schema_version` | `str` | Event schema version (currently `"0.3.0"`) |
 | `timestamp` | `datetime` | UTC timestamp of the event |
 | `run_id` | `str` | Unique ID for the agent run |
 | `call_id` | `str` | Unique ID for this specific tool call |
@@ -73,7 +69,7 @@ Every audit event contains the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed`, `postcondition_warning` |
+| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed` |
 | `decision_source` | `str \| None` | What produced the decision: `hook`, `precondition`, `session_contract`, `attempt_limit`, `operation_limit` |
 | `decision_name` | `str \| None` | Name of the specific hook or contract |
 | `reason` | `str \| None` | Human-readable denial reason |
@@ -182,6 +178,13 @@ sink = WebhookAuditSink(
 | `max_retries` | `int` | `3` | Maximum number of delivery attempts |
 | `base_delay` | `float` | `1.0` | Base delay in seconds for exponential backoff |
 
+!!! warning "Fire-and-forget risk"
+
+    When `fire_and_forget=True`, events are dispatched via `asyncio.create_task` without
+    blocking the governance pipeline. **Events may be silently dropped after retry
+    exhaustion.** The sink logs a warning but does not raise. For production deployments,
+    use `fire_and_forget=False` (the default) to ensure delivery errors surface.
+
 ### SplunkHECSink
 
 Sends events to Splunk via the HTTP Event Collector. Each event is wrapped in
@@ -269,6 +272,25 @@ The Datadog payload format:
   }
 ]
 ```
+
+---
+
+## HTTP Sink Session Management
+
+All HTTP sinks (`WebhookAuditSink`, `SplunkHECSink`, `DatadogSink`) share a lazy
+aiohttp session that is created on first `emit()` and reused across calls. Call
+`close()` when shutting down to release the connection pool:
+
+```python
+sink = WebhookAuditSink(url="https://hooks.example.com/callguard")
+
+# ... use the sink ...
+
+await sink.close()
+```
+
+If `close()` is not called, the underlying connection pool will be released when the
+process exits, but Python may emit `ResourceWarning` about unclosed sessions.
 
 ---
 
@@ -366,7 +388,7 @@ Then register it:
 
 ```python
 guard = CallGuard(
-    audit_sinks=[KafkaAuditSink(producer, "callguard-events")],
+    audit_sink=KafkaAuditSink(producer, "callguard-events"),
 )
 ```
 

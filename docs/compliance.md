@@ -20,7 +20,7 @@ mitigation measures, and documents the process throughout the system lifecycle.
 | Risk estimation and evaluation | Observe mode (`mode: observe`) runs contracts in shadow without blocking, letting you measure how often each contract would fire on real traffic. | Audit events with `action: call_would_deny` record shadow denials. Query `decision_name` to get per-rule frequency. |
 | Risk mitigation | Enforce mode (`mode: enforce`) blocks tool calls that violate contracts. Side-effect classification (`pure`, `read`, `write`, `irreversible`) scales the response to the severity of the action. | Audit events with `action: call_denied` confirm active mitigation. `side_effect` field in each event shows the risk tier. |
 | Documentation throughout lifecycle | `policy_version` (SHA-256 of YAML) tracks which contract set was active for every decision. `callguard diff` shows changes between versions. `callguard replay` quantifies the impact of proposed changes. | Audit log with `policy_version` field. CI pipeline running `callguard diff` on every contract change PR. |
-| Residual risk monitoring | Postconditions run after tool execution and record warnings in audit events when results violate expectations. | Audit events with `action: postcondition_warning` and `postconditions_passed: false`. |
+| Residual risk monitoring | Postconditions run after tool execution and record warnings when results violate expectations. Failures are recorded on the `CALL_EXECUTED` event. | Audit events with `action: call_executed` and `postconditions_passed: false`. |
 
 ### Article 14 -- Human Oversight
 

@@ -294,7 +294,9 @@ Error behavior is hardcoded and not configurable. CallGuard follows a fail-close
 | YAML parse error | `from_yaml()` raises `CallGuardConfigError`. |
 | Invalid regex in `matches` / `matches_any` | Validation error at load time. |
 | Duplicate contract `id` within a bundle | Validation error at load time. |
-| Rule evaluation throws (unexpected error) | Rule yields `deny` (pre/session) or `warn` (post). Audit event emitted with `policy_error: true`. Other rules continue evaluating. |
+| YAML rule evaluation throws | Rule yields `deny` (pre/session) or `warn` (post) with `policy_error: true`. Other rules continue evaluating. |
+| Python hook or precondition throws | Hook/contract yields `deny` with `policy_error: true`. Evaluation stops (first denial wins). |
+| Python postcondition throws | Contract yields `warn` with `policy_error: true`. Other postconditions continue. |
 | Selector references a missing field | Leaf evaluates to `false`. Not an error. |
 | Type mismatch (e.g., `gt` applied to a string) | Rule yields `deny` or `warn` with `policy_error: true`. |
 | Wrong `effect` for contract type | Validation error at load time. |

@@ -135,7 +135,7 @@ agent = Agent(
 ## Claude Agent SDK
 
 ```bash
-pip install callguard[claude-agent-sdk]
+pip install callguard[yaml]
 ```
 
 ```python
