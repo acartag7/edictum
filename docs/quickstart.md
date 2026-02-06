@@ -3,16 +3,12 @@
 ## Installation
 
 ```bash
-pip install callguard
+pip install callguard            # core only
+pip install callguard[all]       # all 6 framework adapters + OTel
+pip install callguard[langchain] # individual adapter extras
 ```
 
-For OpenTelemetry integration:
-
-```bash
-pip install callguard[otel]
-```
-
-Requires Python 3.11+. Zero runtime dependencies.
+Requires Python 3.11+. Zero runtime dependencies for the core package.
 
 ## Framework-Agnostic Usage (guard.run)
 
@@ -111,28 +107,67 @@ async def main():
 asyncio.run(main())
 ```
 
-## Claude Agent SDK Adapter
+## Framework Adapters
 
-The adapter translates CallGuard decisions into the Claude Agent SDK hook format. It's a thin layer -- all governance logic lives in the pipeline.
+CallGuard ships thin adapters for 6 agent frameworks. Each translates between the framework's hook interface and the shared governance pipeline.
 
 ```python
 from callguard import CallGuard, deny_sensitive_reads, OperationLimits
-from callguard.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 
 guard = CallGuard(
     contracts=[deny_sensitive_reads()],
     limits=OperationLimits(max_tool_calls=100),
 )
-
-adapter = ClaudeAgentSDKAdapter(guard, session_id="session-abc")
-hooks = adapter.to_sdk_hooks()
-# hooks = {"pre_tool_use": <async fn>, "post_tool_use": <async fn>}
-
-# Pass hooks to the Claude Agent SDK:
-# agent = Agent(hooks=hooks)
 ```
 
-The adapter manages pending state between pre and post hooks, tracks call indices, and emits audit events for every tool call. Each adapter instance owns a `Session` with atomic counters for attempt and execution tracking.
+**LangChain:**
+```python
+from callguard.adapters.langchain import LangChainAdapter
+adapter = LangChainAdapter(guard, session_id="session-lc")
+# pre_result = await adapter._pre_tool_call(request)
+# await adapter._post_tool_call(request, result)
+```
+
+**CrewAI:**
+```python
+from callguard.adapters.crewai import CrewAIAdapter
+adapter = CrewAIAdapter(guard, session_id="session-crew")
+# allowed = await adapter._before_hook(context)  # False = denied
+# await adapter._after_hook(context)
+```
+
+**Agno:**
+```python
+from callguard.adapters.agno import AgnoAdapter
+adapter = AgnoAdapter(guard, session_id="session-agno")
+# result = await adapter._hook_async(name, callable, args)
+```
+
+**Semantic Kernel:**
+```python
+from callguard.adapters.semantic_kernel import SemanticKernelAdapter
+adapter = SemanticKernelAdapter(guard, session_id="session-sk")
+# pre = await adapter._pre(name, args, call_id)  # {} or "DENIED: ..."
+# await adapter._post(call_id, result)
+```
+
+**OpenAI Agents SDK:**
+```python
+from callguard.adapters.openai_agents import OpenAIAgentsAdapter
+adapter = OpenAIAgentsAdapter(guard, session_id="session-oai")
+# pre = await adapter._pre(name, args, call_id)  # None or "DENIED: ..."
+# await adapter._post(call_id, result)
+```
+
+**Claude Agent SDK:**
+```python
+from callguard.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+adapter = ClaudeAgentSDKAdapter(guard, session_id="session-claude")
+# pre = await adapter._pre_tool_use(name, input, id)  # {} or deny dict
+# await adapter._post_tool_use(id, response)
+```
+
+Each adapter manages pending state between pre and post hooks, tracks call indices, and emits audit events. See [examples/](../examples/) for live demos of all 6 adapters.
 
 ## Writing Contracts
 
@@ -167,7 +202,7 @@ def block_production(envelope):
 
 ### Postconditions
 
-Postconditions run after execution. In v0.0.1, they are observe-only -- they emit warnings but never block. The warning message adapts to the tool's side-effect classification:
+Postconditions run after execution. They are observe-only -- they emit warnings but never block. The warning message adapts to the tool's side-effect classification:
 
 - **Pure/Read tools:** warning suggests retrying.
 - **Write/Irreversible tools:** warning says "assess before proceeding" (no retry coaching for something that already mutated state).
@@ -347,4 +382,4 @@ The audit trail distinguishes three states:
 ## What's Next
 
 - [Architecture overview](../ARCHITECTURE.md) for the full module structure and design decisions.
-- v0.1 roadmap: retry-with-feedback, human approval gates, Redis storage backend.
+- [Examples](../examples/) for live demos of all 6 framework adapters.

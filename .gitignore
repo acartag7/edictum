@@ -11,3 +11,7 @@ build/
 # Claude Code (personal config)
 CLAUDE.local
 .claude/
+
+# Internal research notes
+docs/ADAPTER_INSIGHTS.md
+docs/adapter-research.md

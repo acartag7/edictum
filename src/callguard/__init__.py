@@ -191,21 +191,32 @@ class CallGuard:
         # Increment attempts
         await session.increment_attempts()
 
+        # Start OTel span
+        span = self.telemetry.start_tool_span(envelope)
+
         # Pre-execute
         pre = await pipeline.pre_execute(envelope, session)
 
         if pre.action == "deny":
             audit_action = AuditAction.CALL_WOULD_DENY if self.mode == "observe" else AuditAction.CALL_DENIED
             await self._emit_run_pre_audit(envelope, session, audit_action, pre)
+            self.telemetry.record_denial(envelope, pre.reason)
             if self.mode == "enforce":
+                span.set_attribute("governance.action", "denied")
+                span.set_attribute("governance.reason", pre.reason or "")
+                span.end()
                 raise CallGuardDenied(
                     reason=pre.reason,
                     decision_source=pre.decision_source,
                     decision_name=pre.decision_name,
                 )
             # observe mode: fall through to execute
+            span.set_attribute("governance.action", "would_deny")
+            span.set_attribute("governance.would_deny_reason", pre.reason or "")
         else:
             await self._emit_run_pre_audit(envelope, session, AuditAction.CALL_ALLOWED, pre)
+            self.telemetry.record_allowed(envelope)
+            span.set_attribute("governance.action", "allowed")
 
         # Execute tool
         try:
@@ -240,6 +251,10 @@ class CallGuard:
                 mode=self.mode,
             )
         )
+
+        span.set_attribute("governance.tool_success", tool_success)
+        span.set_attribute("governance.postconditions_passed", post.postconditions_passed)
+        span.end()
 
         if not tool_success:
             raise CallGuardToolError(result)

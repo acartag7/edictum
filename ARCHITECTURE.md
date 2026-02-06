@@ -23,7 +23,12 @@ src/callguard/
 ├── builtins.py          # deny_sensitive_reads()
 ├── types.py             # Internal types (HookRegistration, ToolConfig)
 └── adapters/
-    └── claude_agent_sdk.py  # Claude Agent SDK adapter (thin translation layer)
+    ├── langchain.py         # LangChain adapter (pre/post tool call hooks)
+    ├── crewai.py            # CrewAI adapter (before/after hooks)
+    ├── agno.py              # Agno adapter (wrap-around hook)
+    ├── semantic_kernel.py   # Semantic Kernel adapter (filter pattern)
+    ├── openai_agents.py     # OpenAI Agents SDK adapter (guardrails)
+    └── claude_agent_sdk.py  # Claude Agent SDK adapter (hook dict)
 ```
 
 ## The Flow
@@ -67,7 +72,7 @@ Pipeline.pre_execute() — 5 steps:
 - `max_attempts` — caps ALL PreToolUse events (including denied). Catches denial loops.
 - `max_tool_calls` — caps executions only (PostToolUse). Caps total work done.
 
-**Postconditions are observe-only** in v0.0.1. They emit warnings, never block. For pure/read tools: suggest retry. For write/irreversible: warn only.
+**Postconditions are observe-only.** They emit warnings, never block. For pure/read tools: suggest retry. For write/irreversible: warn only.
 
 **Observe mode** (`mode="observe"`): full pipeline runs, audit emits `CALL_WOULD_DENY`, but tool executes anyway. For shadow deployment.
 
@@ -77,18 +82,27 @@ Pipeline.pre_execute() — 5 steps:
 
 **BashClassifier is a heuristic, not a security boundary.** Conservative READ allowlist + shell operator detection. Defense in depth with `deny_sensitive_reads()`.
 
-## Two Usage Modes
+## Usage Modes
 
-**1. Framework-agnostic:**
+**1. Framework-agnostic (`guard.run()`):**
 ```python
 guard = CallGuard(contracts=[deny_sensitive_reads()])
 result = await guard.run("Bash", {"command": "ls"}, my_bash_fn)
 ```
 
-**2. Claude Agent SDK adapter:**
+**2. Framework adapters (6 supported):**
+
+All adapters are thin translation layers — governance logic stays in the pipeline.
+
 ```python
-adapter = ClaudeAgentSDKAdapter(guard, session_id="session-1")
-hooks = adapter.to_sdk_hooks()
+from callguard.adapters.langchain import LangChainAdapter
+from callguard.adapters.crewai import CrewAIAdapter
+from callguard.adapters.agno import AgnoAdapter
+from callguard.adapters.semantic_kernel import SemanticKernelAdapter
+from callguard.adapters.openai_agents import OpenAIAgentsAdapter
+from callguard.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+
+adapter = LangChainAdapter(guard, session_id="session-1")
 ```
 
 ## What This Is NOT

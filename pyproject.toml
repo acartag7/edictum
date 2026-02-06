@@ -21,6 +21,12 @@ classifiers = [
 
 [project.optional-dependencies]
 otel = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20"]
+langchain = ["langchain-core>=0.3"]
+crewai = ["crewai>=0.80"]
+agno = ["agno>=1.0"]
+semantic-kernel = ["semantic-kernel>=1.0"]
+openai-agents = ["openai-agents>=0.1"]
+all = ["callguard[otel,langchain,crewai,agno,semantic-kernel,openai-agents]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
