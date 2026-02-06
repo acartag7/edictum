@@ -160,7 +160,7 @@ class TestRedactionPolicy:
 class TestAuditEvent:
     def test_defaults(self):
         event = AuditEvent()
-        assert event.schema_version == "0.0.1"
+        assert event.schema_version == "0.3.0"
         assert event.action == AuditAction.CALL_DENIED
         assert event.mode == "enforce"
         assert event.tool_success is None

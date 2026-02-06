@@ -156,6 +156,7 @@ class CrewAIAdapter:
                 session_attempt_count=await self._session.attempt_count(),
                 session_execution_count=await self._session.execution_count(),
                 mode=self._guard.mode,
+                policy_version=self._guard.policy_version,
             )
         )
 
@@ -187,6 +188,7 @@ class CrewAIAdapter:
                 session_attempt_count=await self._session.attempt_count(),
                 session_execution_count=await self._session.execution_count(),
                 mode=self._guard.mode,
+                policy_version=self._guard.policy_version,
             )
         )
 

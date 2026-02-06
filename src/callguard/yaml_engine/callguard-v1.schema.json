@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://callguard.dev/schemas/callguard-v1-contractbundle.json",
+  "title": "CallGuard ContractBundle v1",
+  "description": "Schema for CallGuard YAML contract bundles. Enforces structure, type-specific constraints, and effect rules.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "defaults", "contracts"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "callguard/v1" },
+    "kind": { "const": "ContractBundle" },
+    "metadata": { "$ref": "#/$defs/Metadata" },
+    "defaults": { "$ref": "#/$defs/Defaults" },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Contract" }
+    }
+  },
+
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "description": "Bundle identifier. Lowercase, slug-style."
+        },
+        "description": { "type": "string" }
+      }
+    },
+
+    "Defaults": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "$ref": "#/$defs/Mode" }
+      }
+    },
+
+    "Mode": {
+      "type": "string",
+      "enum": ["enforce", "observe"]
+    },
+
+    "Contract": {
+      "oneOf": [
+        { "$ref": "#/$defs/PreContract" },
+        { "$ref": "#/$defs/PostContract" },
+        { "$ref": "#/$defs/SessionContract" }
+      ]
+    },
+
+    "PreContract": {
+      "type": "object",
+      "required": ["id", "type", "tool", "when", "then"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/ContractId" },
+        "type": { "const": "pre" },
+        "enabled": { "type": "boolean", "default": true },
+        "mode": { "$ref": "#/$defs/Mode" },
+        "tool": { "$ref": "#/$defs/ToolSelector" },
+        "when": { "$ref": "#/$defs/Expression" },
+        "then": {
+          "type": "object",
+          "required": ["effect", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "effect": { "const": "deny" },
+            "message": { "$ref": "#/$defs/MessageString" },
+            "tags": { "$ref": "#/$defs/Tags" },
+            "metadata": { "$ref": "#/$defs/ThenMetadata" }
+          }
+        }
+      }
+    },
+
+    "PostContract": {
+      "type": "object",
+      "required": ["id", "type", "tool", "when", "then"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/ContractId" },
+        "type": { "const": "post" },
+        "enabled": { "type": "boolean", "default": true },
+        "mode": { "$ref": "#/$defs/Mode" },
+        "tool": { "$ref": "#/$defs/ToolSelector" },
+        "when": { "$ref": "#/$defs/Expression" },
+        "then": {
+          "type": "object",
+          "required": ["effect", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "effect": { "const": "warn" },
+            "message": { "$ref": "#/$defs/MessageString" },
+            "tags": { "$ref": "#/$defs/Tags" },
+            "metadata": { "$ref": "#/$defs/ThenMetadata" }
+          }
+        }
+      }
+    },
+
+    "SessionContract": {
+      "type": "object",
+      "required": ["id", "type", "limits", "then"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/ContractId" },
+        "type": { "const": "session" },
+        "enabled": { "type": "boolean", "default": true },
+        "mode": { "$ref": "#/$defs/Mode" },
+        "limits": { "$ref": "#/$defs/SessionLimits" },
+        "then": {
+          "type": "object",
+          "required": ["effect", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "effect": { "const": "deny" },
+            "message": { "$ref": "#/$defs/MessageString" },
+            "tags": { "$ref": "#/$defs/Tags" },
+            "metadata": { "$ref": "#/$defs/ThenMetadata" }
+          }
+        }
+      }
+    },
+
+    "ContractId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "Unique contract identifier within the bundle."
+    },
+
+    "ToolSelector": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tool name or '*' for all tools."
+    },
+
+    "MessageString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Message with optional {placeholder} expansion."
+    },
+
+    "Tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+
+    "ThenMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Arbitrary key-value metadata stamped into Verdict and audit."
+    },
+
+    "SessionLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tool_calls": { "type": "integer", "minimum": 1 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "max_calls_per_tool": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 },
+          "minProperties": 1
+        }
+      },
+      "anyOf": [
+        { "required": ["max_tool_calls"] },
+        { "required": ["max_attempts"] },
+        { "required": ["max_calls_per_tool"] }
+      ]
+    },
+
+    "Expression": {
+      "oneOf": [
+        { "$ref": "#/$defs/ExprAll" },
+        { "$ref": "#/$defs/ExprAny" },
+        { "$ref": "#/$defs/ExprNot" },
+        { "$ref": "#/$defs/ExprLeaf" }
+      ]
+    },
+
+    "ExprAll": {
+      "type": "object",
+      "required": ["all"],
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Expression" }
+        }
+      }
+    },
+
+    "ExprAny": {
+      "type": "object",
+      "required": ["any"],
+      "additionalProperties": false,
+      "properties": {
+        "any": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Expression" }
+        }
+      }
+    },
+
+    "ExprNot": {
+      "type": "object",
+      "required": ["not"],
+      "additionalProperties": false,
+      "properties": {
+        "not": { "$ref": "#/$defs/Expression" }
+      }
+    },
+
+    "ExprLeaf": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "description": "A single selector:operator pair. Selector validation done in Python validator.",
+      "additionalProperties": { "$ref": "#/$defs/Operator" }
+    },
+
+    "Operator": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "exists": { "type": "boolean" },
+        "equals": { "description": "Strict equality. Any scalar type." },
+        "not_equals": { "description": "Strict inequality. Any scalar type." },
+        "in": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Selector value appears in this list."
+        },
+        "not_in": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Selector value does NOT appear in this list."
+        },
+        "contains": {
+          "type": "string",
+          "description": "Substring match."
+        },
+        "contains_any": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Any substring matches."
+        },
+        "starts_with": { "type": "string" },
+        "ends_with": { "type": "string" },
+        "matches": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Python re.search() pattern. Use single quotes in YAML."
+        },
+        "matches_any": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "description": "Any regex pattern matches."
+        },
+        "gt": { "type": "number" },
+        "gte": { "type": "number" },
+        "lt": { "type": "number" },
+        "lte": { "type": "number" }
+      }
+    }
+  }
+}

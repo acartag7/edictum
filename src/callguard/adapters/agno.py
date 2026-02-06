@@ -81,9 +81,7 @@ class AgnoAdapter:
 
         return hook
 
-    async def _hook_async(
-        self, function_name: str, function_call: Callable, arguments: dict[str, Any]
-    ) -> Any:
+    async def _hook_async(self, function_name: str, function_call: Callable, arguments: dict[str, Any]) -> Any:
         """Full wrap-around lifecycle: pre -> execute -> post."""
         call_id = str(uuid.uuid4())
 
@@ -191,6 +189,7 @@ class AgnoAdapter:
                 session_attempt_count=await self._session.attempt_count(),
                 session_execution_count=await self._session.execution_count(),
                 mode=self._guard.mode,
+                policy_version=self._guard.policy_version,
             )
         )
 
@@ -224,6 +223,7 @@ class AgnoAdapter:
                 session_attempt_count=await self._session.attempt_count(),
                 session_execution_count=await self._session.execution_count(),
                 mode=self._guard.mode,
+                policy_version=self._guard.policy_version,
             )
         )
 

@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import asdict
 from typing import Any
 
-import aiohttp
-
 from callguard.audit import AuditEvent, RedactionPolicy
+from callguard.sinks._base import HTTPSinkBase
 
-logger = logging.getLogger(__name__)
 
-
-class DatadogSink:
+class DatadogSink(HTTPSinkBase):
     """Emit audit events to the Datadog Logs API.
 
     Events are posted to ``https://http-intake.logs.{site}/api/v2/logs``
@@ -28,7 +24,10 @@ class DatadogSink:
         service: str = "callguard",
         source: str = "callguard",
         redaction_policy: RedactionPolicy | None = None,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
     ) -> None:
+        super().__init__(max_retries=max_retries, base_delay=base_delay)
         self._api_key = api_key
         self._site = site
         self._service = service
@@ -68,13 +67,4 @@ class DatadogSink:
             "DD-API-KEY": self._api_key,
         }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self._url,
-                    data=body,
-                    headers=headers,
-                ) as resp:
-                    resp.raise_for_status()
-        except Exception:
-            logger.exception("Datadog POST to %s failed", self._url)
+        await self._send_with_retry(self._url, body, headers)

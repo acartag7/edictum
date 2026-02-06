@@ -71,11 +71,43 @@ def compile_contracts(bundle: dict) -> CompiledBundle:
     )
 
 
+def _precompile_regexes(expr: dict | Any) -> dict | Any:
+    """Recursively walk an expression tree and compile regex patterns.
+
+    Replaces string values under ``matches`` and ``matches_any`` with
+    pre-compiled ``re.Pattern`` objects so the evaluator never recompiles
+    on every call.
+    """
+    if not isinstance(expr, dict):
+        return expr
+
+    if "all" in expr:
+        return {"all": [_precompile_regexes(sub) for sub in expr["all"]]}
+    if "any" in expr:
+        return {"any": [_precompile_regexes(sub) for sub in expr["any"]]}
+    if "not" in expr:
+        return {"not": _precompile_regexes(expr["not"])}
+
+    # Leaf node: selector -> operator
+    compiled: dict = {}
+    for selector, operator in expr.items():
+        if not isinstance(operator, dict):
+            compiled[selector] = operator
+            continue
+        new_op = dict(operator)
+        if "matches" in new_op:
+            new_op["matches"] = re.compile(new_op["matches"])
+        if "matches_any" in new_op:
+            new_op["matches_any"] = [re.compile(p) for p in new_op["matches_any"]]
+        compiled[selector] = new_op
+    return compiled
+
+
 def _compile_pre(contract: dict, mode: str) -> Any:
     """Compile a pre-contract into a precondition callable."""
     contract_id = contract["id"]
     tool = contract["tool"]
-    when_expr = contract["when"]
+    when_expr = _precompile_regexes(contract["when"])
     then = contract["then"]
     message_template = then["message"]
     tags = then.get("tags", [])
@@ -120,7 +152,7 @@ def _compile_post(contract: dict, mode: str) -> Any:
     """Compile a post-contract into a postcondition callable."""
     contract_id = contract["id"]
     tool = contract["tool"]
-    when_expr = contract["when"]
+    when_expr = _precompile_regexes(contract["when"])
     then = contract["then"]
     message_template = then["message"]
     tags = then.get("tags", [])
@@ -176,7 +208,7 @@ def _compile_session(contract: dict, mode: str, limits: OperationLimits) -> Any:
             if exec_count >= limits.max_tool_calls:
                 return Verdict.fail(message_template, tags=tags, **then_metadata)
             attempt_count = await session.attempt_count()
-            if limits.max_attempts < 500 and attempt_count >= limits.max_attempts:
+            if limits.max_attempts < OperationLimits().max_attempts and attempt_count >= limits.max_attempts:
                 return Verdict.fail(message_template, tags=tags, **then_metadata)
         return Verdict.pass_()
 
@@ -240,7 +272,7 @@ def _expand_message(
             return match.group(0)  # Keep placeholder as-is
         text = str(value)
         if len(text) > _PLACEHOLDER_CAP:
-            text = text[:_PLACEHOLDER_CAP - 3] + "..."
+            text = text[: _PLACEHOLDER_CAP - 3] + "..."
         return text
 
     return _PLACEHOLDER_RE.sub(replacer, template)

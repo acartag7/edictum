@@ -31,6 +31,8 @@ class _FakeResponse:
 
 
 class _FakeSession:
+    closed = False
+
     def __init__(self, response: _FakeResponse | None = None):
         self._response = response or _FakeResponse(200)
         self.calls: list[dict] = []
@@ -65,7 +67,7 @@ class TestSplunkHECSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.splunk.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         assert len(fake_session.calls) == 1
@@ -84,7 +86,7 @@ class TestSplunkHECSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.splunk.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         headers = fake_session.calls[0]["headers"]
@@ -100,7 +102,7 @@ class TestSplunkHECSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.splunk.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])
@@ -121,7 +123,7 @@ class TestSplunkHECSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.splunk.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])
@@ -131,11 +133,13 @@ class TestSplunkHECSink:
         sink = SplunkHECSink(
             url="https://splunk.example.com:8088/services/collector",
             token="my-hec-token",
+            max_retries=3,
+            base_delay=0.01,
         )
         fake_session = _FakeSession(_FakeResponse(500))
 
-        with patch("callguard.sinks.splunk.aiohttp.ClientSession", return_value=fake_session):
-            # Should not raise
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
+            # Should not raise — retries then logs error
             await sink.emit(event)
 
-        assert len(fake_session.calls) == 1
+        assert len(fake_session.calls) == 3

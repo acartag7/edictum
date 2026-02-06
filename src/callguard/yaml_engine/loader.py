@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.resources as _resources
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,11 +14,8 @@ try:
     import yaml
 except ImportError as _exc:
     raise ImportError(
-        "The YAML engine requires pyyaml and jsonschema. "
-        "Install them with: pip install callguard[yaml]"
+        "The YAML engine requires pyyaml and jsonschema. " "Install them with: pip install callguard[yaml]"
     ) from _exc
-
-_SCHEMA_PATH = Path(__file__).parent.parent.parent.parent / "schemas" / "callguard-v1.schema.json"
 
 # Lazy-loaded schema singleton
 _schema_cache: dict | None = None
@@ -29,7 +27,10 @@ def _get_schema() -> dict:
     if _schema_cache is None:
         import json
 
-        _schema_cache = json.loads(_SCHEMA_PATH.read_text())
+        schema_text = (
+            _resources.files("callguard.yaml_engine").joinpath("callguard-v1.schema.json").read_text(encoding="utf-8")
+        )
+        _schema_cache = json.loads(schema_text)
     return _schema_cache
 
 
@@ -63,12 +64,12 @@ def _validate_unique_ids(data: dict) -> None:
     """Ensure all contract IDs are unique within the bundle."""
     from callguard import CallGuardConfigError
 
-    ids: list[str] = []
+    ids: set[str] = set()
     for contract in data.get("contracts", []):
         contract_id = contract.get("id")
         if contract_id in ids:
             raise CallGuardConfigError(f"Duplicate contract id: '{contract_id}'")
-        ids.append(contract_id)
+        ids.add(contract_id)
 
 
 def _validate_regexes(data: dict) -> None:

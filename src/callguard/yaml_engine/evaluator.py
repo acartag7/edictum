@@ -235,38 +235,40 @@ def _op_ends_with(field_value: Any, op_value: str) -> bool:
     return field_value.endswith(op_value)
 
 
-def _op_matches(field_value: Any, op_value: str) -> bool:
+def _op_matches(field_value: Any, op_value: str | re.Pattern) -> bool:
     if not isinstance(field_value, str):
         raise TypeError
+    if isinstance(op_value, re.Pattern):
+        return bool(op_value.search(field_value))
     return bool(re.search(op_value, field_value))
 
 
-def _op_matches_any(field_value: Any, op_value: list[str]) -> bool:
+def _op_matches_any(field_value: Any, op_value: list[str | re.Pattern]) -> bool:
     if not isinstance(field_value, str):
         raise TypeError
-    return any(re.search(p, field_value) for p in op_value)
+    return any(p.search(field_value) if isinstance(p, re.Pattern) else re.search(p, field_value) for p in op_value)
 
 
 def _op_gt(field_value: Any, op_value: float | int) -> bool:
-    if not isinstance(field_value, (int, float)):
+    if not isinstance(field_value, int | float):
         raise TypeError
     return field_value > op_value
 
 
 def _op_gte(field_value: Any, op_value: float | int) -> bool:
-    if not isinstance(field_value, (int, float)):
+    if not isinstance(field_value, int | float):
         raise TypeError
     return field_value >= op_value
 
 
 def _op_lt(field_value: Any, op_value: float | int) -> bool:
-    if not isinstance(field_value, (int, float)):
+    if not isinstance(field_value, int | float):
         raise TypeError
     return field_value < op_value
 
 
 def _op_lte(field_value: Any, op_value: float | int) -> bool:
-    if not isinstance(field_value, (int, float)):
+    if not isinstance(field_value, int | float):
         raise TypeError
     return field_value <= op_value
 

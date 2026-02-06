@@ -16,10 +16,7 @@ try:
     _console = Console(highlight=False)
     _err_console = Console(stderr=True, highlight=False)
 except ImportError:
-    raise ImportError(
-        "The CLI requires click and rich. "
-        "Install them with: pip install callguard[cli]"
-    )
+    raise ImportError("The CLI requires click and rich. " "Install them with: pip install callguard[cli]")
 
 from callguard import CallGuardConfigError
 from callguard.envelope import Principal, ToolEnvelope, create_envelope
@@ -139,9 +136,7 @@ def validate(files: tuple[str, ...]) -> None:
 
         total = sum(counts.values())
         breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
-        _console.print(
-            f"[green]  {escape(path.name)}[/green] — {total} contracts ({breakdown})"
-        )
+        _console.print(f"[green]  {escape(path.name)}[/green] — {total} contracts ({breakdown})")
 
     sys.exit(1 if has_errors else 0)
 
@@ -320,7 +315,8 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
 
     # Read audit log
     log_path = Path(audit_log)
-    lines = log_path.read_text().strip().split("\n") if log_path.read_text().strip() else []
+    raw = log_path.read_text().strip()
+    lines = raw.split("\n") if raw else []
 
     total = 0
     changes = 0
@@ -395,10 +391,7 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
         _console.print("\n[yellow]Changed verdicts:[/yellow]")
         for entry in report_lines:
             if entry["changed"]:
-                _console.print(
-                    f"  {entry['tool_name']}: "
-                    f"{entry['original_action']} -> {entry['new_verdict']}"
-                )
+                _console.print(f"  {entry['tool_name']}: " f"{entry['original_action']} -> {entry['new_verdict']}")
                 if entry.get("denied_by"):
                     _console.print(f"    Rule: {entry['denied_by']}")
     else:

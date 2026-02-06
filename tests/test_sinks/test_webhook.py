@@ -36,6 +36,8 @@ class _FakeResponse:
 class _FakeSession:
     """Fake aiohttp.ClientSession that records calls."""
 
+    closed = False
+
     def __init__(self, responses: list[_FakeResponse] | None = None):
         self._responses = responses or [_FakeResponse(200)]
         self._call_index = 0
@@ -70,7 +72,7 @@ class TestWebhookAuditSink:
         sink = WebhookAuditSink(url="https://hooks.example.com/audit")
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         assert len(fake_session.calls) == 1
@@ -86,7 +88,7 @@ class TestWebhookAuditSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         headers = fake_session.calls[0]["headers"]
@@ -102,7 +104,7 @@ class TestWebhookAuditSink:
         responses = [_FakeResponse(500), _FakeResponse(500), _FakeResponse(200)]
         fake_session = _FakeSession(responses)
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         assert len(fake_session.calls) == 3
@@ -116,7 +118,7 @@ class TestWebhookAuditSink:
         responses = [_FakeResponse(500), _FakeResponse(500), _FakeResponse(500)]
         fake_session = _FakeSession(responses)
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             # Should not raise — just logs the error
             await sink.emit(event)
 
@@ -135,7 +137,7 @@ class TestWebhookAuditSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])
@@ -148,7 +150,7 @@ class TestWebhookAuditSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
             # Give the background task time to complete
             await asyncio.sleep(0.1)
@@ -165,7 +167,7 @@ class TestWebhookAuditSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.webhook.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])

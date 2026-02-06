@@ -29,7 +29,7 @@ class AuditAction(StrEnum):
 
 @dataclass
 class AuditEvent:
-    schema_version: str = "0.0.1"
+    schema_version: str = "0.3.0"
 
     # Identity
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -137,7 +137,7 @@ class RedactionPolicy:
                 key: "[REDACTED]" if self._is_sensitive_key(key) else self.redact_args(value)
                 for key, value in args.items()
             }
-        elif isinstance(args, (list, tuple)):
+        elif isinstance(args, list | tuple):
             return [self.redact_args(item) for item in args]
         elif isinstance(args, str):
             if self._detect_values and self._looks_like_secret(args):

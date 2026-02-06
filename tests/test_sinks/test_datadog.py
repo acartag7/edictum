@@ -32,6 +32,8 @@ class _FakeResponse:
 
 
 class _FakeSession:
+    closed = False
+
     def __init__(self, response: _FakeResponse | None = None):
         self._response = response or _FakeResponse(200)
         self.calls: list[dict] = []
@@ -63,7 +65,7 @@ class TestDatadogSink:
         sink = DatadogSink(api_key="dd-api-key-123")
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         assert len(fake_session.calls) == 1
@@ -83,7 +85,7 @@ class TestDatadogSink:
         sink = DatadogSink(api_key="dd-api-key-123")
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         headers = fake_session.calls[0]["headers"]
@@ -94,7 +96,7 @@ class TestDatadogSink:
         sink = DatadogSink(api_key="dd-api-key-123", site="datadoghq.eu")
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         url = fake_session.calls[0]["url"]
@@ -112,7 +114,7 @@ class TestDatadogSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])
@@ -131,18 +133,22 @@ class TestDatadogSink:
         )
         fake_session = _FakeSession()
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
             await sink.emit(event)
 
         body = json.loads(fake_session.calls[0]["data"])
         assert body[0]["message"]["tool_args"]["api_key"] == "[REDACTED]"
 
     async def test_http_error_does_not_raise(self, event):
-        sink = DatadogSink(api_key="dd-api-key-123")
+        sink = DatadogSink(
+            api_key="dd-api-key-123",
+            max_retries=3,
+            base_delay=0.01,
+        )
         fake_session = _FakeSession(_FakeResponse(500))
 
-        with patch("callguard.sinks.datadog.aiohttp.ClientSession", return_value=fake_session):
-            # Should not raise
+        with patch("callguard.sinks._base.aiohttp.ClientSession", return_value=fake_session):
+            # Should not raise — retries then logs error
             await sink.emit(event)
 
-        assert len(fake_session.calls) == 1
+        assert len(fake_session.calls) == 3
