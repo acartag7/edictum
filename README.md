@@ -11,6 +11,20 @@ Nothing sits between an AI agent deciding to call `rm -rf /` and it happening. C
 - **Observe mode for shadow deployment.** Run the full governance pipeline without blocking anything. Audit events log `CALL_WOULD_DENY` so you can tune rules before enforcing them in production.
 - **Zero runtime dependencies.** Pure Python 3.11+. OpenTelemetry support via optional `callguard[otel]`.
 
+## Install
+
+```bash
+pip install callguard
+```
+
+Optional OpenTelemetry support:
+
+```bash
+pip install callguard[otel]
+```
+
+Requires Python 3.11+.
+
 ## Quickstart
 
 ```python
