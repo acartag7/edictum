@@ -18,21 +18,28 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
 ]
+dependencies = []
 
 [project.optional-dependencies]
+yaml = ["pyyaml>=6.0", "jsonschema>=4.20"]
 otel = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20"]
 langchain = ["langchain-core>=0.3"]
 crewai = ["crewai>=0.80"]
 agno = ["agno>=1.0"]
 semantic-kernel = ["semantic-kernel>=1.0"]
 openai-agents = ["openai-agents>=0.1"]
-all = ["callguard[otel,langchain,crewai,agno,semantic-kernel,openai-agents]"]
+sinks = ["aiohttp>=3.9"]
+cli = ["click>=8.0", "rich>=13.0", "callguard[yaml]"]
+all = ["callguard[yaml,otel,sinks,cli,langchain,crewai,agno,semantic-kernel,openai-agents]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
     "coverage>=7.0",
 ]
+
+[project.scripts]
+callguard = "callguard.cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/callguard"]
