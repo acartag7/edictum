@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from callguard.audit import AuditAction, AuditEvent
-from callguard.envelope import create_envelope
+from callguard.envelope import Principal, create_envelope
 from callguard.pipeline import GovernancePipeline
 from callguard.session import Session
 
@@ -27,7 +28,12 @@ class CrewAIAdapter:
     CrewAI is sequential, so a single-pending slot correlates before/after.
     """
 
-    def __init__(self, guard: CallGuard, session_id: str | None = None):
+    def __init__(
+        self,
+        guard: CallGuard,
+        session_id: str | None = None,
+        principal: Principal | None = None,
+    ):
         self._guard = guard
         self._pipeline = GovernancePipeline(guard)
         self._session_id = session_id or str(uuid.uuid4())
@@ -35,6 +41,7 @@ class CrewAIAdapter:
         self._call_index = 0
         self._pending_envelope: Any | None = None
         self._pending_span: Any | None = None
+        self._principal = principal
 
     @property
     def session_id(self) -> str:
@@ -68,6 +75,7 @@ class CrewAIAdapter:
             call_index=self._call_index,
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
+            principal=self._principal,
         )
         self._call_index += 1
 
@@ -141,6 +149,7 @@ class CrewAIAdapter:
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
                 environment=envelope.environment,
+                principal=asdict(envelope.principal) if envelope.principal else None,
                 tool_success=tool_success,
                 postconditions_passed=post_decision.postconditions_passed,
                 contracts_evaluated=post_decision.contracts_evaluated,
@@ -169,6 +178,7 @@ class CrewAIAdapter:
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
                 environment=envelope.environment,
+                principal=asdict(envelope.principal) if envelope.principal else None,
                 decision_source=decision.decision_source,
                 decision_name=decision.decision_name,
                 reason=decision.reason,

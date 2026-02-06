@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from callguard.audit import AuditAction, AuditEvent
-from callguard.envelope import create_envelope
+from callguard.envelope import Principal, create_envelope
 from callguard.pipeline import GovernancePipeline
 from callguard.session import Session
 
@@ -25,13 +26,19 @@ class SemanticKernelAdapter:
     4. Handles observe mode (deny -> allow conversion)
     """
 
-    def __init__(self, guard: CallGuard, session_id: str | None = None):
+    def __init__(
+        self,
+        guard: CallGuard,
+        session_id: str | None = None,
+        principal: Principal | None = None,
+    ):
         self._guard = guard
         self._pipeline = GovernancePipeline(guard)
         self._session_id = session_id or str(uuid.uuid4())
         self._session = Session(self._session_id, guard.backend)
         self._call_index = 0
         self._pending: dict[str, tuple[Any, Any]] = {}
+        self._principal = principal
 
     @property
     def session_id(self) -> str:
@@ -84,6 +91,7 @@ class SemanticKernelAdapter:
             tool_use_id=call_id,
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
+            principal=self._principal,
         )
         self._call_index += 1
 
@@ -141,6 +149,7 @@ class SemanticKernelAdapter:
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
                 environment=envelope.environment,
+                principal=asdict(envelope.principal) if envelope.principal else None,
                 tool_success=tool_success,
                 postconditions_passed=post_decision.postconditions_passed,
                 contracts_evaluated=post_decision.contracts_evaluated,
@@ -170,6 +179,7 @@ class SemanticKernelAdapter:
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
                 environment=envelope.environment,
+                principal=asdict(envelope.principal) if envelope.principal else None,
                 decision_source=decision.decision_source,
                 decision_name=decision.decision_name,
                 reason=decision.reason,
