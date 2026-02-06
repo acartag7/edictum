@@ -14,6 +14,12 @@ class TestDenySensitiveReads:
         assert not verdict.passed
         assert "sensitive path" in verdict.message.lower()
 
+    def test_blocks_expanded_ssh_path(self):
+        check = deny_sensitive_reads()
+        envelope = create_envelope("Read", {"file_path": "/home/user/.ssh/id_rsa"})
+        verdict = check(envelope)
+        assert not verdict.passed
+
     def test_blocks_env_file(self):
         check = deny_sensitive_reads()
         envelope = create_envelope("Read", {"file_path": "/app/.env"})

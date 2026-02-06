@@ -53,8 +53,6 @@ class ToolEnvelope:
     run_id: str = ""
     call_index: int = 0
 
-    # Retry tracking
-    attempt: int = 0
     parent_call_id: str | None = None
 
     # Classification

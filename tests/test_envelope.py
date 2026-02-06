@@ -38,7 +38,6 @@ class TestCreateEnvelope:
         assert envelope.args == {}
         assert envelope.run_id == ""
         assert envelope.call_index == 0
-        assert envelope.attempt == 0
         assert envelope.side_effect == SideEffect.IRREVERSIBLE
         assert envelope.idempotent is False
         assert envelope.environment == "production"

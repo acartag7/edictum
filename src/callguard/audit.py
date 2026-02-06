@@ -36,7 +36,6 @@ class AuditEvent:
     run_id: str = ""
     call_id: str = ""
     call_index: int = 0
-    attempt: int = 0
     parent_call_id: str | None = None
 
     # Tool

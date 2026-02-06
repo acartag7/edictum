@@ -25,7 +25,7 @@ def deny_sensitive_reads(
     - printenv, env (dump all env vars)
     """
     default_paths = [
-        "~/.ssh/",
+        "/.ssh/",
         "/var/run/secrets/",
         "/.env",
         "/.aws/credentials",

@@ -195,33 +195,17 @@ class CallGuard:
         pre = await pipeline.pre_execute(envelope, session)
 
         if pre.action == "deny":
-            # Emit audit for both modes
             audit_action = AuditAction.CALL_WOULD_DENY if self.mode == "observe" else AuditAction.CALL_DENIED
-            await self.audit_sink.emit(
-                AuditEvent(
-                    action=audit_action,
-                    run_id=envelope.run_id,
-                    call_id=envelope.call_id,
-                    tool_name=envelope.tool_name,
-                    tool_args=self.redaction.redact_args(envelope.args),
-                    side_effect=envelope.side_effect.value,
-                    environment=envelope.environment,
-                    decision_source=pre.decision_source,
-                    decision_name=pre.decision_name,
-                    reason=pre.reason,
-                    hooks_evaluated=pre.hooks_evaluated,
-                    contracts_evaluated=pre.contracts_evaluated,
-                    session_attempt_count=await session.attempt_count(),
-                    session_execution_count=await session.execution_count(),
-                    mode=self.mode,
-                )
-            )
+            await self._emit_run_pre_audit(envelope, session, audit_action, pre)
             if self.mode == "enforce":
                 raise CallGuardDenied(
                     reason=pre.reason,
                     decision_source=pre.decision_source,
                     decision_name=pre.decision_name,
                 )
+            # observe mode: fall through to execute
+        else:
+            await self._emit_run_pre_audit(envelope, session, AuditAction.CALL_ALLOWED, pre)
 
         # Execute tool
         try:
@@ -234,15 +218,56 @@ class CallGuard:
             tool_success = False
 
         # Post-execute
-        await pipeline.post_execute(envelope, result, tool_success)
-
-        # Record execution
+        post = await pipeline.post_execute(envelope, result, tool_success)
         await session.record_execution(tool_name, success=tool_success)
+
+        # Emit post-execute audit
+        post_action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
+        await self.audit_sink.emit(
+            AuditEvent(
+                action=post_action,
+                run_id=envelope.run_id,
+                call_id=envelope.call_id,
+                tool_name=envelope.tool_name,
+                tool_args=self.redaction.redact_args(envelope.args),
+                side_effect=envelope.side_effect.value,
+                environment=envelope.environment,
+                tool_success=tool_success,
+                postconditions_passed=post.postconditions_passed,
+                contracts_evaluated=post.contracts_evaluated,
+                session_attempt_count=await session.attempt_count(),
+                session_execution_count=await session.execution_count(),
+                mode=self.mode,
+            )
+        )
 
         if not tool_success:
             raise CallGuardToolError(result)
 
         return result
+
+    async def _emit_run_pre_audit(
+        self, envelope, session, action: AuditAction, pre: PreDecision
+    ) -> None:
+        await self.audit_sink.emit(
+            AuditEvent(
+                action=action,
+                run_id=envelope.run_id,
+                call_id=envelope.call_id,
+                tool_name=envelope.tool_name,
+                tool_args=self.redaction.redact_args(envelope.args),
+                side_effect=envelope.side_effect.value,
+                environment=envelope.environment,
+                decision_source=pre.decision_source,
+                decision_name=pre.decision_name,
+                reason=pre.reason,
+                hooks_evaluated=pre.hooks_evaluated,
+                contracts_evaluated=pre.contracts_evaluated,
+                session_attempt_count=await session.attempt_count(),
+                session_execution_count=await session.execution_count(),
+                mode=self.mode,
+            )
+        )
 
 
 class CallGuardDenied(Exception):  # noqa: N818

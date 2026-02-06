@@ -71,7 +71,6 @@ class GovernanceTelemetry:
                 "tool.name": envelope.tool_name,
                 "tool.side_effect": envelope.side_effect.value,
                 "tool.call_index": envelope.call_index,
-                "tool.attempt": envelope.attempt,
                 "governance.environment": envelope.environment,
                 "governance.run_id": envelope.run_id,
             },
