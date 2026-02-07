@@ -70,10 +70,13 @@ class TestAgnoAdapter:
         assert "call-1" not in adapter._pending
 
     async def test_post_without_pending_returns_empty(self):
+        from edictum.findings import PostCallResult
+
         guard = make_guard()
         adapter = AgnoAdapter(guard)
         result = await adapter._post("unknown")
-        assert result == {}
+        assert isinstance(result, PostCallResult)
+        assert result.postconditions_passed is True
 
     async def test_call_index_increments(self):
         guard = make_guard()

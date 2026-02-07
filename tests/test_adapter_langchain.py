@@ -88,13 +88,17 @@ class TestLangChainAdapter:
         await adapter._pre_tool_call(_make_request())
         assert "tc-1" not in adapter._pending
 
-    async def test_post_without_pending_returns_empty(self):
+    async def test_post_without_pending_returns_postcallresult(self):
         guard = make_guard()
         adapter = LangChainAdapter(guard)
         request = _make_request(tool_call_id="unknown")
-        # Should be a no-op, no error
+        # Should return a PostCallResult with passed=True
+        from edictum.findings import PostCallResult
+
         result = await adapter._post_tool_call(request, "ok")
-        assert result is None
+        assert isinstance(result, PostCallResult)
+        assert result.postconditions_passed is True
+        assert result.result == "ok"
 
     async def test_call_index_increments(self):
         guard = make_guard()
@@ -191,3 +195,127 @@ class TestLangChainAdapter:
         actions = [e.action for e in sink.events]
         assert AuditAction.CALL_ALLOWED in actions
         assert AuditAction.CALL_FAILED in actions
+
+    # ── as_tool_wrapper tests ─────────────────────────────────────────
+
+    def test_as_tool_wrapper_returns_callable(self):
+        guard = make_guard()
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_tool_wrapper()
+        assert callable(wrapper)
+
+    async def test_tool_wrapper_allows_and_calls_handler(self):
+        guard = make_guard()
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_tool_wrapper()
+        request = _make_request()
+
+        handler_called = False
+
+        def handler(req):
+            nonlocal handler_called
+            handler_called = True
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        result = wrapper(request, handler)
+        assert handler_called
+        assert result.content == "ok"
+
+    async def test_tool_wrapper_denies_without_calling_handler(self):
+        @precondition("*")
+        def always_deny(envelope):
+            return Verdict.fail("blocked")
+
+        guard = make_guard(contracts=[always_deny])
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_tool_wrapper()
+        request = _make_request()
+
+        handler_called = False
+
+        def handler(req):
+            nonlocal handler_called
+            handler_called = True
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        result = wrapper(request, handler)
+        assert not handler_called
+        assert "DENIED" in result.content
+
+    async def test_tool_wrapper_emits_audit_events(self):
+        sink = NullAuditSink()
+        guard = make_guard(audit_sink=sink)
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_tool_wrapper()
+        request = _make_request()
+
+        def handler(req):
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        wrapper(request, handler)
+
+        actions = [e.action for e in sink.events]
+        assert AuditAction.CALL_ALLOWED in actions
+        assert AuditAction.CALL_EXECUTED in actions
+
+    # ── as_async_tool_wrapper tests ───────────────────────────────────
+
+    def test_as_async_tool_wrapper_returns_callable(self):
+        guard = make_guard()
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_async_tool_wrapper()
+        assert callable(wrapper)
+
+    async def test_async_tool_wrapper_allows_and_calls_handler(self):
+        guard = make_guard()
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_async_tool_wrapper()
+        request = _make_request()
+
+        handler_called = False
+
+        async def handler(req):
+            nonlocal handler_called
+            handler_called = True
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        result = await wrapper(request, handler)
+        assert handler_called
+        assert result.content == "ok"
+
+    async def test_async_tool_wrapper_denies_without_calling_handler(self):
+        @precondition("*")
+        def always_deny(envelope):
+            return Verdict.fail("blocked")
+
+        guard = make_guard(contracts=[always_deny])
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_async_tool_wrapper()
+        request = _make_request()
+
+        handler_called = False
+
+        async def handler(req):
+            nonlocal handler_called
+            handler_called = True
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        result = await wrapper(request, handler)
+        assert not handler_called
+        assert "DENIED" in result.content
+
+    async def test_async_tool_wrapper_emits_audit_events(self):
+        sink = NullAuditSink()
+        guard = make_guard(audit_sink=sink)
+        adapter = LangChainAdapter(guard)
+        wrapper = adapter.as_async_tool_wrapper()
+        request = _make_request()
+
+        async def handler(req):
+            return FakeToolMessage(content="ok", tool_call_id="tc-1")
+
+        await wrapper(request, handler)
+
+        actions = [e.action for e in sink.events]
+        assert AuditAction.CALL_ALLOWED in actions
+        assert AuditAction.CALL_EXECUTED in actions

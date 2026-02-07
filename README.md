@@ -83,6 +83,7 @@ middleware = EdictumMiddleware(guard)
 - **Observe mode** — Shadow-deploy contracts without blocking; review `CALL_WOULD_DENY` events before enforcing
 - **CLI tooling** — `validate`, `check`, `diff`, and `replay` commands for CI/CD integration
 - **Principal context** — Role, ticket ref, and claims propagated through every decision and audit event
+- **Postcondition findings** — Structured detection results from tool output checks, with optional remediation callbacks (redact PII, replace secrets, log and continue)
 - **Session limits** — Cap total calls, attempts, and per-tool executions to catch runaway agents
 - **Zero runtime deps** — Pure Python 3.11+. OTel and adapters are optional extras
 

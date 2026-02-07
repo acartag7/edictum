@@ -35,6 +35,7 @@ from edictum.envelope import (
     ToolRegistry,
     create_envelope,
 )
+from edictum.findings import Finding, PostCallResult
 from edictum.hooks import HookDecision, HookResult
 from edictum.limits import OperationLimits
 from edictum.otel import configure_otel, get_tracer, has_otel
@@ -79,6 +80,8 @@ __all__ = [
     "deny_sensitive_reads",
     "configure_otel",
     "has_otel",
+    "Finding",
+    "PostCallResult",
 ]
 
 

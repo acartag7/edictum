@@ -35,6 +35,16 @@ agent = create_react_agent(
 
 `as_middleware()` returns a `@wrap_tool_call` decorated function. Denied calls return a `ToolMessage` with the denial reason so the agent can self-correct.
 
+**Postcondition remediation** (v0.5.1+): Pass `on_postcondition_warn` to transform results when postconditions detect issues:
+
+```python
+wrapper = adapter.as_tool_wrapper(
+    on_postcondition_warn=lambda result, findings: redact_pii(result, findings)
+)
+```
+
+See [findings.md](findings.md) for details.
+
 ---
 
 ## CrewAI
@@ -55,6 +65,14 @@ crew.kickoff()
 ```
 
 `register()` attaches global `@before_tool_call` / `@after_tool_call` handlers. Denied calls return `False` from the before-hook, which tells CrewAI to skip execution.
+
+**Postcondition remediation** (v0.5.1+):
+
+```python
+adapter.register(
+    on_postcondition_warn=lambda result, findings: log_findings(result, findings)
+)
+```
 
 ---
 
@@ -80,6 +98,14 @@ agent = Agent(
 
 `as_tool_hook()` returns a wrap-around function that receives `(function_name, function_call, arguments)`. It runs governance, calls the tool if allowed, and returns the result or a `"DENIED: ..."` string.
 
+**Postcondition remediation** (v0.5.1+):
+
+```python
+hook = adapter.as_tool_hook(
+    on_postcondition_warn=lambda result, findings: redact_pii(result, findings)
+)
+```
+
 ---
 
 ## Semantic Kernel
@@ -103,6 +129,15 @@ result = await kernel.invoke(function)
 ```
 
 `register(kernel)` adds an `AUTO_FUNCTION_INVOCATION` filter. Denied calls set `context.terminate = True` and return the denial reason as the function result.
+
+**Postcondition remediation** (v0.5.1+):
+
+```python
+adapter.register(
+    kernel,
+    on_postcondition_warn=lambda result, findings: redact_pii(result, findings)
+)
+```
 
 ---
 
@@ -130,6 +165,14 @@ agent = Agent(
 
 `as_guardrails()` returns a `(input_guardrail, output_guardrail)` tuple decorated with `@tool_input_guardrail` / `@tool_output_guardrail`. Denied calls return `ToolGuardrailFunctionOutput.reject_content(reason)`.
 
+**Postcondition remediation** (v0.5.1+):
+
+```python
+input_gr, output_gr = adapter.as_guardrails(
+    on_postcondition_warn=lambda result, findings: log_findings(result, findings)
+)
+```
+
 ---
 
 ## Claude Agent SDK
@@ -153,6 +196,14 @@ agent = Agent(
 ```
 
 `to_sdk_hooks()` returns `{"pre_tool_use": ..., "post_tool_use": ...}`. Denied calls return a dict with `permissionDecision: "deny"` and the reason.
+
+**Postcondition remediation** (v0.5.1+):
+
+```python
+hooks = adapter.to_sdk_hooks(
+    on_postcondition_warn=lambda result, findings: log_findings(result, findings)
+)
+```
 
 ---
 

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
 
@@ -45,8 +47,16 @@ class LangChainAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def as_middleware(self) -> Any:
+    def as_middleware(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> Any:
         """Return a @wrap_tool_call decorated function for LangChain.
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and returns
+                the (possibly transformed) result.
 
         Usage::
 
@@ -70,10 +80,98 @@ class LangChainAdapter:
 
             result = handler(request)
 
-            loop.run_until_complete(adapter._post_tool_call(request, result))
-            return result
+            post_result = loop.run_until_complete(adapter._post_tool_call(request, result))
+            if not post_result.postconditions_passed and on_postcondition_warn:
+                return on_postcondition_warn(post_result.result, post_result.findings)
+            return post_result.result
 
         return edictum_middleware
+
+    def as_tool_wrapper(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> Callable:
+        """Return a plain ToolCallWrapper for ToolNode(wrap_tool_call=...).
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and returns
+                the (possibly transformed) result. If None, postcondition
+                warnings are logged but the original result is returned unchanged.
+
+        Usage::
+
+            adapter = LangChainAdapter(guard)
+            tool_node = ToolNode(tools=tools, wrap_tool_call=adapter.as_tool_wrapper())
+            agent = create_react_agent(model, tools=tool_node)
+
+            # With remediation:
+            tool_node = ToolNode(
+                tools=tools,
+                wrap_tool_call=adapter.as_tool_wrapper(
+                    on_postcondition_warn=lambda result, findings: redact_pii(result, findings)
+                ),
+            )
+        """
+        adapter = self
+
+        def _run_async(coro):
+            """Run coroutine from sync context, handling nested event loops."""
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(asyncio.run, coro).result()
+            else:
+                return asyncio.run(coro)
+
+        def wrapper(request, handler):
+            pre_result = _run_async(adapter._pre_tool_call(request))
+            if pre_result is not None:
+                return pre_result
+            result = handler(request)
+            post_result = _run_async(adapter._post_tool_call(request, result))
+            if not post_result.postconditions_passed and on_postcondition_warn:
+                return on_postcondition_warn(post_result.result, post_result.findings)
+            return post_result.result
+
+        return wrapper
+
+    def as_async_tool_wrapper(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> Callable:
+        """Return an async ToolCallWrapper for ToolNode(wrap_tool_call=...).
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and returns
+                the (possibly transformed) result.
+
+        Usage::
+
+            adapter = LangChainAdapter(guard)
+            tool_node = ToolNode(tools=tools, wrap_tool_call=adapter.as_async_tool_wrapper())
+            agent = create_react_agent(model, tools=tool_node)
+        """
+        adapter = self
+
+        async def wrapper(request, handler):
+            pre_result = await adapter._pre_tool_call(request)
+            if pre_result is not None:
+                return pre_result
+            result = await handler(request)
+            post_result = await adapter._post_tool_call(request, result)
+            if not post_result.postconditions_passed and on_postcondition_warn:
+                return on_postcondition_warn(post_result.result, post_result.findings)
+            return post_result.result
+
+        return wrapper
 
     async def _pre_tool_call(self, request: Any) -> Any | None:
         """Run pre-execution governance. Returns denial ToolMessage or None to allow."""
@@ -146,12 +244,12 @@ class LangChainAdapter:
         self._pending[tool_call_id] = (envelope, span)
         return None
 
-    async def _post_tool_call(self, request: Any, result: Any) -> None:
-        """Run post-execution governance."""
+    async def _post_tool_call(self, request: Any, result: Any) -> PostCallResult:
+        """Run post-execution governance. Returns PostCallResult with findings."""
         tool_call_id = request.tool_call["id"]
         pending = self._pending.pop(tool_call_id, None)
         if not pending:
-            return
+            return PostCallResult(result=result)
 
         envelope, span = pending
 
@@ -187,6 +285,13 @@ class LangChainAdapter:
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
+
+        findings = build_findings(post_decision)
+        return PostCallResult(
+            result=result,
+            postconditions_passed=post_decision.postconditions_passed,
+            findings=findings,
+        )
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
         if audit_action is None:

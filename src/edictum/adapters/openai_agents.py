@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
 
@@ -49,8 +51,16 @@ class OpenAIAgentsAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def as_guardrails(self) -> tuple[Any, Any]:
+    def as_guardrails(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> tuple[Any, Any]:
         """Return (input_guardrail, output_guardrail) for OpenAI Agents SDK.
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and is called
+                for side effects.
 
         Usage::
 
@@ -61,6 +71,8 @@ class OpenAIAgentsAdapter:
             input_gr, output_gr = adapter.as_guardrails()
             # Pass to Agent(input_guardrails=[input_gr], output_guardrails=[output_gr])
         """
+        self._on_postcondition_warn = on_postcondition_warn
+
         from agents import (
             ToolGuardrailFunctionOutput,
             tool_input_guardrail,
@@ -90,11 +102,16 @@ class OpenAIAgentsAdapter:
             # Try to correlate via tool_use_id from SDK context first.
             # Fall back to FIFO (insertion-order) for sequential execution.
             call_id = getattr(data, "tool_use_id", None)
+            post_result = None
             if call_id and call_id in adapter._pending:
-                await adapter._post(call_id, tool_output)
+                post_result = await adapter._post(call_id, tool_output)
             elif adapter._pending:
                 call_id = next(iter(adapter._pending))
-                await adapter._post(call_id, tool_output)
+                post_result = await adapter._post(call_id, tool_output)
+
+            if post_result and not post_result.postconditions_passed and adapter._on_postcondition_warn:
+                adapter._on_postcondition_warn(post_result.result, post_result.findings)
+
             return ToolGuardrailFunctionOutput.allow()
 
         return edictum_input_guardrail, edictum_output_guardrail
@@ -172,14 +189,14 @@ class OpenAIAgentsAdapter:
         self._pending[call_id] = (envelope, span)
         return None
 
-    async def _post(self, call_id: str, tool_response: Any = None) -> None:
-        """Run post-execution governance.
+    async def _post(self, call_id: str, tool_response: Any = None) -> PostCallResult:
+        """Run post-execution governance. Returns PostCallResult with findings.
 
         Exposed for direct testing without framework imports.
         """
         pending = self._pending.pop(call_id, None)
         if not pending:
-            return
+            return PostCallResult(result=tool_response)
 
         envelope, span = pending
 
@@ -220,6 +237,13 @@ class OpenAIAgentsAdapter:
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
+
+        findings = build_findings(post_decision)
+        return PostCallResult(
+            result=tool_response,
+            postconditions_passed=post_decision.postconditions_passed,
+            findings=findings,
+        )
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
         if audit_action is None:

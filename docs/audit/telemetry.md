@@ -64,6 +64,14 @@ Attributes are set at different lifecycle stages.
 | `governance.tool_success` | `bool` | Whether the tool call succeeded |
 | `governance.postconditions_passed` | `bool` | Whether all postconditions passed |
 
+### Postcondition Findings in OTel (v0.5.1+)
+
+When a postcondition produces a finding, the `edictum.evaluate` span includes the
+finding details in the `contracts_evaluated` audit record. The span's
+`governance.postconditions_passed` attribute is set to `false`, making it easy to
+filter for tool calls that triggered postcondition warnings in your observability
+backend. See [findings.md](../findings.md) for the structured Finding interface.
+
 ---
 
 ## Metrics

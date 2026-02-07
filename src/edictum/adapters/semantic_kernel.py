@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
 
@@ -44,8 +46,19 @@ class SemanticKernelAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def register(self, kernel: Any) -> None:
+    def register(
+        self,
+        kernel: Any,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> None:
         """Register AUTO_FUNCTION_INVOCATION filter on the kernel.
+
+        Args:
+            kernel: Semantic Kernel instance.
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and returns
+                the (possibly transformed) result. The return value replaces
+                context.function_result.
 
         Usage::
 
@@ -56,6 +69,8 @@ class SemanticKernelAdapter:
             adapter = SemanticKernelAdapter(guard)
             adapter.register(kernel)
         """
+        self._on_postcondition_warn = on_postcondition_warn
+
         from semantic_kernel.filters import FilterTypes
 
         adapter = self
@@ -79,7 +94,11 @@ class SemanticKernelAdapter:
 
             # Post-execute with function result
             tool_response = context.function_result
-            await adapter._post(call_id, tool_response)
+            post_result = await adapter._post(call_id, tool_response)
+
+            # Apply remediation callback
+            if not post_result.postconditions_passed and adapter._on_postcondition_warn:
+                context.function_result = adapter._on_postcondition_warn(post_result.result, post_result.findings)
 
     async def _pre(self, tool_name: str, tool_input: dict, call_id: str) -> dict | str:
         """Pre-execution governance. Returns {} to allow or denial string to deny."""
@@ -148,11 +167,11 @@ class SemanticKernelAdapter:
         self._pending[call_id] = (envelope, span)
         return {}
 
-    async def _post(self, call_id: str, tool_response: Any = None) -> dict:
-        """Post-execution governance."""
+    async def _post(self, call_id: str, tool_response: Any = None) -> PostCallResult:
+        """Post-execution governance. Returns PostCallResult with findings."""
         pending = self._pending.pop(call_id, None)
         if not pending:
-            return {}
+            return PostCallResult(result=tool_response)
 
         envelope, span = pending
 
@@ -189,7 +208,12 @@ class SemanticKernelAdapter:
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
 
-        return {}
+        findings = build_findings(post_decision)
+        return PostCallResult(
+            result=tool_response,
+            postconditions_passed=post_decision.postconditions_passed,
+            findings=findings,
+        )
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
         if audit_action is None:
