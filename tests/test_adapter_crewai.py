@@ -328,18 +328,18 @@ class TestCrewAIToolNameNormalization:
     """Regression tests for tool name normalization (v0.5.2)."""
 
     def test_normalize_human_readable_names(self):
-        assert CrewAIAdapter._normalize_tool_name("Query Clinical Data") == "query_clinical_data"
-        assert CrewAIAdapter._normalize_tool_name("Update Case Report") == "update_case_report"
+        assert CrewAIAdapter._normalize_tool_name("Search Documents") == "search_documents"
+        assert CrewAIAdapter._normalize_tool_name("Update Record") == "update_record"
 
     def test_normalize_already_snake_case(self):
-        assert CrewAIAdapter._normalize_tool_name("query_clinical_data") == "query_clinical_data"
+        assert CrewAIAdapter._normalize_tool_name("search_documents") == "search_documents"
 
     def test_normalize_single_word(self):
         assert CrewAIAdapter._normalize_tool_name("Search") == "search"
 
     def test_normalize_hyphens(self):
-        assert CrewAIAdapter._normalize_tool_name("Query-Clinical Data") == "query_clinical_data"
+        assert CrewAIAdapter._normalize_tool_name("Read-Database") == "read_database"
         assert CrewAIAdapter._normalize_tool_name("my-tool-name") == "my_tool_name"
 
     def test_normalize_mixed_separators(self):
-        assert CrewAIAdapter._normalize_tool_name("Query - Clinical  Data") == "query_clinical_data"
+        assert CrewAIAdapter._normalize_tool_name("Search - Documents  Here") == "search_documents_here"

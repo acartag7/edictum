@@ -61,8 +61,8 @@ class CrewAIAdapter:
         separators with underscores, then collapses consecutive underscores.
 
         Examples:
-            "Query Clinical Data" -> "query_clinical_data"
-            "Query-Clinical Data" -> "query_clinical_data"
+            "Search Documents" -> "search_documents"
+            "Read-Database"    -> "read_database"
             "already_snake"       -> "already_snake"
         """
         import re

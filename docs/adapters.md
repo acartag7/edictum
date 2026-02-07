@@ -22,8 +22,8 @@ PII is detected and logged in the audit trail, but the LLM sees the raw output.
 \** CrewAI's `after_tool_call` hook can return a replacement string, but this behavior
 is underdocumented and may change in future versions.
 
-\*** CrewAI uses human-readable tool names ("Query Clinical Data") while contracts
-use snake_case ("query_clinical_data"). The adapter normalizes automatically.
+\*** CrewAI uses human-readable tool names ("Search Documents") while contracts
+use snake_case ("search_documents"). The adapter normalizes automatically.
 
 ## Choosing a Framework
 
@@ -57,7 +57,7 @@ from edictum.adapters.langchain import LangChainAdapter
 from langgraph.prebuilt import ToolNode
 
 guard = Edictum.from_yaml("contracts.yaml")
-principal = Principal(role="pharmacovigilance", ticket_ref="CAPA-2025-042")
+principal = Principal(role="analyst", ticket_ref="TICKET-123")
 adapter = LangChainAdapter(guard, principal=principal)
 
 # Without remediation
@@ -108,16 +108,16 @@ from edictum.adapters.openai_agents import OpenAIAgentsAdapter
 from agents import function_tool, Agent, Runner
 
 guard = Edictum.from_yaml("contracts.yaml")
-principal = Principal(role="pharmacovigilance")
+principal = Principal(role="analyst")
 adapter = OpenAIAgentsAdapter(guard, principal=principal)
 
 input_gr, output_gr = adapter.as_guardrails()
 
 @function_tool(tool_input_guardrails=[input_gr], tool_output_guardrails=[output_gr])
-def query_clinical_data(dataset: str, query: str = "") -> str:
+def read_database(dataset: str, query: str = "") -> str:
     ...
 
-agent = Agent(name="Pharma Agent", tools=[query_clinical_data])
+agent = Agent(name="Research Agent", tools=[read_database])
 result = await Runner.run(agent, task)
 ```
 
@@ -170,7 +170,7 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 
 guard = Edictum.from_yaml("contracts.yaml")
-principal = Principal(role="pharmacovigilance")
+principal = Principal(role="analyst")
 adapter = AgnoAdapter(guard, principal=principal)
 
 hook = adapter.as_tool_hook(on_postcondition_warn=redact_pii)
@@ -200,7 +200,7 @@ from edictum import Edictum, Principal
 from edictum.adapters.semantic_kernel import SemanticKernelAdapter
 
 guard = Edictum.from_yaml("contracts.yaml")
-principal = Principal(role="pharmacovigilance")
+principal = Principal(role="analyst")
 adapter = SemanticKernelAdapter(guard, principal=principal)
 
 adapter.register(kernel, on_postcondition_warn=redact_pii)
@@ -254,7 +254,7 @@ from edictum import Edictum, Principal
 from edictum.adapters.crewai import CrewAIAdapter
 
 guard = Edictum.from_yaml("contracts.yaml")
-principal = Principal(role="pharmacovigilance")
+principal = Principal(role="analyst")
 adapter = CrewAIAdapter(guard, principal=principal)
 
 adapter.register(on_postcondition_warn=redact_pii)
@@ -262,15 +262,15 @@ adapter.register(on_postcondition_warn=redact_pii)
 
 ### Tool name normalization
 
-CrewAI uses human-readable tool names ("Query Clinical Data") while contracts
-use snake_case ("query_clinical_data"). The adapter normalizes automatically.
+CrewAI uses human-readable tool names ("Search Documents") while contracts
+use snake_case ("search_documents"). The adapter normalizes automatically.
 
 If you define tools with custom names, ensure the normalized form matches
 your contract `tool:` field:
 
 ```python
-# Tool name: "Query Clinical Data" → normalized: "query_clinical_data"
-# Contract must use: tool: query_clinical_data
+# Tool name: "Search Documents" → normalized: "search_documents"
+# Contract must use: tool: search_documents
 ```
 
 ### Known limitations
@@ -323,8 +323,8 @@ The same YAML contracts produce the same governance decisions regardless of fram
 
 | Contract | LangChain | OpenAI Agents | Agno | SK | CrewAI | Claude SDK |
 |----------|-----------|---------------|------|----|--------|-----------|
-| case-report-requires-ticket (deny) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| restrict-patient-data (deny researcher) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| block-sensitive-reads (deny) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| require-ticket-ref (deny without ticket) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | pii-in-any-output (postcondition warn) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Governance is deterministic. Framework behavior around denied calls and

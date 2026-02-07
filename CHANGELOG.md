@@ -14,7 +14,7 @@
 
 ### Added
 - CrewAI adapter: automatic tool name normalization
-  ("Query Clinical Data" → "query_clinical_data")
+  ("Search Documents" → "search_documents")
 - Comprehensive framework comparison documentation in `docs/adapters.md`
   covering integration patterns, PII redaction capabilities, token costs,
   and known limitations for all 6 frameworks

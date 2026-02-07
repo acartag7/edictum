@@ -72,12 +72,12 @@ When `postconditions_passed` is `True`, the `findings` list is empty and the cal
 import re
 
 def redact_pii(result, findings):
-    """Replace PII patterns while keeping clinical data intact."""
+    """Replace PII patterns while keeping useful data intact."""
     text = str(result)
     for f in findings:
         if f.type == "pii_detected":
             text = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '***-**-****', text)
-            text = re.sub(r'Patient:\s*\w+\s+\w+', 'Patient: [REDACTED]', text)
+            text = re.sub(r'Name:\s*\w+\s+\w+', 'Name: [REDACTED]', text)
     return text
 
 wrapper = adapter.as_tool_wrapper(on_postcondition_warn=redact_pii)
@@ -198,7 +198,7 @@ Contracts stay declarative. They **detect**, they don't **remediate**.
   tool: "*"
   when:
     output.text:
-      matches_any: ["\\b\\d{3}-\\d{2}-\\d{4}\\b", "\\bPAT-\\d+\\b"]
+      matches_any: ["\\b\\d{3}-\\d{2}-\\d{4}\\b", "\\bUSR-\\d+\\b"]
   then:
     effect: warn
     message: "PII pattern detected in tool output"
