@@ -26,6 +26,7 @@ adapter = LangChainAdapter(guard=guard)
 wrapper = adapter.as_tool_wrapper()
 
 tool_node = ToolNode(tools=tools, wrap_tool_call=wrapper)
+# LangGraph's create_react_agent accepts a ToolNode as the tools parameter
 agent = create_react_agent(model, tools=tool_node)
 ```
 

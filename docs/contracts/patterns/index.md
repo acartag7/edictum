@@ -1,8 +1,8 @@
 # Contract Patterns
 
-This section contains reusable YAML contract recipes organized by governance concern. Each pattern includes a complete YAML example that you can copy into your own contract bundles, an explanation of when and why to use it, and common gotchas.
+This section contains reusable contract recipes organized by governance concern. Each pattern includes both a YAML contract bundle and the equivalent Python decorator version, an explanation of when and why to use it, and common gotchas. Use the tabs on each code block to switch between YAML and Python.
 
-All examples use the `edictum/v1` ContractBundle format and compile with `Edictum.from_yaml()`.
+All YAML examples use the `edictum/v1` ContractBundle format and compile with `Edictum.from_yaml()`. All Python examples use the `@precondition`, `@postcondition`, and `@session_contract` decorator APIs.
 
 ---
 

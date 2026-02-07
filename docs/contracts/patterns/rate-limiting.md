@@ -12,27 +12,43 @@ Cap the total number of tool calls in a session. This is the most common session
 
 **When to use:** You want a hard ceiling on how much work an agent can do before stopping and reporting progress.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: session-wide-limits
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: session-wide-limits
 
-contracts:
-  - id: session-execution-cap
-    type: session
-    limits:
-      max_tool_calls: 50
-      max_attempts: 120
-    then:
-      effect: deny
-      message: "Session limit reached. Summarize progress and stop."
-      tags: [rate-limit]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: session-execution-cap
+        type: session
+        limits:
+          max_tool_calls: 50
+          max_attempts: 120
+        then:
+          effect: deny
+          message: "Session limit reached. Summarize progress and stop."
+          tags: [rate-limit]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum, OperationLimits
+
+    guard = Edictum(
+        contracts=[...],
+        limits=OperationLimits(
+            max_tool_calls=50,
+            max_attempts=120,
+        ),
+    )
+    ```
 
 **How it works:**
 - `max_tool_calls` counts successful tool executions. When the agent has completed 50 tool calls, further calls are denied.
@@ -50,30 +66,50 @@ Limit how many times a specific tool can be called. This prevents agents from ov
 
 **When to use:** Certain tools have outsized impact (deployments, notifications, external API calls) and should be capped independently of the overall session limit.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: per-tool-caps
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: per-tool-caps
 
-contracts:
-  - id: per-tool-limits
-    type: session
-    limits:
-      max_tool_calls: 100
-      max_calls_per_tool:
-        deploy_service: 3
-        send_email: 10
-        query_database: 30
-    then:
-      effect: deny
-      message: "Tool call limit reached. Check which tool hit its cap and adjust your approach."
-      tags: [rate-limit]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: per-tool-limits
+        type: session
+        limits:
+          max_tool_calls: 100
+          max_calls_per_tool:
+            deploy_service: 3
+            send_email: 10
+            query_database: 30
+        then:
+          effect: deny
+          message: "Tool call limit reached. Check which tool hit its cap and adjust your approach."
+          tags: [rate-limit]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum, OperationLimits
+
+    guard = Edictum(
+        contracts=[...],
+        limits=OperationLimits(
+            max_tool_calls=100,
+            max_calls_per_tool={
+                "deploy_service": 3,
+                "send_email": 10,
+                "query_database": 30,
+            },
+        ),
+    )
+    ```
 
 **How it works:**
 - `max_calls_per_tool` is a map of tool names to integer limits. Each tool is tracked independently.
@@ -92,27 +128,43 @@ Combine `max_attempts` with `max_tool_calls` to detect and stop agents that are 
 
 **When to use:** You want to detect agents that are stuck hammering a broken tool and stop them before they waste more resources.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: burst-protection
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: burst-protection
 
-contracts:
-  - id: burst-detection
-    type: session
-    limits:
-      max_tool_calls: 50
-      max_attempts: 80
-    then:
-      effect: deny
-      message: "Too many attempts relative to successful calls. The agent may be stuck. Review and adjust."
-      tags: [rate-limit, burst]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: burst-detection
+        type: session
+        limits:
+          max_tool_calls: 50
+          max_attempts: 80
+        then:
+          effect: deny
+          message: "Too many attempts relative to successful calls. The agent may be stuck. Review and adjust."
+          tags: [rate-limit, burst]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum, OperationLimits
+
+    guard = Edictum(
+        contracts=[...],
+        limits=OperationLimits(
+            max_tool_calls=50,
+            max_attempts=80,
+        ),
+    )
+    ```
 
 **How it works:**
 - If the agent reaches 80 attempts with far fewer than 50 successful calls, the `max_attempts` limit fires first. This catches the scenario where the agent is repeatedly denied and retrying the same operation.
@@ -131,27 +183,57 @@ Detect when the ratio of attempts to executions indicates the agent is not makin
 
 The following bundle uses both a session contract and a tight attempts-to-calls ratio:
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: failure-escalation
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: failure-escalation
 
-contracts:
-  - id: stuck-agent-detection
-    type: session
-    limits:
-      max_attempts: 30
-      max_tool_calls: 50
-    then:
-      effect: deny
-      message: "Agent appears stuck. Too many denied attempts. Change approach or ask for help."
-      tags: [rate-limit, stuck]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: stuck-agent-detection
+        type: session
+        limits:
+          max_attempts: 30
+          max_tool_calls: 50
+        then:
+          effect: deny
+          message: "Agent appears stuck. Too many denied attempts. Change approach or ask for help."
+          tags: [rate-limit, stuck]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum, OperationLimits, Verdict, session_contract
+
+    # Option A: Use OperationLimits (simple)
+    guard = Edictum(
+        contracts=[...],
+        limits=OperationLimits(
+            max_attempts=30,
+            max_tool_calls=50,
+        ),
+    )
+
+    # Option B: Use a session contract (precise control)
+    @session_contract
+    async def stuck_detection(session):
+        attempts = await session.attempt_count()
+        executions = await session.execution_count()
+        if attempts > 10 and executions < attempts * 0.3:
+            return Verdict.fail(
+                f"Progress stall detected: {executions} successes out of "
+                f"{attempts} attempts ({executions/attempts:.0%} success rate). "
+                "Change approach or ask for help."
+            )
+        return Verdict.pass_()
+    ```
 
 **How it works:**
 - When `max_attempts` is set lower than `max_tool_calls`, it acts as an early-exit trigger. The agent will hit the attempt ceiling before the execution ceiling only if a significant number of calls are being denied.

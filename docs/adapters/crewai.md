@@ -28,9 +28,22 @@ through Edictum governance.
 
 ## PII Redaction Callback
 
-Use `on_postcondition_warn` for side-effect actions when postconditions flag
-issues. CrewAI controls the tool result flow, so the callback is primarily for
-logging, alerting, or metrics:
+Use `on_postcondition_warn` to react when postconditions flag issues. If the
+callback returns a string, it replaces the tool result before the LLM sees it.
+If it returns `None`, the original result is kept:
+
+```python
+import re
+
+def redact_pii(result, findings):
+    text = str(result)
+    text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN REDACTED]", text)
+    return text  # returned string replaces the tool result
+
+adapter.register(on_postcondition_warn=redact_pii)
+```
+
+For side-effect-only usage (logging, alerting), return `None` from the callback:
 
 ```python
 import logging
@@ -40,13 +53,10 @@ logger = logging.getLogger("governance")
 def log_pii_detected(result, findings):
     for f in findings:
         logger.warning("Postcondition violation: %s", f.message)
-    # CrewAI controls tool result flow; callback is for side effects
+    # return None -> original result is kept
 
 adapter.register(on_postcondition_warn=log_pii_detected)
 ```
-
-If the callback returns a string, it replaces the tool result in the after-hook
-response. Otherwise the original result is kept.
 
 ## Known Limitations
 

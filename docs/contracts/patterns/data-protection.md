@@ -10,32 +10,62 @@ Scan tool output for personally identifiable information using regex patterns. T
 
 **When to use:** Your agent calls tools that return data from databases, APIs, or files that may contain personal data. You want an audit trail of PII exposure and a warning to the agent to redact before proceeding.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: pii-detection
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: pii-detection
 
-contracts:
-  - id: pii-in-output
-    type: post
-    tool: "*"
-    when:
-      output.text:
-        matches_any:
-          - '\\b\\d{3}-\\d{2}-\\d{4}\\b'
-          - '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'
-          - '\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b'
-          - '\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b'
-    then:
-      effect: warn
-      message: "PII pattern detected in output. Redact before using in summaries or responses."
-      tags: [pii, compliance]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: pii-in-output
+        type: post
+        tool: "*"
+        when:
+          output.text:
+            matches_any:
+              - '\\b\\d{3}-\\d{2}-\\d{4}\\b'
+              - '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'
+              - '\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b'
+              - '\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b'
+        then:
+          effect: warn
+          message: "PII pattern detected in output. Redact before using in summaries or responses."
+          tags: [pii, compliance]
+    ```
+
+=== "Python"
+
+    ```python
+    import re
+    from edictum import Verdict
+    from edictum.contracts import postcondition
+
+    @postcondition("*")
+    def detect_pii_in_output(envelope, tool_response):
+        if not isinstance(tool_response, str):
+            return Verdict.pass_()
+        pii_patterns = {
+            "SSN": r"\b\d{3}-\d{2}-\d{4}\b",
+            "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+            "credit_card": r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
+            "phone": r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
+        }
+        found = [name for name, pat in pii_patterns.items() if re.search(pat, tool_response)]
+        if found:
+            return Verdict.fail(
+                f"Tool output contains potential PII: {', '.join(found)}. "
+                "Do NOT include this data in summaries or outputs. "
+                "Redact before processing further.",
+                pii_types=found,
+            )
+        return Verdict.pass_()
+    ```
 
 The patterns above detect:
 
@@ -60,33 +90,61 @@ Detect credentials, tokens, and private keys in tool output. Even if a precondit
 
 **When to use:** Defense in depth. Your agent reads files, calls APIs, or queries databases. Even if the input was allowed, the output may contain secrets leaked into logs, configs, or error messages.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: secret-scanning
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: secret-scanning
 
-contracts:
-  - id: secrets-in-output
-    type: post
-    tool: "*"
-    when:
-      output.text:
-        matches_any:
-          - 'AKIA[0-9A-Z]{16}'
-          - 'eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+'
-          - '-----BEGIN (RSA |EC )?PRIVATE KEY-----'
-    then:
-      effect: warn
-      message: "Secret detected in output. Do not reference, log, or output this value."
-      tags: [secrets, dlp]
-      metadata:
-        severity: critical
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: secrets-in-output
+        type: post
+        tool: "*"
+        when:
+          output.text:
+            matches_any:
+              - 'AKIA[0-9A-Z]{16}'
+              - 'eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+'
+              - '-----BEGIN (RSA |EC )?PRIVATE KEY-----'
+        then:
+          effect: warn
+          message: "Secret detected in output. Do not reference, log, or output this value."
+          tags: [secrets, dlp]
+          metadata:
+            severity: critical
+    ```
+
+=== "Python"
+
+    ```python
+    import re
+    from edictum import Verdict
+    from edictum.contracts import postcondition
+
+    @postcondition("*")
+    def detect_secrets_in_output(envelope, tool_response):
+        if not isinstance(tool_response, str):
+            return Verdict.pass_()
+        secret_patterns = {
+            "AWS Access Key": r"AKIA[0-9A-Z]{16}",
+            "JWT Token": r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+            "Private Key": r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----",
+        }
+        found = [name for name, pat in secret_patterns.items() if re.search(pat, tool_response)]
+        if found:
+            return Verdict.fail(
+                f"Tool output contains secrets: {', '.join(found)}. "
+                "Do NOT reference, log, or output these values.",
+                secret_types=found,
+            )
+        return Verdict.pass_()
+    ```
 
 The patterns above detect:
 
@@ -108,49 +166,80 @@ Block reads of files that commonly contain secrets, credentials, or private keys
 
 **When to use:** Your agent has access to `read_file` and you want to prevent it from reading files that could expose secrets, even accidentally.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: sensitive-file-blocking
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: sensitive-file-blocking
 
-contracts:
-  - id: block-secret-files
-    type: pre
-    tool: read_file
-    when:
-      args.path:
-        contains_any:
-          - ".env"
-          - ".secret"
-          - "credentials"
-          - ".pem"
-          - "id_rsa"
-          - ".key"
-          - "kubeconfig"
-    then:
-      effect: deny
-      message: "Reading sensitive file '{args.path}' is blocked. Skip and continue with non-sensitive files."
-      tags: [secrets, dlp]
+    defaults:
+      mode: enforce
 
-  - id: block-config-with-secrets
-    type: pre
-    tool: read_file
-    when:
-      any:
-        - args.path: { ends_with: ".tfvars" }
-        - args.path: { ends_with: ".npmrc" }
-        - args.path: { ends_with: ".pypirc" }
-        - args.path: { ends_with: ".netrc" }
-    then:
-      effect: deny
-      message: "Config file '{args.path}' may contain credentials. Access blocked."
-      tags: [secrets, dlp]
-```
+    contracts:
+      - id: block-secret-files
+        type: pre
+        tool: read_file
+        when:
+          args.path:
+            contains_any:
+              - ".env"
+              - ".secret"
+              - "credentials"
+              - ".pem"
+              - "id_rsa"
+              - ".key"
+              - "kubeconfig"
+        then:
+          effect: deny
+          message: "Reading sensitive file '{args.path}' is blocked. Skip and continue with non-sensitive files."
+          tags: [secrets, dlp]
+
+      - id: block-config-with-secrets
+        type: pre
+        tool: read_file
+        when:
+          any:
+            - args.path: { ends_with: ".tfvars" }
+            - args.path: { ends_with: ".npmrc" }
+            - args.path: { ends_with: ".pypirc" }
+            - args.path: { ends_with: ".netrc" }
+        then:
+          effect: deny
+          message: "Config file '{args.path}' may contain credentials. Access blocked."
+          tags: [secrets, dlp]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Verdict, precondition
+
+    @precondition("read_file")
+    def block_secret_files(envelope):
+        path = envelope.args.get("path", "")
+        sensitive = [".env", ".secret", "credentials", ".pem", "id_rsa", ".key", "kubeconfig"]
+        for s in sensitive:
+            if s in path:
+                return Verdict.fail(
+                    f"Reading sensitive file '{path}' is blocked. "
+                    "Skip and continue with non-sensitive files."
+                )
+        return Verdict.pass_()
+
+    @precondition("read_file")
+    def block_config_with_secrets(envelope):
+        path = envelope.args.get("path", "")
+        secret_exts = [".tfvars", ".npmrc", ".pypirc", ".netrc"]
+        for ext in secret_exts:
+            if path.endswith(ext):
+                return Verdict.fail(
+                    f"Config file '{path}' may contain credentials. Access blocked."
+                )
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - `contains_any` is a substring match. A path like `/reports/environment.log` would match on `.env`. Use `ends_with` or `matches` with word boundaries for more precise matching.
@@ -164,28 +253,51 @@ Warn when tool output is unusually large, which can waste context window tokens 
 
 **When to use:** Your agent reads files or queries databases where unbounded results are possible. Large outputs dilute the agent's focus and increase token costs.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: output-monitoring
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: output-monitoring
 
-contracts:
-  - id: large-output-warning
-    type: post
-    tool: "*"
-    when:
-      output.text:
-        matches: '.{50000,}'
-    then:
-      effect: warn
-      message: "Tool output is very large. Use pagination, head/tail, or more specific filters."
-      tags: [performance, output-size]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: large-output-warning
+        type: post
+        tool: "*"
+        when:
+          output.text:
+            matches: '.{50000,}'
+        then:
+          effect: warn
+          message: "Tool output is very large. Use pagination, head/tail, or more specific filters."
+          tags: [performance, output-size]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Verdict
+    from edictum.contracts import postcondition
+
+    @postcondition("*")
+    def monitor_output_size(envelope, tool_response):
+        if tool_response is None:
+            return Verdict.pass_()
+        size = len(str(tool_response))
+        if size > 50_000:
+            return Verdict.fail(
+                f"Tool output is very large ({size:,} chars). "
+                "Consider using head/tail, pagination, or more specific "
+                "filters to reduce the output before processing.",
+                output_size=size,
+            )
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - The `.{50000,}` regex matches any string with 50,000 or more characters. This is a rough proxy for output size. Adjust the threshold based on your context window budget.

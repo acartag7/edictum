@@ -50,6 +50,8 @@ Edictum separates detection from remediation:
     tags: [pii, compliance]
 ```
 
+Use single-quoted strings for regex in YAML. Double-quoted strings interpret `\b` as a backspace character instead of a regex word boundary.
+
 ```python
 # Callback: REMEDIATE by redacting PII
 import re
@@ -98,18 +100,18 @@ Whether the callback can actually replace the tool result depends on the adapter
 | LangChain | Wrap-around | Yes |
 | Agno | Wrap-around | Yes |
 | Semantic Kernel | Filter | Yes |
-| CrewAI | Hook | Side-effect only |
+| CrewAI | Hook | Yes (callback return replaces result) |
 | Claude SDK | Hook | Side-effect only |
 | OpenAI Agents | Guardrail | Side-effect only |
 
-For **wrap-around** adapters, the callback return value replaces the tool result. The LLM sees the redacted version:
+For **wrap-around** and **hook** adapters that support result replacement (LangChain, Agno, Semantic Kernel, CrewAI), the callback return value replaces the tool result. The LLM sees the redacted version:
 
 ```python
 def redact(result, findings):
     return mask_pii(result)  # returned value replaces the original
 ```
 
-For **hook-based** adapters, the return value is ignored. Use the callback for side effects like logging or alerting:
+For **hook-based** adapters where the SDK controls the result flow (Claude SDK, OpenAI Agents), the return value is ignored. Use the callback for side effects like logging or alerting:
 
 ```python
 def log_and_alert(result, findings):
@@ -118,7 +120,7 @@ def log_and_alert(result, findings):
     # return value is ignored
 ```
 
-If your environment requires PII interception (not just detection), use LangChain, Agno, or Semantic Kernel.
+If your environment requires PII interception (not just detection), use LangChain, CrewAI, Agno, or Semantic Kernel.
 
 ---
 

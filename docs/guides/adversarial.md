@@ -53,6 +53,8 @@ The agent is asked to extract personal data from a database query result and sen
     tags: [pii]
 ```
 
+Use single-quoted strings for regex in YAML. Double-quoted strings interpret `\b` as a backspace character instead of a regex word boundary.
+
 ### 3. Cross-Tool Chain
 
 The agent chains multiple tools to bypass single-tool restrictions. For example, writing sensitive data to a temp file, then reading the temp file, then sending the contents externally. Each individual step may appear harmless, but the chain achieves a restricted goal.

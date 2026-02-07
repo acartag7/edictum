@@ -10,42 +10,72 @@ Require a ticket reference on every production deployment. This ensures traceabi
 
 **When to use:** Your organization requires that production changes are traceable to tickets in a project management system (Jira, Linear, etc.). The `principal.ticket_ref` field carries the ticket ID.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: ticket-requirement
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: ticket-requirement
 
-contracts:
-  - id: prod-requires-ticket
-    type: pre
-    tool: deploy_service
-    when:
-      all:
-        - environment: { equals: production }
-        - principal.ticket_ref: { exists: false }
-    then:
-      effect: deny
-      message: "Production deployments require a ticket reference. Attach a ticket_ref to the principal."
-      tags: [change-control, compliance]
+    defaults:
+      mode: enforce
 
-  - id: prod-requires-ticket-for-db
-    type: pre
-    tool: query_database
-    when:
-      all:
-        - environment: { equals: production }
-        - args.query: { matches: '\\b(INSERT|UPDATE|DELETE|ALTER)\\b' }
-        - principal.ticket_ref: { exists: false }
-    then:
-      effect: deny
-      message: "Production write queries require a ticket reference."
-      tags: [change-control, compliance]
-```
+    contracts:
+      - id: prod-requires-ticket
+        type: pre
+        tool: deploy_service
+        when:
+          all:
+            - environment: { equals: production }
+            - principal.ticket_ref: { exists: false }
+        then:
+          effect: deny
+          message: "Production deployments require a ticket reference. Attach a ticket_ref to the principal."
+          tags: [change-control, compliance]
+
+      - id: prod-requires-ticket-for-db
+        type: pre
+        tool: query_database
+        when:
+          all:
+            - environment: { equals: production }
+            - args.query: { matches: '\\b(INSERT|UPDATE|DELETE|ALTER)\\b' }
+            - principal.ticket_ref: { exists: false }
+        then:
+          effect: deny
+          message: "Production write queries require a ticket reference."
+          tags: [change-control, compliance]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Verdict, precondition
+
+    @precondition("deploy_service")
+    def prod_requires_ticket(envelope):
+        if envelope.environment != "production":
+            return Verdict.pass_()
+        if not envelope.principal or not envelope.principal.ticket_ref:
+            return Verdict.fail(
+                "Production deployments require a ticket reference. "
+                "Attach a ticket_ref to the principal."
+            )
+        return Verdict.pass_()
+
+    @precondition("query_database")
+    def prod_requires_ticket_for_db(envelope):
+        import re
+        if envelope.environment != "production":
+            return Verdict.pass_()
+        query = envelope.args.get("query", "")
+        if re.search(r'\b(INSERT|UPDATE|DELETE|ALTER)\b', query):
+            if not envelope.principal or not envelope.principal.ticket_ref:
+                return Verdict.fail("Production write queries require a ticket reference.")
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - `exists: false` checks whether the field is absent or null. It does not validate that the ticket reference is a real ticket ID. Your application should validate the ticket against your project management API before attaching it to the principal.
@@ -59,41 +89,69 @@ Restrict high-impact tools to senior roles. This pattern is the simplest form of
 
 **When to use:** Certain operations (deploys, migrations, infrastructure changes) should only be performed by experienced operators.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: approval-gates
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: approval-gates
 
-contracts:
-  - id: deploy-requires-senior-role
-    type: pre
-    tool: deploy_service
-    when:
-      all:
-        - environment: { equals: production }
-        - principal.role: { not_in: [admin, sre] }
-    then:
-      effect: deny
-      message: "Production deploys require admin or sre role. Current role: {principal.role}."
-      tags: [change-control, production]
+    defaults:
+      mode: enforce
 
-  - id: migration-requires-admin
-    type: pre
-    tool: query_database
-    when:
-      all:
-        - args.query: { matches: '\\b(ALTER|CREATE|DROP)\\b' }
-        - principal.role: { not_equals: admin }
-    then:
-      effect: deny
-      message: "DDL operations require admin role."
-      tags: [change-control, database]
-```
+    contracts:
+      - id: deploy-requires-senior-role
+        type: pre
+        tool: deploy_service
+        when:
+          all:
+            - environment: { equals: production }
+            - principal.role: { not_in: [admin, sre] }
+        then:
+          effect: deny
+          message: "Production deploys require admin or sre role. Current role: {principal.role}."
+          tags: [change-control, production]
+
+      - id: migration-requires-admin
+        type: pre
+        tool: query_database
+        when:
+          all:
+            - args.query: { matches: '\\b(ALTER|CREATE|DROP)\\b' }
+            - principal.role: { not_equals: admin }
+        then:
+          effect: deny
+          message: "DDL operations require admin role."
+          tags: [change-control, database]
+    ```
+
+=== "Python"
+
+    ```python
+    import re
+    from edictum import Verdict, precondition
+
+    @precondition("deploy_service")
+    def deploy_requires_senior_role(envelope):
+        if envelope.environment != "production":
+            return Verdict.pass_()
+        if not envelope.principal or envelope.principal.role not in ("admin", "sre"):
+            role = envelope.principal.role if envelope.principal else "none"
+            return Verdict.fail(
+                f"Production deploys require admin or sre role. Current role: {role}."
+            )
+        return Verdict.pass_()
+
+    @precondition("query_database")
+    def migration_requires_admin(envelope):
+        query = envelope.args.get("query", "")
+        if re.search(r'\b(ALTER|CREATE|DROP)\b', query):
+            if not envelope.principal or envelope.principal.role != "admin":
+                return Verdict.fail("DDL operations require admin role.")
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - If no principal is attached, `principal.role` is missing, the leaf evaluates to `false`, and the `all` block evaluates to `false`. The rule does not fire. Add a `principal.role: { exists: false }` rule to catch unauthenticated calls.
@@ -106,37 +164,63 @@ Cap the scope of batch operations to prevent agents from making changes that are
 
 **When to use:** Your agent performs bulk operations (batch inserts, mass notifications, bulk updates) where an unbounded scope could cause widespread damage.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: blast-radius-limits
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: blast-radius-limits
 
-contracts:
-  - id: limit-batch-size
-    type: pre
-    tool: query_database
-    when:
-      args.batch_size: { gt: 500 }
-    then:
-      effect: deny
-      message: "Batch size {args.batch_size} exceeds the limit of 500. Reduce the batch."
-      tags: [change-control, blast-radius]
+    defaults:
+      mode: enforce
 
-  - id: limit-notification-recipients
-    type: pre
-    tool: send_email
-    when:
-      args.recipient_count: { gt: 50 }
-    then:
-      effect: deny
-      message: "Cannot send to more than 50 recipients at once. Split into smaller batches."
-      tags: [change-control, blast-radius]
-```
+    contracts:
+      - id: limit-batch-size
+        type: pre
+        tool: query_database
+        when:
+          args.batch_size: { gt: 500 }
+        then:
+          effect: deny
+          message: "Batch size {args.batch_size} exceeds the limit of 500. Reduce the batch."
+          tags: [change-control, blast-radius]
+
+      - id: limit-notification-recipients
+        type: pre
+        tool: send_email
+        when:
+          args.recipient_count: { gt: 50 }
+        then:
+          effect: deny
+          message: "Cannot send to more than 50 recipients at once. Split into smaller batches."
+          tags: [change-control, blast-radius]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Verdict, precondition
+
+    @precondition("query_database")
+    def limit_batch_size(envelope):
+        batch_size = envelope.args.get("batch_size", 0)
+        if batch_size > 500:
+            return Verdict.fail(
+                f"Batch size {batch_size} exceeds the limit of 500. Reduce the batch."
+            )
+        return Verdict.pass_()
+
+    @precondition("send_email")
+    def limit_notification_recipients(envelope):
+        count = envelope.args.get("recipient_count", 0)
+        if count > 50:
+            return Verdict.fail(
+                "Cannot send to more than 50 recipients at once. Split into smaller batches."
+            )
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - The `gt` operator requires the selector value to be a number. If `args.batch_size` is a string (e.g., `"500"`), the operator triggers a `policy_error` and the rule fires (fail-closed). Ensure your tools pass numeric arguments.
@@ -150,30 +234,49 @@ Force agents to perform a dry-run before executing destructive production operat
 
 **When to use:** Production deployments, migrations, and infrastructure changes where you want the agent to preview the impact before committing.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: dry-run-requirement
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: dry-run-requirement
 
-contracts:
-  - id: prod-deploy-requires-dry-run
-    type: pre
-    tool: deploy_service
-    when:
-      all:
-        - environment: { equals: production }
-        - not:
-            args.dry_run: { equals: true }
-    then:
-      effect: deny
-      message: "Production deploys require dry_run=true first. Run a dry-run, verify output, then deploy."
-      tags: [change-control, production]
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: prod-deploy-requires-dry-run
+        type: pre
+        tool: deploy_service
+        when:
+          all:
+            - environment: { equals: production }
+            - not:
+                args.dry_run: { equals: true }
+        then:
+          effect: deny
+          message: "Production deploys require dry_run=true first. Run a dry-run, verify output, then deploy."
+          tags: [change-control, production]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Verdict, precondition
+
+    @precondition("deploy_service")
+    def prod_deploy_requires_dry_run(envelope):
+        if envelope.environment != "production":
+            return Verdict.pass_()
+        if not envelope.args.get("dry_run", False):
+            return Verdict.fail(
+                "Production deploys require dry_run=true first. "
+                "Run a dry-run, verify output, then deploy."
+            )
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - This contract blocks all production deploys where `dry_run` is not `true`. The agent must make two calls: first with `dry_run=true`, then with `dry_run=false` (or omitted) after verifying the output. However, this contract will block the second call too. In practice, you would either remove the dry-run gate after verification or use a session-aware approach that checks whether a dry-run was already executed.
@@ -187,46 +290,77 @@ Block dangerous SQL patterns and require bounded queries. This prevents agents f
 
 **When to use:** Your agent generates SQL from natural language or constructs queries dynamically. You want to prevent destructive DDL and ensure all queries have a LIMIT clause.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: sql-safety
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: sql-safety
 
-contracts:
-  - id: block-ddl
-    type: pre
-    tool: query_database
-    when:
-      any:
-        - args.query: { matches: '\\bDROP\\b' }
-        - args.query: { matches: '\\bALTER\\b' }
-        - args.query: { matches: '\\bTRUNCATE\\b' }
-        - args.query: { matches: '\\bCREATE\\b' }
-        - args.query: { matches: '\\bGRANT\\b' }
-        - args.query: { matches: '\\bREVOKE\\b' }
-    then:
-      effect: deny
-      message: "DDL statements are not allowed. This agent can only run SELECT queries."
-      tags: [change-control, database, sql-safety]
+    defaults:
+      mode: enforce
 
-  - id: require-limit-on-select
-    type: pre
-    tool: query_database
-    when:
-      all:
-        - args.query: { matches: '\\bSELECT\\b' }
-        - not:
-            args.query: { matches: '\\bLIMIT\\b' }
-    then:
-      effect: deny
-      message: "SELECT queries must include a LIMIT clause to prevent unbounded result sets."
-      tags: [change-control, database, sql-safety]
-```
+    contracts:
+      - id: block-ddl
+        type: pre
+        tool: query_database
+        when:
+          any:
+            - args.query: { matches: '\\bDROP\\b' }
+            - args.query: { matches: '\\bALTER\\b' }
+            - args.query: { matches: '\\bTRUNCATE\\b' }
+            - args.query: { matches: '\\bCREATE\\b' }
+            - args.query: { matches: '\\bGRANT\\b' }
+            - args.query: { matches: '\\bREVOKE\\b' }
+        then:
+          effect: deny
+          message: "DDL statements are not allowed. This agent can only run SELECT queries."
+          tags: [change-control, database, sql-safety]
+
+      - id: require-limit-on-select
+        type: pre
+        tool: query_database
+        when:
+          all:
+            - args.query: { matches: '\\bSELECT\\b' }
+            - not:
+                args.query: { matches: '\\bLIMIT\\b' }
+        then:
+          effect: deny
+          message: "SELECT queries must include a LIMIT clause to prevent unbounded result sets."
+          tags: [change-control, database, sql-safety]
+    ```
+
+=== "Python"
+
+    ```python
+    import re
+    from edictum import Verdict, precondition
+
+    @precondition("query_database")
+    def block_ddl(envelope):
+        query = (envelope.args.get("query") or "").upper()
+        ddl_keywords = ["DROP", "ALTER", "TRUNCATE", "CREATE", "GRANT", "REVOKE"]
+        for kw in ddl_keywords:
+            if re.search(rf"\b{kw}\b", query):
+                return Verdict.fail(
+                    f"DDL statement '{kw}' is not allowed. "
+                    "This agent can only run SELECT queries."
+                )
+        return Verdict.pass_()
+
+    @precondition("query_database")
+    def require_limit_on_select(envelope):
+        query = (envelope.args.get("query") or "").upper()
+        if "SELECT" in query and "LIMIT" not in query:
+            return Verdict.fail(
+                "SELECT queries must include a LIMIT clause "
+                "to prevent unbounded result sets."
+            )
+        return Verdict.pass_()
+    ```
 
 **Gotchas:**
 - Regex matching is case-sensitive by default. The patterns above match uppercase SQL keywords. If your agent generates lowercase SQL, add case-insensitive patterns or normalize the query before evaluation.

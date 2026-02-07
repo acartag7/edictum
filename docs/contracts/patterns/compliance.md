@@ -10,44 +10,80 @@ Use the `tags` field on contract actions to classify rules by regulatory or orga
 
 **When to use:** You need to demonstrate compliance with specific regulations or internal policies, and your audit system needs to categorize events by concern.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: tagged-compliance
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: tagged-compliance
 
-contracts:
-  - id: pii-output-scan
-    type: post
-    tool: "*"
-    when:
-      output.text:
-        matches_any:
-          - '\\b\\d{3}-\\d{2}-\\d{4}\\b'
-          - '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'
-    then:
-      effect: warn
-      message: "PII detected in output. Redact before downstream use."
-      tags: [pii, compliance, data-protection]
+    defaults:
+      mode: enforce
 
-  - id: sensitive-data-access
-    type: pre
-    tool: query_database
-    when:
-      args.table:
-        in: [user_profiles, payment_records, access_logs]
-    then:
-      effect: deny
-      message: "Access to '{args.table}' requires explicit authorization."
-      tags: [compliance, sensitive-data, audit-required]
-      metadata:
-        severity: high
-        regulation: internal-policy
-```
+    contracts:
+      - id: pii-output-scan
+        type: post
+        tool: "*"
+        when:
+          output.text:
+            matches_any:
+              - '\\b\\d{3}-\\d{2}-\\d{4}\\b'
+              - '\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'
+        then:
+          effect: warn
+          message: "PII detected in output. Redact before downstream use."
+          tags: [pii, compliance, data-protection]
+
+      - id: sensitive-data-access
+        type: pre
+        tool: query_database
+        when:
+          args.table:
+            in: [user_profiles, payment_records, access_logs]
+        then:
+          effect: deny
+          message: "Access to '{args.table}' requires explicit authorization."
+          tags: [compliance, sensitive-data, audit-required]
+          metadata:
+            severity: high
+            regulation: internal-policy
+    ```
+
+=== "Python"
+
+    ```python
+    import re
+    from edictum import Verdict, precondition
+    from edictum.contracts import postcondition
+
+    @postcondition("*")
+    def pii_output_scan(envelope, tool_response):
+        if not isinstance(tool_response, str):
+            return Verdict.pass_()
+        patterns = [
+            r"\b\d{3}-\d{2}-\d{4}\b",
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+        ]
+        for pat in patterns:
+            if re.search(pat, tool_response):
+                return Verdict.fail(
+                    "PII detected in output. Redact before downstream use.",
+                    tags=["pii", "compliance", "data-protection"],
+                )
+        return Verdict.pass_()
+
+    @precondition("query_database")
+    def sensitive_data_access(envelope):
+        table = envelope.args.get("table", "")
+        if table in ("user_profiles", "payment_records", "access_logs"):
+            return Verdict.fail(
+                f"Access to '{table}' requires explicit authorization.",
+                tags=["compliance", "sensitive-data", "audit-required"],
+            )
+        return Verdict.pass_()
+    ```
 
 **How tags work:**
 - Tags are arrays of strings attached to the `then` block. They are stamped into the `Verdict` and every `AuditEvent` produced by the contract.
@@ -66,31 +102,46 @@ Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped
 
 **When to use:** You need to prove which version of a policy was active when an event occurred. This is essential for audits, incident investigations, and regulatory compliance.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: versioned-policy
-  description: "Production policy v2.3 -- approved 2025-01-15."
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: versioned-policy
+      description: "Production policy v2.3 -- approved 2025-01-15."
 
-contracts:
-  - id: block-sensitive-reads
-    type: pre
-    tool: read_file
-    when:
-      args.path:
-        contains_any: [".env", "credentials", ".pem"]
-    then:
-      effect: deny
-      message: "Sensitive file blocked."
-      tags: [secrets, dlp]
-      metadata:
-        severity: high
-```
+    defaults:
+      mode: enforce
+
+    contracts:
+      - id: block-sensitive-reads
+        type: pre
+        tool: read_file
+        when:
+          args.path:
+            contains_any: [".env", "credentials", ".pem"]
+        then:
+          effect: deny
+          message: "Sensitive file blocked."
+          tags: [secrets, dlp]
+          metadata:
+            severity: high
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum
+
+    # Load a versioned YAML bundle — the SHA256 hash is computed
+    # automatically and stamped on every audit event.
+    guard = Edictum.from_yaml("policy.yaml")
+
+    # The policy_version attribute contains the hash
+    # print(guard.policy_version)  # "a1b2c3d4..."
+    ```
 
 **How versioning works:**
 1. `Edictum.from_yaml("policy.yaml")` reads the raw YAML bytes.
@@ -111,41 +162,68 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
 
 **When to use:** You are adding a new contract to an existing production policy and want to validate it against real traffic before enforcing it.
 
-```yaml
-apiVersion: edictum/v1
-kind: ContractBundle
+=== "YAML"
 
-metadata:
-  name: dual-mode-rollout
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
 
-defaults:
-  mode: enforce
+    metadata:
+      name: dual-mode-rollout
 
-contracts:
-  # Existing enforced rule
-  - id: block-sensitive-reads
-    type: pre
-    tool: read_file
-    when:
-      args.path:
-        contains_any: [".env", "credentials", ".pem"]
-    then:
-      effect: deny
-      message: "Sensitive file blocked."
-      tags: [secrets, dlp]
+    defaults:
+      mode: enforce
 
-  # New rule in observe mode -- shadow testing
-  - id: experimental-cost-gate
-    type: pre
-    mode: observe
-    tool: query_database
-    when:
-      args.query: { matches: '\\bJOIN\\b.*\\bJOIN\\b.*\\bJOIN\\b' }
-    then:
-      effect: deny
-      message: "Query with 3+ JOINs detected (shadow mode). Consider optimizing."
-      tags: [cost, experimental]
-```
+    contracts:
+      # Existing enforced rule
+      - id: block-sensitive-reads
+        type: pre
+        tool: read_file
+        when:
+          args.path:
+            contains_any: [".env", "credentials", ".pem"]
+        then:
+          effect: deny
+          message: "Sensitive file blocked."
+          tags: [secrets, dlp]
+
+      # New rule in observe mode -- shadow testing
+      - id: experimental-cost-gate
+        type: pre
+        mode: observe
+        tool: query_database
+        when:
+          args.query: { matches: '\\bJOIN\\b.*\\bJOIN\\b.*\\bJOIN\\b' }
+        then:
+          effect: deny
+          message: "Query with 3+ JOINs detected (shadow mode). Consider optimizing."
+          tags: [cost, experimental]
+    ```
+
+=== "Python"
+
+    ```python
+    from edictum import Edictum, Verdict, precondition
+    from edictum.audit import FileAuditSink
+
+    @precondition("read_file")
+    def block_sensitive_reads(envelope):
+        path = envelope.args.get("path", "")
+        for s in (".env", "credentials", ".pem"):
+            if s in path:
+                return Verdict.fail("Sensitive file blocked.")
+        return Verdict.pass_()
+
+    # Enforced guard (blocks tool calls)
+    enforced_guard = Edictum(contracts=[block_sensitive_reads])
+
+    # Observe guard (logs but never blocks)
+    observe_guard = Edictum(
+        mode="observe",
+        contracts=[block_sensitive_reads],
+        audit_sink=FileAuditSink("audit.jsonl"),
+    )
+    ```
 
 **How dual-mode works:**
 1. Set `defaults.mode: enforce` for the bundle.
