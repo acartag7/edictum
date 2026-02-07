@@ -116,8 +116,8 @@ guard = CallGuard.from_template("devops-agent")     # role gates, ticket require
 
 ## Links
 
-- [Documentation](https://acartagena.github.io/callguard/)
-- [GitHub](https://github.com/acartagena/callguard)
+- [Documentation](https://acartag7.github.io/callguard/)
+- [GitHub](https://github.com/acartag7/callguard)
 - [PyPI](https://pypi.org/project/callguard/)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE) (MIT)

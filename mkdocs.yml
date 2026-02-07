@@ -1,8 +1,8 @@
 site_name: CallGuard
 site_description: Runtime contracts for AI agents
-site_url: https://acartagena.github.io/callguard/
-repo_url: https://github.com/acartagena/callguard
-repo_name: acartagena/callguard
+site_url: https://acartag7.github.io/callguard/
+repo_url: https://github.com/acartag7/callguard
+repo_name: acartag7/callguard
 
 theme:
   name: material
