@@ -57,9 +57,17 @@ class CrewAIAdapter:
     def _normalize_tool_name(name: str) -> str:
         """Normalize CrewAI tool names to match contract tool names.
 
-        CrewAI: "Query Clinical Data" -> "query_clinical_data"
+        Lowercases and replaces spaces, hyphens, and other non-alphanumeric
+        separators with underscores, then collapses consecutive underscores.
+
+        Examples:
+            "Query Clinical Data" -> "query_clinical_data"
+            "Query-Clinical Data" -> "query_clinical_data"
+            "already_snake"       -> "already_snake"
         """
-        return name.lower().replace(" ", "_")
+        import re
+
+        return re.sub(r"_+", "_", re.sub(r"[\s\-]+", "_", name.lower())).strip("_")
 
     def register(
         self,
@@ -89,19 +97,28 @@ class CrewAIAdapter:
         adapter = self
 
         def _run_async(coro):
-            """Bridge async coroutine to sync CrewAI hook context."""
+            """Bridge async coroutine to sync CrewAI hook context.
+
+            CrewAI calls hooks synchronously, but Edictum's guard is async.
+            When no event loop is running, ``asyncio.run()`` is used directly.
+            When called from within an active loop (e.g. nested in an async
+            framework), a worker thread runs a fresh loop to avoid blocking
+            the caller's loop.  This means Edictum state accessed inside the
+            coroutine must be thread-safe; the adapter's own state is guarded
+            by CrewAI's sequential-execution model (one tool at a time).
+            """
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = None
 
-            if loop and loop.is_running():
+            if loop is not None and loop.is_running():
                 import concurrent.futures
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    return pool.submit(asyncio.run, coro).result()
-            else:
-                return asyncio.run(coro)
+                    future = pool.submit(asyncio.run, coro)
+                    return future.result()
+            return asyncio.run(coro)
 
         def before_hook(context):
             original_name = context.tool_name

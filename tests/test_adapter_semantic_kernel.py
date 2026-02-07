@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from edictum import Edictum, Verdict, precondition
+from edictum import Edictum, Verdict, postcondition, precondition
 from edictum.adapters.semantic_kernel import SemanticKernelAdapter
 from edictum.audit import AuditAction
 from edictum.storage import MemoryBackend
@@ -245,9 +245,18 @@ class TestSemanticKernelFunctionResultWrapping:
                 sys.modules.pop("semantic_kernel.functions", None)
 
     async def test_register_wraps_postcondition_remediation_in_function_result(self):
-        """Postcondition remediation should wrap callback result in FunctionResult."""
+        """Postcondition remediation should wrap callback result in FunctionResult.
+
+        Uses a real postcondition contract that always warns, forcing the
+        on_postcondition_warn callback path in the SK filter. Verifies the
+        callback return value is wrapped in FunctionResult via _wrap_result().
+        """
         import sys
         from types import ModuleType, SimpleNamespace
+
+        @postcondition("*")
+        def always_warn(envelope, tool_response):
+            return Verdict.fail("PII detected in output")
 
         # Mock SK modules
         mock_sk_filters = ModuleType("semantic_kernel.filters")
@@ -270,7 +279,7 @@ class TestSemanticKernelFunctionResultWrapping:
         sys.modules["semantic_kernel.functions"] = mock_sk_functions
 
         try:
-            guard = make_guard()
+            guard = make_guard(contracts=[always_warn])
             adapter = SemanticKernelAdapter(guard)
 
             captured_filter = None
@@ -292,32 +301,26 @@ class TestSemanticKernelFunctionResultWrapping:
 
             assert captured_filter is not None
 
-            # Create mock context — next() is called (tool allowed)
+            # Create mock context — next() simulates tool execution
             mock_metadata = SimpleNamespace(name="TestTool")
-            mock_function_result = "raw output with PII"
 
             context = SimpleNamespace(
                 function=SimpleNamespace(name="TestTool", metadata=mock_metadata),
                 arguments={"key": "value"},
-                function_result=mock_function_result,
+                function_result="raw output with SSN 123-45-6789",
                 terminate=False,
             )
 
-            # Pre-populate pending state to simulate allowed tool call
-            await adapter._pre("TestTool", {"key": "value"}, "call-mock")
-
-            # Mock next() to simulate tool execution
+            # next() simulates the tool executing successfully
             async def mock_next(ctx):
                 pass
 
-            # Manually call post to set up postcondition failure
-            # For this test, we verify the wrapping mechanism works even without
-            # postcondition contracts — the key test is that register() uses _wrap_result
             await captured_filter(context, mock_next)
 
-            # If postconditions didn't trigger, function_result stays as-is
-            # The important test is test_register_wraps_denial_in_function_result above
-            # This test verifies register() properly sets up the wrapping path
+            # Postcondition should have failed, callback should have been invoked,
+            # and the result should be wrapped in FunctionResult
+            assert isinstance(context.function_result, MockFunctionResult)
+            assert context.function_result.value == "[REDACTED]"
         finally:
             if orig_filters is not None:
                 sys.modules["semantic_kernel.filters"] = orig_filters
