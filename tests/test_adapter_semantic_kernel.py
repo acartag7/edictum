@@ -78,10 +78,13 @@ class TestSemanticKernelAdapter:
         assert "call-1" not in adapter._pending
 
     async def test_post_without_pending_returns_empty(self):
+        from edictum.findings import PostCallResult
+
         guard = make_guard()
         adapter = SemanticKernelAdapter(guard)
         result = await adapter._post(call_id="unknown")
-        assert result == {}
+        assert isinstance(result, PostCallResult)
+        assert result.postconditions_passed is True
 
     async def test_call_index_increments(self):
         guard = make_guard()

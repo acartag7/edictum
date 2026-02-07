@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
@@ -10,8 +11,11 @@ from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from edictum import Edictum
@@ -50,12 +54,21 @@ class AgnoAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def as_tool_hook(self) -> Callable:
+    def as_tool_hook(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> Callable:
         """Return a wrap-around hook function for Agno's tool_hooks parameter.
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and returns
+                the (possibly transformed) result.
 
         Returns a function matching:
             (function_name: str, function_call: Callable, arguments: dict) -> result
         """
+        self._on_postcondition_warn = on_postcondition_warn
 
         def hook(function_name: str, function_call: Callable, arguments: dict[str, Any]) -> Any:
             loop: asyncio.AbstractEventLoop | None = None
@@ -103,7 +116,15 @@ class AgnoAdapter:
             tool_success = False
 
         # Post-execute
-        await self._post(call_id, result, tool_success=tool_success)
+        post_result = await self._post(call_id, result, tool_success=tool_success)
+
+        # Apply remediation callback if postconditions warned
+        on_warn = getattr(self, "_on_postcondition_warn", None)
+        if not post_result.postconditions_passed and on_warn:
+            try:
+                return on_warn(post_result.result, post_result.findings)
+            except Exception:
+                logger.exception("on_postcondition_warn callback raised")
 
         return result
 
@@ -177,11 +198,13 @@ class AgnoAdapter:
         self._pending[call_id] = (envelope, span)
         return {}
 
-    async def _post(self, call_id: str, tool_response: Any = None, *, tool_success: bool | None = None) -> dict:
-        """Post-execution governance. Returns {} always."""
+    async def _post(
+        self, call_id: str, tool_response: Any = None, *, tool_success: bool | None = None
+    ) -> PostCallResult:
+        """Post-execution governance. Returns PostCallResult with findings."""
         pending = self._pending.pop(call_id, None)
         if not pending:
-            return {}
+            return PostCallResult(result=tool_response)
 
         envelope, span = pending
 
@@ -224,7 +247,12 @@ class AgnoAdapter:
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
 
-        return {}
+        findings = build_findings(post_decision)
+        return PostCallResult(
+            result=tool_response,
+            postconditions_passed=post_decision.postconditions_passed,
+            findings=findings,
+        )
 
     async def _emit_audit_pre(self, envelope, decision, audit_action=None):
         if audit_action is None:

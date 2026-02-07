@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from edictum import Edictum
@@ -44,7 +49,18 @@ class ClaudeAgentSDKAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def to_sdk_hooks(self) -> dict:
+    def to_sdk_hooks(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> dict:
+        """Return SDK hook dict with optional postcondition callback.
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and is called
+                for side effects.
+        """
+        self._on_postcondition_warn = on_postcondition_warn
         return {
             "pre_tool_use": self._pre_tool_use,
             "post_tool_use": self._post_tool_use,
@@ -164,6 +180,15 @@ class ClaudeAgentSDKAdapter:
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
+
+        # Build findings and call callback
+        findings = build_findings(post_decision)
+        on_warn = getattr(self, "_on_postcondition_warn", None)
+        if not post_decision.postconditions_passed and findings and on_warn:
+            try:
+                on_warn(tool_response, findings)
+            except Exception:
+                logger.exception("on_postcondition_warn callback raised")
 
         # Return warnings as additionalContext
         if post_decision.warnings:

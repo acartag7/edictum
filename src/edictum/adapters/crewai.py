@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
+from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import GovernancePipeline
 from edictum.session import Session
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from edictum import Edictum
@@ -47,13 +52,22 @@ class CrewAIAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def register(self) -> None:
+    def register(
+        self,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
+    ) -> None:
         """Register global before/after tool-call hooks with CrewAI.
+
+        Args:
+            on_postcondition_warn: Optional callback invoked when postconditions
+                detect issues. Receives (original_result, findings) and is called
+                for side effects (CrewAI controls the tool result flow).
 
         Imports CrewAI decorators lazily to avoid hard dependency.
         The handlers are stored as _before_hook/_after_hook for direct
         test access without requiring the CrewAI framework.
         """
+        self._on_postcondition_warn = on_postcondition_warn
         from crewai.hooks import after_tool_call, before_tool_call  # noqa: F811
 
         before_tool_call(self._before_hook)
@@ -140,14 +154,14 @@ class CrewAIAdapter:
         self._pending_span = span
         return None
 
-    async def _after_hook(self, context: Any) -> None:
-        """Handle an after-tool-call event from CrewAI."""
+    async def _after_hook(self, context: Any) -> PostCallResult | None:
+        """Handle an after-tool-call event from CrewAI. Returns PostCallResult."""
         # Use single-pending slot (sequential execution model)
         envelope = self._pending_envelope
         span = self._pending_span
 
         if envelope is None or span is None:
-            return
+            return None
 
         # Clear pending state
         self._pending_envelope = None
@@ -191,6 +205,24 @@ class CrewAIAdapter:
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
+
+        # Build findings
+        findings = build_findings(post_decision)
+        post_result = PostCallResult(
+            result=tool_result,
+            postconditions_passed=post_decision.postconditions_passed,
+            findings=findings,
+        )
+
+        # Call callback for side effects
+        on_warn = getattr(self, "_on_postcondition_warn", None)
+        if not post_result.postconditions_passed and on_warn:
+            try:
+                on_warn(post_result.result, post_result.findings)
+            except Exception:
+                logger.exception("on_postcondition_warn callback raised")
+
+        return post_result
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
         if audit_action is None:
