@@ -365,82 +365,6 @@ class TestFix8PrincipalDeepCopy:
         assert envelope.principal.claims["nested"]["level"] == 1
 
 
-# ── Fix 9: Validate DatadogSink site parameter ──
-
-
-class TestFix9DatadogSiteValidation:
-    def test_valid_sites(self):
-        from edictum.sinks.datadog import DatadogSink
-
-        # Should not raise
-        DatadogSink(api_key="test", site="datadoghq.com")
-        DatadogSink(api_key="test", site="datadoghq.eu")
-        DatadogSink(api_key="test", site="us3.datadoghq.com")
-
-    def test_invalid_site_rejected(self):
-        from edictum.sinks.datadog import DatadogSink
-
-        with pytest.raises(ValueError, match="Invalid Datadog site"):
-            DatadogSink(api_key="test", site="evil.com/redirect")
-
-    def test_empty_site_rejected(self):
-        from edictum.sinks.datadog import DatadogSink
-
-        with pytest.raises(ValueError, match="Invalid Datadog site"):
-            DatadogSink(api_key="test", site="")
-
-
-# ── Fix 10: on_failure callback ──
-
-
-class TestFix10OnFailureCallback:
-    async def test_on_failure_called_after_retries(self):
-        from edictum.sinks.webhook import WebhookAuditSink
-
-        failures = []
-
-        async def on_fail(body, exc):
-            failures.append((body, exc))
-
-        sink = WebhookAuditSink(
-            url="http://localhost:1/nonexistent",
-            max_retries=1,
-            base_delay=0.01,
-            on_failure=on_fail,
-        )
-
-        event = AuditEvent(
-            action=AuditAction.CALL_DENIED,
-            tool_name="TestTool",
-        )
-        await sink.emit(event)
-        await sink.close()
-
-        assert len(failures) == 1
-        assert isinstance(failures[0][1], Exception)
-
-    async def test_on_failure_exception_logged_not_raised(self):
-        from edictum.sinks.webhook import WebhookAuditSink
-
-        async def bad_callback(body, exc):
-            raise RuntimeError("callback broke")
-
-        sink = WebhookAuditSink(
-            url="http://localhost:1/nonexistent",
-            max_retries=1,
-            base_delay=0.01,
-            on_failure=bad_callback,
-        )
-
-        event = AuditEvent(
-            action=AuditAction.CALL_DENIED,
-            tool_name="TestTool",
-        )
-        # Should not raise despite callback error
-        await sink.emit(event)
-        await sink.close()
-
-
 # ── Fix 11: Session limits default comparison ──
 
 
@@ -601,20 +525,6 @@ class TestFix16FileAuditAsync:
         content = path.read_text()
         assert "TestTool" in content
         assert "call_allowed" in content
-
-
-# ── Fix 17: Shared aiohttp session ──
-
-
-class TestFix17SharedSession:
-    async def test_session_reused(self):
-        from edictum.sinks._base import HTTPSinkBase
-
-        base = HTTPSinkBase()
-        s1 = await base._get_session()
-        s2 = await base._get_session()
-        assert s1 is s2
-        await base.close()
 
 
 # ── Fix 22: YAML file size limit ──

@@ -15,7 +15,8 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/Contract" }
-    }
+    },
+    "observability": { "$ref": "#/$defs/Observability" }
   },
 
   "$defs": {
@@ -31,6 +32,34 @@
           "description": "Bundle identifier. Lowercase, slug-style."
         },
         "description": { "type": "string" }
+      }
+    },
+
+    "Observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "endpoint": { "type": "string" },
+            "protocol": { "type": "string", "enum": ["grpc", "http"] },
+            "service_name": { "type": "string" },
+            "resource_attributes": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "stdout": { "type": "boolean", "default": true },
+        "file": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        }
       }
     },
 

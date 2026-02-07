@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "edictum"
-version = "0.4.0"
+version = "0.5.0"
 description = "Runtime safety for AI agents. Stop agents before they break things."
 readme = "README.md"
 license = "MIT"
@@ -22,15 +22,14 @@ dependencies = []
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6.0", "jsonschema>=4.20"]
-otel = ["opentelemetry-api>=1.20", "opentelemetry-sdk>=1.20"]
+otel = ["opentelemetry-api>=1.20.0", "opentelemetry-sdk>=1.20.0", "opentelemetry-exporter-otlp>=1.20.0"]
 langchain = ["langchain-core>=0.3"]
 crewai = ["crewai>=0.80"]
 agno = ["agno>=1.0"]
 semantic-kernel = ["semantic-kernel>=1.0"]
 openai-agents = ["openai-agents>=0.1"]
-sinks = ["aiohttp>=3.9"]
 cli = ["click>=8.0", "rich>=13.0", "edictum[yaml]"]
-all = ["edictum[yaml,otel,sinks,cli,langchain,crewai,agno,semantic-kernel,openai-agents]"]
+all = ["edictum[yaml,otel,cli,langchain,crewai,agno,semantic-kernel,openai-agents]"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

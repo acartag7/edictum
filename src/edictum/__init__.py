@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover — editable installs, test envs
     __version__ = "0.0.0-dev"
 
 import asyncio
+import json
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
@@ -36,6 +37,7 @@ from edictum.envelope import (
 )
 from edictum.hooks import HookDecision, HookResult
 from edictum.limits import OperationLimits
+from edictum.otel import configure_otel, get_tracer, has_otel
 from edictum.pipeline import GovernancePipeline, PostDecision, PreDecision
 from edictum.session import Session
 from edictum.storage import MemoryBackend, StorageBackend
@@ -75,6 +77,8 @@ __all__ = [
     "PreDecision",
     "PostDecision",
     "deny_sensitive_reads",
+    "configure_otel",
+    "has_otel",
 ]
 
 
@@ -107,6 +111,7 @@ class Edictum:
         self.redaction = redaction or RedactionPolicy()
         self.audit_sink = audit_sink or StdoutAuditSink(self.redaction)
         self.telemetry = GovernanceTelemetry()
+        self._gov_tracer = get_tracer("edictum.governance")
         self.policy_version = policy_version
 
         # Build tool registry
@@ -166,6 +171,33 @@ class Edictum:
 
         bundle_data, bundle_hash = load_bundle(path)
         compiled = compile_contracts(bundle_data)
+
+        # Handle observability config
+        obs_config = bundle_data.get("observability", {})
+        otel_config = obs_config.get("otel", {})
+        if otel_config.get("enabled"):
+            from edictum.otel import configure_otel
+
+            configure_otel(
+                service_name=otel_config.get("service_name", "edictum-agent"),
+                endpoint=otel_config.get("endpoint", "http://localhost:4317"),
+                protocol=otel_config.get("protocol", "grpc"),
+                resource_attributes=otel_config.get("resource_attributes"),
+            )
+
+        # Auto-configure audit sink from observability block if not explicitly provided
+        if audit_sink is None:
+            obs_file = obs_config.get("file")
+            obs_stdout = obs_config.get("stdout", True)
+            if obs_file:
+                audit_sink = FileAuditSink(obs_file, redaction)
+            elif obs_stdout is False:
+
+                class _NullSink:
+                    async def emit(self, event):
+                        pass
+
+                audit_sink = _NullSink()
 
         effective_mode = mode or compiled.default_mode
         all_contracts = compiled.preconditions + compiled.postconditions + compiled.session_contracts
@@ -325,24 +357,24 @@ class Edictum:
             # Emit CALL_WOULD_DENY for any per-rule observed denials
             for cr in pre.contracts_evaluated:
                 if cr.get("observed") and not cr.get("passed"):
-                    await self.audit_sink.emit(
-                        AuditEvent(
-                            action=AuditAction.CALL_WOULD_DENY,
-                            run_id=envelope.run_id,
-                            call_id=envelope.call_id,
-                            tool_name=envelope.tool_name,
-                            tool_args=self.redaction.redact_args(envelope.args),
-                            side_effect=envelope.side_effect.value,
-                            environment=envelope.environment,
-                            principal=asdict(envelope.principal) if envelope.principal else None,
-                            decision_source="precondition",
-                            decision_name=cr["name"],
-                            reason=cr["message"],
-                            mode="observe",
-                            policy_version=self.policy_version,
-                            policy_error=pre.policy_error,
-                        )
+                    observed_event = AuditEvent(
+                        action=AuditAction.CALL_WOULD_DENY,
+                        run_id=envelope.run_id,
+                        call_id=envelope.call_id,
+                        tool_name=envelope.tool_name,
+                        tool_args=self.redaction.redact_args(envelope.args),
+                        side_effect=envelope.side_effect.value,
+                        environment=envelope.environment,
+                        principal=asdict(envelope.principal) if envelope.principal else None,
+                        decision_source="precondition",
+                        decision_name=cr["name"],
+                        reason=cr["message"],
+                        mode="observe",
+                        policy_version=self.policy_version,
+                        policy_error=pre.policy_error,
                     )
+                    await self.audit_sink.emit(observed_event)
+                    self._emit_otel_governance_span(observed_event)
             await self._emit_run_pre_audit(envelope, session, AuditAction.CALL_ALLOWED, pre)
             self.telemetry.record_allowed(envelope)
             span.set_attribute("governance.action", "allowed")
@@ -363,26 +395,26 @@ class Edictum:
 
         # Emit post-execute audit
         post_action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
-        await self.audit_sink.emit(
-            AuditEvent(
-                action=post_action,
-                run_id=envelope.run_id,
-                call_id=envelope.call_id,
-                tool_name=envelope.tool_name,
-                tool_args=self.redaction.redact_args(envelope.args),
-                side_effect=envelope.side_effect.value,
-                environment=envelope.environment,
-                principal=asdict(envelope.principal) if envelope.principal else None,
-                tool_success=tool_success,
-                postconditions_passed=post.postconditions_passed,
-                contracts_evaluated=post.contracts_evaluated,
-                session_attempt_count=await session.attempt_count(),
-                session_execution_count=await session.execution_count(),
-                mode=self.mode,
-                policy_version=self.policy_version,
-                policy_error=post.policy_error,
-            )
+        post_event = AuditEvent(
+            action=post_action,
+            run_id=envelope.run_id,
+            call_id=envelope.call_id,
+            tool_name=envelope.tool_name,
+            tool_args=self.redaction.redact_args(envelope.args),
+            side_effect=envelope.side_effect.value,
+            environment=envelope.environment,
+            principal=asdict(envelope.principal) if envelope.principal else None,
+            tool_success=tool_success,
+            postconditions_passed=post.postconditions_passed,
+            contracts_evaluated=post.contracts_evaluated,
+            session_attempt_count=await session.attempt_count(),
+            session_execution_count=await session.execution_count(),
+            mode=self.mode,
+            policy_version=self.policy_version,
+            policy_error=post.policy_error,
         )
+        await self.audit_sink.emit(post_event)
+        self._emit_otel_governance_span(post_event)
 
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post.postconditions_passed)
@@ -394,28 +426,66 @@ class Edictum:
         return result
 
     async def _emit_run_pre_audit(self, envelope, session, action: AuditAction, pre: PreDecision) -> None:
-        await self.audit_sink.emit(
-            AuditEvent(
-                action=action,
-                run_id=envelope.run_id,
-                call_id=envelope.call_id,
-                tool_name=envelope.tool_name,
-                tool_args=self.redaction.redact_args(envelope.args),
-                side_effect=envelope.side_effect.value,
-                environment=envelope.environment,
-                principal=asdict(envelope.principal) if envelope.principal else None,
-                decision_source=pre.decision_source,
-                decision_name=pre.decision_name,
-                reason=pre.reason,
-                hooks_evaluated=pre.hooks_evaluated,
-                contracts_evaluated=pre.contracts_evaluated,
-                session_attempt_count=await session.attempt_count(),
-                session_execution_count=await session.execution_count(),
-                mode=self.mode,
-                policy_version=self.policy_version,
-                policy_error=pre.policy_error,
-            )
+        event = AuditEvent(
+            action=action,
+            run_id=envelope.run_id,
+            call_id=envelope.call_id,
+            tool_name=envelope.tool_name,
+            tool_args=self.redaction.redact_args(envelope.args),
+            side_effect=envelope.side_effect.value,
+            environment=envelope.environment,
+            principal=asdict(envelope.principal) if envelope.principal else None,
+            decision_source=pre.decision_source,
+            decision_name=pre.decision_name,
+            reason=pre.reason,
+            hooks_evaluated=pre.hooks_evaluated,
+            contracts_evaluated=pre.contracts_evaluated,
+            session_attempt_count=await session.attempt_count(),
+            session_execution_count=await session.execution_count(),
+            mode=self.mode,
+            policy_version=self.policy_version,
+            policy_error=pre.policy_error,
         )
+        await self.audit_sink.emit(event)
+        self._emit_otel_governance_span(event)
+
+    def _emit_otel_governance_span(self, audit_event: AuditEvent) -> None:
+        """Emit an OTel span with governance attributes from an AuditEvent."""
+        if not has_otel():
+            return
+
+        from opentelemetry.trace import StatusCode
+
+        with self._gov_tracer.start_as_current_span("edictum.evaluate") as span:
+            span.set_attribute("edictum.tool.name", audit_event.tool_name)
+            span.set_attribute("edictum.verdict", audit_event.action.value)
+            span.set_attribute("edictum.verdict.reason", audit_event.reason or "")
+            span.set_attribute("edictum.decision.source", audit_event.decision_source or "")
+            span.set_attribute("edictum.decision.name", audit_event.decision_name or "")
+            span.set_attribute("edictum.side_effect", audit_event.side_effect)
+            span.set_attribute("edictum.environment", audit_event.environment)
+            span.set_attribute("edictum.mode", audit_event.mode)
+            span.set_attribute("edictum.session.attempt_count", audit_event.session_attempt_count)
+            span.set_attribute("edictum.session.execution_count", audit_event.session_execution_count)
+
+            tool_args_str = json.dumps(audit_event.tool_args, default=str) if audit_event.tool_args else "{}"
+            span.set_attribute("edictum.tool.args", tool_args_str)
+
+            if audit_event.principal:
+                for key in ("role", "team", "ticket_ref", "user_id", "org_id"):
+                    val = audit_event.principal.get(key)
+                    if val:
+                        span.set_attribute(f"edictum.principal.{key}", val)
+
+            if audit_event.policy_version:
+                span.set_attribute("edictum.policy_version", audit_event.policy_version)
+            if audit_event.policy_error:
+                span.set_attribute("edictum.policy_error", True)
+
+            if audit_event.action.value in ("call_denied",):
+                span.set_status(StatusCode.ERROR, audit_event.reason or "denied")
+            else:
+                span.set_status(StatusCode.OK)
 
 
 class EdictumDenied(Exception):  # noqa: N818
