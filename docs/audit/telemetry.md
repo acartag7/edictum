@@ -107,7 +107,7 @@ guard = Edictum(...)
 |-----------|------|---------|-------------|
 | `service_name` | `str` | `"edictum-agent"` | OTel service name resource attribute |
 | `endpoint` | `str` | `"http://localhost:4317"` | OTLP collector endpoint |
-| `protocol` | `str` | `"grpc"` | Transport protocol: `"grpc"` or `"http"` |
+| `protocol` | `str` | `"grpc"` | Transport protocol: `"grpc"`, `"http"`, or `"http/protobuf"`. Any non-`"grpc"` value selects the HTTP exporter. When HTTP is selected and `endpoint` is the default, it auto-adjusts to `http://localhost:4318/v1/traces`. |
 | `resource_attributes` | `dict \| None` | `None` | Additional OTel resource attributes |
 | `edictum_version` | `str \| None` | `None` | Edictum version tag |
 | `force` | `bool` | `False` | Replace an existing TracerProvider. By default, `configure_otel()` is a no-op if a provider is already set. |

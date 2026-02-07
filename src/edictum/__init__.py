@@ -465,8 +465,8 @@ class Edictum:
             span.set_attribute("edictum.side_effect", audit_event.side_effect)
             span.set_attribute("edictum.environment", audit_event.environment)
             span.set_attribute("edictum.mode", audit_event.mode)
-            span.set_attribute("edictum.session.attempt_count", audit_event.session_attempt_count)
-            span.set_attribute("edictum.session.execution_count", audit_event.session_execution_count)
+            span.set_attribute("edictum.session.attempt_count", audit_event.session_attempt_count or 0)
+            span.set_attribute("edictum.session.execution_count", audit_event.session_execution_count or 0)
 
             tool_args_str = json.dumps(audit_event.tool_args, default=str) if audit_event.tool_args else "{}"
             span.set_attribute("edictum.tool.args", tool_args_str)

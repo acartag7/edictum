@@ -216,6 +216,41 @@ class TestOTelIntegration:
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "http")
         configure_otel(protocol="grpc")
 
+    def test_configure_otel_http_protobuf_protocol(self):
+        """'http/protobuf' should be accepted and select the HTTP exporter."""
+        from edictum.otel import configure_otel
+
+        _reset_otel_provider()
+
+        # Should not raise — http/protobuf is a common OTEL_EXPORTER_OTLP_PROTOCOL value
+        configure_otel(protocol="http/protobuf")
+
+    def test_http_protocol_adjusts_default_endpoint(self):
+        """HTTP protocol with default endpoint should auto-adjust to port 4318."""
+        import unittest.mock as mock
+
+        from edictum.otel import configure_otel
+
+        _reset_otel_provider()
+
+        with mock.patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter") as mock_http:
+            mock_http.return_value = mock.MagicMock()
+            configure_otel(protocol="http")
+            mock_http.assert_called_once_with(endpoint="http://localhost:4318/v1/traces")
+
+    def test_http_protocol_preserves_custom_endpoint(self):
+        """HTTP protocol with explicit endpoint should not auto-adjust."""
+        import unittest.mock as mock
+
+        from edictum.otel import configure_otel
+
+        _reset_otel_provider()
+
+        with mock.patch("opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter") as mock_http:
+            mock_http.return_value = mock.MagicMock()
+            configure_otel(protocol="http", endpoint="http://collector:4318/v1/traces")
+            mock_http.assert_called_once_with(endpoint="http://collector:4318/v1/traces")
+
     def test_span_attributes(self):
         """Spans should carry edictum-specific attributes."""
         from opentelemetry import trace
@@ -342,5 +377,28 @@ class TestOTelIntegration:
         denied_spans = [s for s in gov_spans if s.attributes.get("edictum.verdict") == "call_denied"]
         assert len(denied_spans) >= 1
         assert denied_spans[0].status.status_code == StatusCode.ERROR
+
+        exporter.clear()
+
+    async def test_session_counters_never_none(self):
+        """Session counters should default to 0, never None in span attributes."""
+        from edictum import Edictum
+
+        exporter = self._setup_exporter()
+
+        guard = Edictum(mode="enforce", audit_sink=_NullAuditSink())
+        await guard.run("SomeTool", {}, lambda **kw: "ok")
+
+        spans = exporter.get_finished_spans()
+        gov_spans = [s for s in spans if s.name == "edictum.evaluate"]
+        assert len(gov_spans) >= 1
+
+        for span in gov_spans:
+            attempt = span.attributes.get("edictum.session.attempt_count")
+            execution = span.attributes.get("edictum.session.execution_count")
+            assert attempt is not None, "attempt_count should never be None"
+            assert execution is not None, "execution_count should never be None"
+            assert isinstance(attempt, int)
+            assert isinstance(execution, int)
 
         exporter.clear()
