@@ -52,7 +52,7 @@ Attach identity context -- `user_id`, `role`, `org_id`, `ticket_ref`, and arbitr
 
 ### Structured Audit Trail
 
-Every evaluation produces an `AuditEvent` with the tool name, verdict, principal, timing, and policy version. Ship events to stdout, JSON files, webhooks, Splunk HEC, or Datadog. Automatic secret redaction ensures credentials never leak into your audit stream.
+Every evaluation produces an `AuditEvent` with the tool name, verdict, principal, timing, and policy version. Ship events to stdout or JSON files for local development, and route OpenTelemetry spans to any backend (Datadog, Splunk, Grafana, Jaeger) for production observability. Automatic secret redaction ensures credentials never leak into your audit stream.
 
 ### OpenTelemetry Integration
 
@@ -84,4 +84,4 @@ pip install edictum[all]
 - [**Quickstart**](quickstart.md) -- install, write a contract, and block your first dangerous call in five minutes
 - **YAML Reference** -- full schema documentation for `edictum/v1` contract bundles
 - **Adapter Guides** -- framework-specific integration for all six supported agent libraries
-- **Audit Sinks** -- configure where contract evaluations are logged and shipped
+- **Audit and Observability** -- configure local sinks and OpenTelemetry for production monitoring

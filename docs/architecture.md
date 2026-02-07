@@ -26,10 +26,7 @@ src/edictum/
     evaluator.py           Condition evaluation (match, principal checks, etc.)
     compiler.py            YAML contracts -> @precondition/@postcondition objects
 
-  sinks/
-    webhook.py             WebhookAuditSink (HTTP POST with retry)
-    splunk.py              SplunkHECSink (Splunk HTTP Event Collector)
-    datadog.py             DatadogSink (Datadog Logs API)
+  otel.py                  configure_otel(), has_otel(), get_tracer() (OTel spans)
 
   cli/
     main.py                Click CLI entry point (validate, check, diff, replay)

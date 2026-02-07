@@ -1,7 +1,8 @@
-# Audit Sinks
+# Audit and Observability
 
 Every governance decision in Edictum produces an `AuditEvent`. Audit sinks consume
-these events and route them to storage, monitoring, or alerting systems.
+these events and route them to local storage, while OpenTelemetry integration
+enables routing governance spans to any observability backend.
 
 ## The AuditSink Protocol
 
@@ -143,27 +144,26 @@ sink = FileAuditSink(
 | `path` | `str \| Path` | (required) | File path for the JSONL output |
 | `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy |
 
-### WebhookAuditSink
+### OpenTelemetry Span Emission
 
-Posts each event as JSON via HTTP POST. Supports exponential-backoff retries
-(delays of 1s, 2s, 4s by default) and a fire-and-forget mode that dispatches
-via `asyncio.create_task` without blocking the governance pipeline.
+For production observability, Edictum emits `edictum.*` spans for every governance
+decision via OpenTelemetry. These spans can be routed to any OTel-compatible
+backend -- Datadog, Splunk, Grafana, Jaeger, or any service that accepts OTLP.
 
 ```bash
-pip install edictum[sinks]  # adds aiohttp dependency
+pip install edictum[otel]
 ```
 
-```python
-from edictum.audit import RedactionPolicy
-from edictum.sinks.webhook import WebhookAuditSink
+#### Programmatic Configuration
 
-sink = WebhookAuditSink(
-    url="https://hooks.example.com/edictum",
-    headers={"Authorization": "Bearer <token>"},
-    fire_and_forget=False,
-    redaction_policy=RedactionPolicy(),
-    max_retries=3,
-    base_delay=1.0,
+```python
+from edictum.otel import configure_otel
+
+configure_otel(
+    service_name="my-agent",
+    endpoint="http://localhost:4317",
+    protocol="grpc",  # or "http"
+    resource_attributes={"deployment.environment": "production"},
 )
 ```
 
@@ -171,126 +171,63 @@ sink = WebhookAuditSink(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `url` | `str` | (required) | Webhook endpoint URL |
-| `headers` | `dict \| None` | `None` | Additional HTTP headers (`Content-Type: application/json` is always set) |
-| `fire_and_forget` | `bool` | `False` | If `True`, emit returns immediately and delivery happens in a background task |
-| `redaction_policy` | `RedactionPolicy \| None` | `None` | Redaction policy applied before sending |
-| `max_retries` | `int` | `3` | Maximum number of delivery attempts |
-| `base_delay` | `float` | `1.0` | Base delay in seconds for exponential backoff |
+| `service_name` | `str` | `"edictum-agent"` | OTel service name resource attribute |
+| `endpoint` | `str` | `"http://localhost:4317"` | OTLP collector endpoint |
+| `protocol` | `str` | `"grpc"` | Transport protocol: `"grpc"` or `"http"` |
+| `resource_attributes` | `dict \| None` | `None` | Additional OTel resource attributes |
+| `edictum_version` | `str \| None` | `None` | Edictum version tag |
 
-!!! warning "Fire-and-forget risk"
+Standard OTel environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`) override the programmatic
+values when set.
 
-    When `fire_and_forget=True`, events are dispatched via `asyncio.create_task` without
-    blocking the governance pipeline. **Events may be silently dropped after retry
-    exhaustion.** The sink logs a warning but does not raise. For production deployments,
-    use `fire_and_forget=False` (the default) to ensure delivery errors surface.
+#### YAML Configuration
 
-### SplunkHECSink
+The `observability` block in a contract bundle configures OTel alongside the
+local sinks:
 
-Sends events to Splunk via the HTTP Event Collector. Each event is wrapped in
-the HEC envelope format with a configurable `index` and `sourcetype`.
-Authentication uses the `Authorization: Splunk <token>` header.
+```yaml
+apiVersion: edictum/v1
+kind: ContractBundle
 
-```bash
-pip install edictum[sinks]
+metadata:
+  name: my-policy
+
+observability:
+  otel:
+    enabled: true
+    endpoint: "http://localhost:4317"
+    protocol: grpc
+    service_name: my-agent
+    resource_attributes:
+      deployment.environment: production
+  stdout: true
+  file: /var/log/edictum/events.jsonl
 ```
 
-```python
-from edictum.audit import RedactionPolicy
-from edictum.sinks.splunk import SplunkHECSink
+#### Routing to Specific Backends
 
-sink = SplunkHECSink(
-    url="https://splunk.example.com:8088/services/collector",
-    token="your-hec-token",
-    index="ai_governance",
-    sourcetype="edictum",
-    redaction_policy=RedactionPolicy(),
-)
-```
+Edictum emits standard OTLP spans. Use an OTel Collector to route them to any
+backend:
 
-**Parameters:**
+**Datadog**: Point the OTel Collector at the Datadog Agent or use the Datadog
+exporter in the collector config. Governance spans appear in Datadog APM traces.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `url` | `str` | (required) | Splunk HEC endpoint URL |
-| `token` | `str` | (required) | HEC authentication token |
-| `index` | `str` | `"main"` | Splunk index to write to |
-| `sourcetype` | `str` | `"edictum"` | Sourcetype for the events |
-| `redaction_policy` | `RedactionPolicy \| None` | `None` | Redaction policy applied before sending |
+**Splunk**: Use the Splunk HEC exporter in the OTel Collector config. Spans
+arrive in Splunk Observability Cloud with all `edictum.*` attributes intact.
 
-The HEC payload sent to Splunk looks like:
+**Grafana / Tempo**: Send OTLP directly to Grafana Tempo or via the OTel
+Collector. Governance spans appear alongside application traces.
 
-```json
-{
-  "event": { "...audit event fields..." },
-  "sourcetype": "edictum",
-  "index": "ai_governance"
-}
-```
+**Jaeger**: Point the OTLP endpoint at a Jaeger collector. No additional
+configuration needed.
 
-### DatadogSink
+#### Graceful Degradation
 
-Sends events to the Datadog Logs API. Events are posted to
-`https://http-intake.logs.{site}/api/v2/logs` with the `DD-API-KEY` header.
-
-```bash
-pip install edictum[sinks]
-```
-
-```python
-from edictum.audit import RedactionPolicy
-from edictum.sinks.datadog import DatadogSink
-
-sink = DatadogSink(
-    api_key="your-datadog-api-key",
-    site="datadoghq.com",
-    service="edictum",
-    source="edictum",
-    redaction_policy=RedactionPolicy(),
-)
-```
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `api_key` | `str` | (required) | Datadog API key |
-| `site` | `str` | `"datadoghq.com"` | Datadog site (`datadoghq.com`, `datadoghq.eu`, `us3.datadoghq.com`, etc.) |
-| `service` | `str` | `"edictum"` | Service name tag |
-| `source` | `str` | `"edictum"` | Source tag for Datadog pipelines |
-| `redaction_policy` | `RedactionPolicy \| None` | `None` | Redaction policy applied before sending |
-
-The Datadog payload format:
-
-```json
-[
-  {
-    "ddsource": "edictum",
-    "ddtags": "service:edictum",
-    "service": "edictum",
-    "message": { "...audit event fields..." }
-  }
-]
-```
-
----
-
-## HTTP Sink Session Management
-
-All HTTP sinks (`WebhookAuditSink`, `SplunkHECSink`, `DatadogSink`) share a lazy
-aiohttp session that is created on first `emit()` and reused across calls. Call
-`close()` when shutting down to release the connection pool:
-
-```python
-sink = WebhookAuditSink(url="https://hooks.example.com/edictum")
-
-# ... use the sink ...
-
-await sink.close()
-```
-
-If `close()` is not called, the underlying connection pool will be released when the
-process exits, but Python may emit `ResourceWarning` about unclosed sessions.
+If `opentelemetry` is not installed, all OTel instrumentation degrades to a
+silent no-op. No exceptions are raised and there is no performance cost beyond
+a single boolean check per call. The local sinks (`StdoutAuditSink`,
+`FileAuditSink`) continue to work independently of OTel availability.
 
 ---
 
@@ -298,8 +235,8 @@ process exits, but Python may emit `ResourceWarning` about unclosed sessions.
 
 All sinks support automatic redaction of sensitive data via `RedactionPolicy`. If
 no explicit policy is provided, `StdoutAuditSink` and `FileAuditSink` create a
-default policy automatically. The network sinks (`Webhook`, `Splunk`, `Datadog`)
-apply redaction only when you pass a `redaction_policy`.
+default policy automatically. OTel span attributes are emitted after redaction
+is applied to the underlying `AuditEvent`.
 
 ### Sensitive Key Detection
 

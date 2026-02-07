@@ -157,17 +157,23 @@ to `mode="enforce"`.
 The pre-hook returns `{}` (allow) even for denied calls, and the OTel span
 records `governance.action = "would_deny"` with the reason.
 
-## Custom Audit Sinks
+## Audit and Observability
 
 By default, audit events are printed to stdout as JSON. You can direct them to a
-file, a webhook, or any custom sink:
+file for local development, or enable OpenTelemetry to route governance spans to
+any observability backend (Datadog, Splunk, Grafana, Jaeger):
 
 ```python
 from edictum import Edictum
 from edictum.audit import FileAuditSink, RedactionPolicy
+from edictum.otel import configure_otel
 
+# Local file sink for audit logs
 redaction = RedactionPolicy()
 sink = FileAuditSink("audit.jsonl", redaction=redaction)
+
+# OTel for production observability
+configure_otel(service_name="my-agent", endpoint="http://localhost:4317")
 
 guard = Edictum.from_yaml(
     "contracts.yaml",
@@ -179,8 +185,9 @@ adapter = ClaudeAgentSDKAdapter(guard=guard)
 ```
 
 Every tool call -- whether allowed, denied, or observed -- produces a structured
-`AuditEvent` written to `audit.jsonl` as a JSON line. Sensitive fields (tokens,
-passwords, API keys) are automatically redacted by the `RedactionPolicy`.
+`AuditEvent` written to `audit.jsonl` as a JSON line, and an `edictum.*` OTel
+span routed to the configured collector. Sensitive fields (tokens, passwords,
+API keys) are automatically redacted by the `RedactionPolicy`.
 
 ## Session Tracking
 

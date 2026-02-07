@@ -84,7 +84,7 @@ middleware = EdictumMiddleware(guard)
 - **CLI tooling** — `validate`, `check`, `diff`, and `replay` commands for CI/CD integration
 - **Principal context** — Role, ticket ref, and claims propagated through every decision and audit event
 - **Session limits** — Cap total calls, attempts, and per-tool executions to catch runaway agents
-- **Zero runtime deps** — Pure Python 3.11+. OTel, sinks, and adapters are optional extras
+- **Zero runtime deps** — Pure Python 3.11+. OTel and adapters are optional extras
 
 ## How It Compares
 
@@ -101,7 +101,7 @@ middleware = EdictumMiddleware(guard)
 ```bash
 pip install edictum              # core (zero deps)
 pip install edictum[yaml]        # + YAML contract engine
-pip install edictum[sinks]       # + webhook, Splunk, Datadog sinks
+pip install edictum[otel]        # + OpenTelemetry span emission
 pip install edictum[cli]         # + validate/check/diff/replay CLI
 pip install edictum[all]         # everything
 ```
