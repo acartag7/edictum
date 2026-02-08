@@ -20,6 +20,7 @@ The primary integration uses `as_tool_wrapper()` with `ToolNode`:
 ```python
 from edictum import Edictum
 from edictum.adapters.langchain import LangChainAdapter
+from langgraph.prebuilt import ToolNode, create_react_agent
 
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = LangChainAdapter(guard=guard)
@@ -104,7 +105,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_react_agent
 from langgraph.prebuilt import ToolNode
 
-# Configure governance
+# Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
 
 # Create adapter with identity
@@ -117,14 +118,14 @@ adapter = LangChainAdapter(
 # Get the wrapper
 wrapper = adapter.as_tool_wrapper()
 
-# Build LangChain agent with governance
+# Build LangChain agent with contract enforcement
 llm = ChatOpenAI(model="gpt-4o-mini")
 tools = [search_tool, calculator_tool, file_reader_tool]
 
 tool_node = ToolNode(tools=tools, wrap_tool_call=wrapper)
 agent = create_react_agent(model=llm, tools=tool_node)
 
-# Run -- tool calls are now governed
+# Run -- contracts are enforced on every tool call
 result = agent.invoke({"messages": [("user", "Summarize the Q3 report")]})
 ```
 

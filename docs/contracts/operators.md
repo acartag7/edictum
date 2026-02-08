@@ -267,7 +267,7 @@ Regular expression match using Python's `re.search()`. The pattern can match any
 - **Value type:** string (valid Python regex)
 - **Selector type:** string
 
-Patterns are compiled once at policy load time. An invalid regex causes a validation error.
+Patterns are compiled once at load time. An invalid regex causes a validation error.
 
 **YAML tip:** Always use single-quoted strings for regex patterns. In YAML, `'\b'` is a literal backslash-b (regex word boundary). Double-quoted `"\b"` is interpreted as a backspace character.
 

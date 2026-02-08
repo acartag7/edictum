@@ -54,9 +54,13 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
-  - Why Edictum?: why.md
-  - Contracts:
-    - YAML Reference: contracts/yaml-reference.md
+  - Concepts:
+    - How It Works: concepts/how-it-works.md
+    - Contracts: concepts/contracts.md
+    - Principals: concepts/principals.md
+    - Observe Mode: concepts/observe-mode.md
+  - Contracts Reference:
+    - YAML Schema: contracts/yaml-reference.md
     - Operators: contracts/operators.md
     - Templates: contracts/templates.md
     - Patterns:
@@ -89,3 +93,4 @@ nav:
     - CLI: cli.md
   - Architecture: architecture.md
   - Compliance: compliance.md
+  - Roadmap: roadmap.md

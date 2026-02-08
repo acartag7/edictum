@@ -1,6 +1,6 @@
 # Compliance and Audit Patterns
 
-Compliance patterns address regulatory and organizational requirements: classifying contracts with tags, tracking policy versions, rolling out new rules safely with observe mode, and filtering audit events downstream.
+Compliance patterns address regulatory and organizational requirements: classifying contracts with tags, tracking contract bundle versions, rolling out new contracts safely with observe mode, and filtering audit events downstream.
 
 ---
 
@@ -96,11 +96,11 @@ Use the `tags` field on contract actions to classify rules by regulatory or orga
 
 ---
 
-## Policy Versioning
+## Contract Bundle Versioning
 
-Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span, creating an immutable link between any audit record and the exact policy file that produced it.
+Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span, creating an immutable link between any audit record and the exact contract bundle that produced it.
 
-**When to use:** You need to prove which version of a policy was active when an event occurred. This is essential for audits, incident investigations, and regulatory compliance.
+**When to use:** You need to prove which version of a contract bundle was active when an event occurred. This is essential for audits, incident investigations, and regulatory compliance.
 
 === "YAML"
 
@@ -160,7 +160,7 @@ Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped
 
 Roll out new rules safely by starting in `observe` mode and switching to `enforce` after verifying the rule behaves as expected. Observed denials are logged as `CALL_WOULD_DENY` audit events without blocking the agent.
 
-**When to use:** You are adding a new contract to an existing production policy and want to validate it against real traffic before enforcing it.
+**When to use:** You are adding a new contract to an existing production bundle and want to validate it against real traffic before enforcing it.
 
 === "YAML"
 
@@ -196,7 +196,7 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
           args.query: { matches: '\\bJOIN\\b.*\\bJOIN\\b.*\\bJOIN\\b' }
         then:
           effect: deny
-          message: "Query with 3+ JOINs detected (shadow mode). Consider optimizing."
+          message: "Query with 3+ JOINs detected (observe mode). Consider optimizing."
           tags: [cost, experimental]
     ```
 

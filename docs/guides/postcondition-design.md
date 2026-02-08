@@ -70,7 +70,7 @@ wrapper = adapter.as_tool_wrapper(on_postcondition_warn=redact_pii)
 This separation has organizational benefits:
 
 - **Compliance teams write contracts** -- YAML, auditable, version-controlled. No code required.
-- **Engineering teams write remediation** -- Python callbacks, testable, framework-specific. No policy knowledge required.
+- **Engineering teams write remediation** -- Python callbacks, testable, framework-specific. No contract knowledge required.
 - Neither team needs to understand the other's domain.
 
 ---
@@ -79,7 +79,7 @@ This separation has organizational benefits:
 
 ### Deny and rollback
 
-Rejected. Rollback is domain-specific and cannot be generalized. Undoing a file write is different from undoing an API call, which is different from undoing a database insert. Some actions have no rollback at all (sending an email, posting to a public API). A governance library cannot implement rollback for arbitrary tools.
+Rejected. Rollback is domain-specific and cannot be generalized. Undoing a file write is different from undoing an API call, which is different from undoing a database insert. Some actions have no rollback at all (sending an email, posting to a public API). A contract enforcement library cannot implement rollback for arbitrary tools.
 
 ### Deny and log
 

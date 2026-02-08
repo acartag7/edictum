@@ -2,12 +2,12 @@
 
 Edictum ships six framework adapters. Adapters are thin translation layers --
 they convert framework-specific hook events into Edictum envelopes and translate
-governance decisions back into the format each framework expects. All allow/deny
-logic lives in the governance pipeline, not in the adapters.
+enforcement decisions back into the format each framework expects. All allow/deny
+logic lives in the pipeline, not in the adapters.
 
 This means you get identical enforcement semantics regardless of which framework
 you use. Switching frameworks requires changing only the adapter wiring, not
-your contracts or policies.
+your contracts.
 
 ## The Common Pattern
 
@@ -17,7 +17,7 @@ Every adapter follows the same three-step setup:
 from edictum import Edictum, Principal
 from edictum.adapters.langchain import LangChainAdapter  # or any adapter
 
-# 1. Create a guard from your contracts
+# 1. Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
 
 # 2. Create the adapter
@@ -42,6 +42,20 @@ wrapper = adapter.as_tool_wrapper()
 | Semantic Kernel | `SemanticKernelAdapter` | `register(kernel)` | Registers `AUTO_FUNCTION_INVOCATION` filter on kernel |
 | OpenAI Agents SDK | `OpenAIAgentsAdapter` | `as_guardrails()` | `(input_guardrail, output_guardrail)` tuple |
 
+## Capabilities
+
+| Framework | Can Redact Before LLM | Deny Mechanism |
+|-----------|----------------------|----------------|
+| LangChain | Yes | Return "DENIED: reason" as ToolMessage |
+| CrewAI | Yes (callback return replaces result) | before_hook returns False |
+| Agno | Yes (hook wraps execution) | Hook returns denial string |
+| Semantic Kernel | Yes (filter modifies FunctionResult) | Filter sets terminate + error |
+| Claude SDK | No (side-effect only) | Returns deny dict to SDK |
+| OpenAI Agents | No (side-effect only) | `reject_content(reason)` |
+
+For regulated environments requiring PII interception (not just detection), use
+LangChain, CrewAI, Agno, or Semantic Kernel.
+
 ## Common Constructor
 
 All adapters share the same constructor signature:
@@ -56,7 +70,7 @@ adapter = SomeAdapter(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `guard` | `Edictum` | required | The configured Edictum instance holding contracts, limits, and sinks |
+| `guard` | `Edictum` | required | The Edictum instance holding contracts, limits, and sinks |
 | `session_id` | `str \| None` | auto UUID | Groups related tool calls into a session for limit tracking |
 | `principal` | `Principal \| None` | `None` | Identity context attached to every audit event in this session |
 
@@ -115,20 +129,20 @@ adapter = SomeAdapter(guard=guard, principal=principal)
 Pick the adapter that matches your agent framework:
 
 - **Claude Agent SDK** -- Building with Anthropic's agent SDK. Hook-based
-  governance via `pre_tool_use` / `post_tool_use`.
+  enforcement via `pre_tool_use` / `post_tool_use`.
 - **LangChain** -- Using LangChain agents with `ToolNode`. Wrap tool calls
   via `as_tool_wrapper()`.
 - **CrewAI** -- Using CrewAI crews. Global before/after hooks applied to every
   tool call across all agents in the crew.
 - **Agno** -- Using the Agno framework. A `tool_hooks` compatible function that
   wraps tool execution.
-- **Semantic Kernel** -- Using Microsoft Semantic Kernel. Register governance as
-  an auto-function-invocation filter on the kernel.
+- **Semantic Kernel** -- Using Microsoft Semantic Kernel. Registers an
+  auto-function-invocation filter on the kernel.
 - **OpenAI Agents SDK** -- Using the OpenAI Agents SDK. Per-tool guardrails via
   `tool_input_guardrails` / `tool_output_guardrails`.
 
 If your framework is not listed, use `Edictum.run()` directly -- it provides
-the same governance pipeline without any adapter:
+the same pipeline without any adapter:
 
 ```python
 result = await guard.run(

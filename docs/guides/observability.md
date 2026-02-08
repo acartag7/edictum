@@ -1,6 +1,6 @@
 # Observability Setup
 
-Edictum instruments the governance pipeline with OpenTelemetry spans, metrics, and structured audit logs. This guide covers what gets emitted, how to configure backends, and what to monitor.
+Edictum instruments the pipeline with OpenTelemetry spans, metrics, and structured audit logs. This guide covers what gets emitted, how to configure backends, and what to monitor.
 
 ---
 
@@ -107,8 +107,8 @@ observability:
 Track the ratio of denied to total tool calls. A spike in denials may indicate:
 
 - A misconfigured contract (false positives)
-- An agent behaving unexpectedly (attempting blocked actions repeatedly)
-- A legitimate policy change that needs communication to users
+- An agent behaving unexpectedly (attempting denied actions repeatedly)
+- A legitimate contract change that needs communication to users
 
 ### PII detection frequency
 
@@ -138,6 +138,6 @@ The [edictum-demo](https://github.com/acartag7/edictum-demo) repository includes
 
 - A `docker-compose.yaml` with OTel Collector, Tempo, and Grafana pre-configured
 - Grafana dashboard JSON for visualizing denial rates, tool call volumes, and PII detection
-- Example agents that produce governance telemetry
+- Example agents that produce enforcement telemetry
 
 For full details on span attributes, metric names, and advanced OTel configuration, see the [Telemetry Reference](../audit/telemetry.md).
