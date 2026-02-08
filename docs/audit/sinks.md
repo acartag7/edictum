@@ -1,8 +1,8 @@
 # Audit and Observability
 
-Every governance decision in Edictum produces an `AuditEvent`. Audit sinks consume
+Every contract evaluation in Edictum produces an `AuditEvent`. Audit sinks consume
 these events and route them to local storage, while OpenTelemetry integration
-enables routing governance spans to any observability backend.
+enables routing enforcement spans to any observability backend.
 
 ## The AuditSink Protocol
 
@@ -66,7 +66,7 @@ Every audit event contains the following fields:
 |-------|------|-------------|
 | `principal` | `dict \| None` | Identity context: `user_id`, `service_id`, `org_id`, `role`, `ticket_ref`, `claims` |
 
-### Governance Decision
+### Enforcement Decision
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -146,7 +146,7 @@ sink = FileAuditSink(
 
 ### OpenTelemetry Span Emission
 
-For production observability, Edictum emits `edictum.*` spans for every governance
+For production observability, Edictum emits `edictum.*` spans for every enforcement
 decision via OpenTelemetry. These spans can be routed to any OTel-compatible
 backend -- Datadog, Splunk, Grafana, Jaeger, or any service that accepts OTLP.
 
@@ -226,13 +226,13 @@ Edictum emits standard OTLP spans. Use an OTel Collector to route them to any
 backend:
 
 **Datadog**: Point the OTel Collector at the Datadog Agent or use the Datadog
-exporter in the collector config. Governance spans appear in Datadog APM traces.
+exporter in the collector config. Enforcement spans appear in Datadog APM traces.
 
 **Splunk**: Use the Splunk HEC exporter in the OTel Collector config. Spans
 arrive in Splunk Observability Cloud with all `edictum.*` attributes intact.
 
 **Grafana / Tempo**: Send OTLP directly to Grafana Tempo or via the OTel
-Collector. Governance spans appear alongside application traces.
+Collector. Enforcement spans appear alongside application traces.
 
 **Jaeger**: Point the OTLP endpoint at a Jaeger collector. No additional
 configuration needed.

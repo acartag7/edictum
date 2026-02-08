@@ -62,14 +62,14 @@ Run the CLI validator to catch syntax and schema errors before deployment:
 ```
 $ edictum validate contracts.yaml
 
-  contracts.yaml — 1 contracts (1 pre)
+  contracts.yaml — 1 contract (1 pre)
 ```
 
 If there are errors (bad regex, wrong effect, duplicate IDs), the validator reports them and exits with code 1.
 
 ---
 
-## Step 4: Test With a Dry Run
+## Step 4: Test With `edictum check`
 
 Simulate a tool call against the contract without executing anything:
 
@@ -101,7 +101,7 @@ ALLOWED
 
 ## Step 5: Deploy in Observe Mode
 
-Notice that `defaults.mode` is set to `observe`. In this mode, Edictum logs what *would* be denied without actually blocking anything. This is safe for production rollout.
+Notice that `defaults.mode` is set to `observe`. In this mode, Edictum logs what *would* be denied without actually denying anything. This is safe for production rollout.
 
 ```python
 from edictum import Edictum, Principal
@@ -137,8 +137,8 @@ In observe mode, denied calls produce `CALL_WOULD_DENY` audit events. Review the
 
 Check for:
 
-- **False positives** -- legitimate calls that would be blocked.
-- **False negatives** -- calls that should be blocked but are not.
+- **False positives** -- legitimate calls that would be denied.
+- **False negatives** -- calls that should be denied but are not.
 - **Missing principal fields** -- if `principal.role` is null, the leaf evaluates to `false` and the rule never fires.
 
 ---
@@ -152,7 +152,7 @@ defaults:
   mode: enforce
 ```
 
-Now denied calls are actually blocked. The tool callable is never invoked, and the agent sees the denial message.
+Now denied calls are enforced. The tool callable is never invoked, and the agent sees the denial message.
 
 ---
 

@@ -1,6 +1,6 @@
 # YAML Contract Reference
 
-This is the complete reference for `edictum/v1` contract bundles. A contract bundle is a single YAML file that declares all the governance rules for a Edictum instance.
+This is the complete reference for `edictum/v1` contract bundles. A contract bundle is a single YAML file that declares all the contracts for an Edictum instance.
 
 ---
 
@@ -48,7 +48,7 @@ from edictum import Edictum
 guard = Edictum.from_yaml("contracts/my-policy.yaml")
 ```
 
-A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact policy file that produced it.
+A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact contract bundle that produced it.
 
 ---
 
@@ -131,7 +131,7 @@ Session contracts enforce session-level gates that apply across all tool calls. 
 |---|---|---|---|
 | `limits` | object | yes | At least one limit field is required. |
 | `limits.max_tool_calls` | integer | no* | Maximum successful tool executions in the session. |
-| `limits.max_attempts` | integer | no* | Maximum governance evaluations, including denied ones. Catches denial loops. |
+| `limits.max_attempts` | integer | no* | Maximum contract evaluations, including denied ones. Catches denial loops. |
 | `limits.max_calls_per_tool` | map | no* | Per-tool execution caps. Keys are tool names, values are integer limits. |
 
 *At least one of `max_tool_calls`, `max_attempts`, or `max_calls_per_tool` must be present.
@@ -240,7 +240,7 @@ For detailed examples of every operator, see the [Operator Reference](operators.
 | Numeric | `lt` | number | Less than. |
 | Numeric | `lte` | number | Less than or equal. |
 
-**Regex notes:** Patterns use Python's `re` module with `re.search()` (not `re.match()`), so patterns can match anywhere in the string. Patterns are compiled once at policy load time. Invalid regex causes a validation error at load.
+**Regex notes:** Patterns use Python's `re` module with `re.search()` (not `re.match()`), so patterns can match anywhere in the string. Patterns are compiled once at load time. Invalid regex causes a validation error at load.
 
 **YAML regex tip:** Always use single-quoted strings for regex patterns. In YAML, `'\b'` is a literal backslash-b (word boundary). Double-quoted `"\b"` is a backspace character.
 
@@ -481,7 +481,7 @@ contracts:
       args.endpoint: { contains: "/v1/expensive" }
     then:
       effect: deny
-      message: "Expensive API call detected (shadow mode)."
+      message: "Expensive API call detected (observe mode)."
       tags: [cost, experimental]
 
   # --- Session limits ---
@@ -499,12 +499,12 @@ contracts:
       tags: [rate-limit]
 ```
 
-This bundle enforces six distinct governance concerns:
+This bundle enforces six distinct concerns:
 
 1. **Secret file protection** -- blocks reads of `.env`, credentials, and key files.
 2. **Destructive command prevention** -- blocks `rm -rf`, `mkfs`, `dd`, and writes to `/dev/`.
 3. **Role-based production gate** -- only senior engineers, SREs, and admins can deploy to production.
 4. **Ticket-required production gate** -- production deploys must have a ticket reference.
 5. **PII detection** -- warns when tool output contains SSN or IBAN patterns.
-6. **Shadow-mode experimentation** -- logs expensive API calls without blocking, for cost analysis.
+6. **Observe-mode experimentation** -- logs expensive API calls without denying, for cost analysis.
 7. **Session limits** -- caps total calls at 50, attempts at 120, and per-tool limits on deploy and notification tools.

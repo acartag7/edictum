@@ -24,7 +24,7 @@ adapter.register()
 The `register()` method calls CrewAI's `register_before_tool_call_hook` and
 `register_after_tool_call_hook` to install the adapter's handlers as global
 hooks. After this call, every tool invocation in the CrewAI runtime passes
-through Edictum governance.
+through Edictum contract enforcement.
 
 ## PII Redaction Callback
 
@@ -50,7 +50,7 @@ For side-effect-only usage (logging, alerting), return `None` from the callback:
 ```python
 import logging
 
-logger = logging.getLogger("governance")
+logger = logging.getLogger("edictum")
 
 def log_pii_detected(result, findings):
     for f in findings:
@@ -74,8 +74,8 @@ adapter.register(on_postcondition_warn=log_pii_detected)
 - **Tool name normalization**: CrewAI tool names may use spaces or hyphens
   (e.g., "Search Documents", "Read-Database"). The adapter normalizes them to
   lowercase with underscores (e.g., "search_documents", "read_database") to
-  match contract tool names. The original name is restored after governance
-  runs so CrewAI sees the expected name.
+  match contract tool names. The original name is restored after evaluation
+  so CrewAI sees the expected name.
 
 - **Async-to-sync bridging**: CrewAI hooks are synchronous, but Edictum's
   pipeline is async. The adapter detects whether an event loop is running and
@@ -88,7 +88,7 @@ from edictum import Edictum, Principal
 from edictum.adapters.crewai import CrewAIAdapter
 from crewai import Agent, Crew, Task
 
-# Configure governance
+# Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = CrewAIAdapter(
     guard=guard,

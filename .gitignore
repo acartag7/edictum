@@ -9,9 +9,11 @@ site/
 .pytest_cache/
 *.egg
 
-# Claude Code (personal config)
+# Claude Code (personal config stays local, skills/agents are shared)
 CLAUDE.local
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/agents/
 
 # Internal research notes
 docs/ADAPTER_INSIGHTS.md

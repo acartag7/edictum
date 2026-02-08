@@ -1,6 +1,6 @@
 # Built-in Templates
 
-Edictum ships three built-in contract templates for common agent patterns. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point for your own policies.
+Edictum ships three built-in contract templates for common agent patterns. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point for your own contracts.
 
 ---
 
@@ -14,7 +14,7 @@ from edictum import Edictum
 guard = Edictum.from_template("file-agent")
 ```
 
-This is equivalent to calling `Edictum.from_yaml()` on the template's YAML file, which means it goes through the same validation, compilation, and policy hashing path as any custom bundle.
+This is equivalent to calling `Edictum.from_yaml()` on the template's YAML file, which means it goes through the same validation, compilation, and contract bundle hashing path as any custom bundle.
 
 All `from_yaml()` options are available on `from_template()`:
 
@@ -179,13 +179,13 @@ contracts:
 
 **pii-in-output** -- This postcondition runs against all tools (wildcard `*`) and uses `matches_any` with a regex pattern for US Social Security Numbers (`\d{3}-\d{2}-\d{4}`). Because this is a postcondition, it cannot block the tool call -- it emits a warning so the agent (or a human reviewer) knows to redact the output before using it downstream. To detect additional PII patterns like IBAN numbers or credit card numbers, add more regex patterns to the `matches_any` array.
 
-**session-limits** -- The session contract sets two counters. `max_tool_calls: 50` caps successful executions, preventing an agent from doing unbounded work. `max_attempts: 100` caps total governance evaluations, including denied calls. The attempt limit is set higher than the tool call limit because some denied calls are expected (the agent may probe a few blocked paths before finding an allowed one). If attempts hit the ceiling, the agent is likely stuck in a denial loop.
+**session-limits** -- The session contract sets two counters. `max_tool_calls: 50` caps successful executions, preventing an agent from doing unbounded work. `max_attempts: 100` caps total contract evaluations, including denied calls. The attempt limit is set higher than the tool call limit because some denied calls are expected (the agent may probe a few blocked paths before finding an allowed one). If attempts hit the ceiling, the agent is likely stuck in a denial loop.
 
 ---
 
 ## `devops-agent`
 
-The devops-agent template is the most comprehensive built-in policy. It combines secret protection, destructive command blocking, role-based access control for production deploys, ticket-required change management, PII detection, and session limits.
+The devops-agent template is the most comprehensive built-in contract bundle. It combines secret protection, destructive command blocking, role-based access control for production deploys, ticket-required change management, PII detection, and session limits.
 
 ### Rules
 
@@ -319,6 +319,6 @@ Common customizations:
 - **Add PII patterns.** Extend `pii-in-output` with IBAN, credit card, or country-specific ID number regex patterns in the `matches_any` array.
 - **Adjust session limits.** Increase or decrease `max_tool_calls` and `max_attempts` based on your agent's expected workload.
 - **Add per-tool limits.** Add `max_calls_per_tool` to the session contract to cap specific high-impact tools like `deploy_service` or `send_notification`.
-- **Add observe-mode rules.** Add new preconditions with `mode: observe` to shadow-test rules before enforcing them. Observed denials are logged as `CALL_WOULD_DENY` audit events without blocking the agent.
+- **Add observe-mode rules.** Add new preconditions with `mode: observe` to shadow-test rules before enforcing them. Observed denials are logged as `CALL_WOULD_DENY` audit events without denying the tool call.
 - **Target additional tools.** Add preconditions for tools specific to your stack (e.g., `run_migration`, `delete_pod`, `send_email`).
 - **Expand sensitive file patterns.** Add entries to `contains_any` arrays to cover patterns specific to your infrastructure (e.g., `terraform.tfvars`, `.npmrc`, `.pypirc`).

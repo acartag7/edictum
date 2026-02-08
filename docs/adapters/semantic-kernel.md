@@ -2,7 +2,7 @@
 
 The `SemanticKernelAdapter` registers an `AUTO_FUNCTION_INVOCATION` filter on a
 Semantic Kernel `Kernel` instance. The filter intercepts every auto-invoked
-function call and runs Edictum governance around it.
+tool call and enforces Edictum contracts around it.
 
 ## Installation
 
@@ -23,8 +23,8 @@ adapter = SemanticKernelAdapter(guard=guard)
 adapter.register(kernel)
 ```
 
-After calling `register(kernel)`, every auto-invoked function call on that
-kernel passes through Edictum governance. No further wiring is needed.
+After calling `register(kernel)`, every auto-invoked tool call on that
+kernel passes through Edictum contract enforcement. No further wiring is needed.
 
 ## Filter Behavior
 
@@ -32,9 +32,9 @@ The adapter registers a filter using
 `@kernel.filter(FilterTypes.AUTO_FUNCTION_INVOCATION)`. Inside the filter:
 
 1. Extracts the function name and arguments from the invocation context.
-2. Runs pre-execution governance.
+2. Evaluates preconditions.
 3. **On allow**: calls `await next(context)` to let Semantic Kernel execute the
-   function, then runs post-execution governance on `context.function_result`.
+   function, then evaluates postconditions against `context.function_result`.
 4. **On deny**: sets `context.function_result` to the denial string and sets
    `context.terminate = True`. The function is never executed, and the kernel
    stops further auto-invocations in the current turn.
@@ -98,7 +98,7 @@ class FileOpsPlugin:
 
 kernel.add_plugin(FileOpsPlugin(), "FileOps")
 
-# Configure governance
+# Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = SemanticKernelAdapter(
     guard=guard,
@@ -107,7 +107,7 @@ adapter = SemanticKernelAdapter(
 )
 adapter.register(kernel)
 
-# Use the kernel -- all auto-invoked functions are governed
+# Use the kernel -- contracts are enforced on all auto-invoked functions
 async def main():
     settings = kernel.get_prompt_execution_settings_from_service_id("chat")
     settings.function_choice_behavior = "auto"

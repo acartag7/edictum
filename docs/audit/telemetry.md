@@ -1,6 +1,6 @@
 # OpenTelemetry Integration
 
-Edictum instruments the governance pipeline with OpenTelemetry spans and metrics.
+Edictum instruments the pipeline with OpenTelemetry spans and metrics.
 When `opentelemetry` is not installed, all instrumentation degrades to silent no-ops
 with zero overhead.
 
@@ -20,7 +20,7 @@ also need an exporter for your backend (e.g. `opentelemetry-exporter-otlp` for O
 
 `GovernanceTelemetry` creates an OTel tracer named `"edictum"` and a meter named
 `"edictum"`. These produce spans and counters that track every tool call through
-the governance pipeline.
+the pipeline.
 
 ### Spans
 
@@ -49,7 +49,7 @@ Attributes are set at different lifecycle stages.
 | `governance.environment` | `string` | Deployment environment |
 | `governance.run_id` | `string` | Unique run identifier |
 
-**Set during governance evaluation:**
+**Set during contract evaluation:**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -106,7 +106,7 @@ configure_otel(
 )
 
 guard = Edictum(...)
-# Governance spans are now emitted to the configured OTLP endpoint
+# Enforcement spans are now emitted to the configured OTLP endpoint
 ```
 
 **Parameters:**
@@ -214,7 +214,7 @@ telemetry.record_allowed(envelope)                # silently ignored
 Edictum spans participate in the standard OTel context propagation. If your
 application already creates spans (e.g. for an HTTP request or an agent loop
 iteration), Edictum spans appear as children of whatever span is active when
-the governance pipeline runs. This gives you a single trace that shows:
+the pipeline runs. This gives you a single trace that shows:
 
 ```
 HTTP POST /agent/run                        [your app]
