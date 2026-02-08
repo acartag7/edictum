@@ -213,6 +213,17 @@ Edictum is currently an in-process library -- contracts are loaded and enforced 
 
 The next step is a central policy server where multiple agents pull contracts on startup, with versioning and hot-reload. This enables multi-agent coordination: one set of contracts governing an entire fleet of agents, with a governance dashboard showing denial rates and contract drift across the organization. See the [roadmap](roadmap.md) for details.
 
+### The Boundary Principle
+
+The split between OSS core and enterprise follows one rule: **evaluation engine = OSS, infrastructure = enterprise.**
+
+- The pipeline that takes a tool call and returns allow/deny/warn is OSS
+- Anything that requires persistence beyond local files, networking, or coordination is enterprise
+- PIIDetector protocol is OSS -- users can write their own detector. Implementations (regex, Presidio) are enterprise
+- Stdout + File (.jsonl) sinks ship in OSS for dev and local audit. Network destinations (Webhook, Splunk, Datadog) are enterprise
+- OTel instrumentation (emitting spans) is OSS. Dashboards and alerting are enterprise
+- Session (MemoryBackend) is OSS for single-process. Multi-process coordination via Edictum Server is enterprise
+
 ---
 
 <details>

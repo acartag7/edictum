@@ -33,12 +33,33 @@ Tool outputs often contain personally identifiable information that should not p
 
 ---
 
+## [Planned] Contract Composition
+
+As contract bundles grow, teams need to share common rules across YAML files without copy-paste.
+
+- **Contract imports** -- reference shared contract fragments from other YAML files
+- **Composition** -- build bundles from reusable pieces, override defaults per-bundle
+
+This stays in OSS core. The contract language and its ergonomics are part of the evaluation engine.
+
+---
+
 ## [Planned] Production Observability
 
-Production deployments need audit data flowing to existing infrastructure, not just stdout.
+Stdout and File (.jsonl) sinks ship today in OSS core for development and local audit. Production deployments need audit data flowing to existing infrastructure.
 
-- **Enterprise audit sinks**: File (`.jsonl`), Webhook, Splunk HEC, Datadog
+- **Enterprise audit sinks**: Webhook, Splunk HEC, Datadog -- network destinations for compliance-grade audit trails
+- **Alert rules** -- notifications on abnormal patterns (denial spikes, PII detections, session exhaustion)
 - **Deployment recipes**: end-to-end guides for OTel to Grafana, Datadog, and Splunk
+
+---
+
+## [Planned] Enterprise Contracts
+
+Single-call contracts cover most enforcement scenarios. Some problems require looking across multiple calls or letting non-engineers author rules.
+
+- **Sequence-aware contracts** -- detect suspicious patterns across multiple tool calls, not just single calls (e.g., read credentials then call external API)
+- **NL → YAML authoring** -- compliance officers describe a rule in English, system generates the YAML contract
 
 ---
 
@@ -50,5 +71,6 @@ Single-agent, in-process enforcement covers most use cases today. For organizati
 - **Governance Dashboard** -- visualize contract evaluations, denial rates, and contract drift across agents
 - **RBAC for contract management** -- control who can create, modify, and deploy contracts
 - **SSO integration** -- Okta, Azure AD
+- **JWT/OIDC principal verification** -- server verifies the agent's claimed identity instead of trusting the caller
 - **Human approval workflows** -- require human sign-off before specific tool calls execute
 - **Cross-agent session tracking** -- correlate tool calls across multiple agents in a single workflow
