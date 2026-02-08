@@ -1,9 +1,9 @@
 # LangChain Adapter
 
-The `LangChainAdapter` connects Edictum to LangChain agents through the
-`tool_call_middleware` system. It produces a `@wrap_tool_call` decorated function
-that intercepts every tool invocation, runs governance checks, and returns a
-`ToolMessage` denial when a call is blocked.
+The `LangChainAdapter` connects Edictum to LangChain agents. It provides three
+integration methods depending on your setup: `as_tool_wrapper()` for `ToolNode`,
+`as_middleware()` for `create_react_agent`, and `as_async_tool_wrapper()` for
+async contexts.
 
 ## Installation
 
@@ -11,51 +11,89 @@ that intercepts every tool invocation, runs governance checks, and returns a
 pip install edictum[langchain]
 ```
 
-This installs `langchain-core >= 0.3`, which provides the `wrap_tool_call`
-middleware decorator.
+This installs `langchain-core >= 0.3`.
 
-## Setup
+## Integration
 
-### 1. Create a Edictum instance
-
-```python
-from edictum import Edictum, Principal
-
-# From YAML contracts
-guard = Edictum.from_yaml("contracts.yaml")
-
-# Or from a built-in template
-guard = Edictum.from_template("research-agent")
-
-# Or with Python contracts
-from edictum import deny_sensitive_reads
-guard = Edictum(contracts=[deny_sensitive_reads()])
-```
-
-### 2. Create the adapter and get the middleware
+The primary integration uses `as_tool_wrapper()` with `ToolNode`:
 
 ```python
+from edictum import Edictum
 from edictum.adapters.langchain import LangChainAdapter
 
-principal = Principal(user_id="alice", role="analyst")
+guard = Edictum.from_yaml("contracts.yaml")
+adapter = LangChainAdapter(guard=guard)
+wrapper = adapter.as_tool_wrapper()
 
-adapter = LangChainAdapter(
-    guard=guard,
-    principal=principal,
-)
-
-middleware = adapter.as_middleware()
+tool_node = ToolNode(tools=tools, wrap_tool_call=wrapper)
+# LangGraph's create_react_agent accepts a ToolNode as the tools parameter
+agent = create_react_agent(model, tools=tool_node)
 ```
 
-### 3. Pass the middleware to your agent
+### Alternative: `as_middleware()`
+
+For agents using `tool_call_middleware` directly:
 
 ```python
-agent = create_react_agent(
-    model=llm,
-    tools=tools,
-    tool_call_middleware=[middleware],
-)
+middleware = adapter.as_middleware()
+agent = create_react_agent(model, tools=tools, tool_call_middleware=[middleware])
 ```
+
+### Alternative: `as_async_tool_wrapper()`
+
+For fully async contexts where you want to avoid the sync-to-async bridge:
+
+```python
+async_wrapper = adapter.as_async_tool_wrapper()
+tool_node = ToolNode(tools=tools, wrap_tool_call=async_wrapper)
+```
+
+## PII Redaction Callback
+
+All three methods accept `on_postcondition_warn`. The callback receives the
+original result and a list of findings, and its return value replaces the tool
+result:
+
+```python
+import re
+
+def redact_pii(result, findings):
+    text = str(result)
+    text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN REDACTED]", text)
+    text = re.sub(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b", "[EMAIL REDACTED]", text)
+    return text
+
+wrapper = adapter.as_tool_wrapper(on_postcondition_warn=redact_pii)
+tool_node = ToolNode(tools=tools, wrap_tool_call=wrapper)
+```
+
+## Known Limitations
+
+### Event Loops
+
+The `as_middleware()` method uses `asyncio.get_event_loop().run_until_complete()`
+to bridge sync and async. This raises a `RuntimeError` if an asyncio event loop
+is already running in the current thread. This can happen when:
+
+- Running inside a Jupyter notebook
+- Running inside an async web framework (FastAPI, Starlette)
+- Running inside any context that already has an active event loop
+
+The `as_tool_wrapper()` method handles this more gracefully by detecting a
+running loop and bridging via `ThreadPoolExecutor`. For fully async contexts,
+use `as_async_tool_wrapper()` to avoid the bridge entirely.
+
+Workarounds for `as_middleware()`:
+
+1. Use `nest_asyncio` to allow nested event loops:
+   ```python
+   import nest_asyncio
+   nest_asyncio.apply()
+   ```
+
+2. Run the agent in a separate thread without an active event loop.
+
+3. Switch to `as_tool_wrapper()` or `as_async_tool_wrapper()`.
 
 ## Full Working Example
 
@@ -64,6 +102,7 @@ from edictum import Edictum, Principal
 from edictum.adapters.langchain import LangChainAdapter
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_react_agent
+from langgraph.prebuilt import ToolNode
 
 # Configure governance
 guard = Edictum.from_yaml("contracts.yaml")
@@ -75,80 +114,19 @@ adapter = LangChainAdapter(
     principal=Principal(user_id="researcher", role="analyst"),
 )
 
-# Get the middleware function
-middleware = adapter.as_middleware()
+# Get the wrapper
+wrapper = adapter.as_tool_wrapper()
 
-# Build the LangChain agent with governance
+# Build LangChain agent with governance
 llm = ChatOpenAI(model="gpt-4o-mini")
 tools = [search_tool, calculator_tool, file_reader_tool]
 
-agent = create_react_agent(
-    model=llm,
-    tools=tools,
-    tool_call_middleware=[middleware],
-)
+tool_node = ToolNode(tools=tools, wrap_tool_call=wrapper)
+agent = create_react_agent(model=llm, tools=tool_node)
 
 # Run -- tool calls are now governed
 result = agent.invoke({"messages": [("user", "Summarize the Q3 report")]})
 ```
-
-## Middleware Behavior
-
-### Pre-check
-
-Before each tool call, the middleware runs the governance pipeline. It extracts
-the tool name, arguments, and call ID from the LangChain `ToolCallRequest`:
-
-```python
-tool_name = request.tool_call["name"]
-tool_args = request.tool_call["args"]
-tool_call_id = request.tool_call["id"]
-```
-
-**On allow**, the middleware returns `None`, signaling LangChain to proceed with
-the tool call via the handler.
-
-**On deny**, the middleware returns a `ToolMessage` with the denial reason:
-
-```python
-ToolMessage(content="DENIED: File /etc/shadow is in the sensitive path denylist", tool_call_id="call_abc123")
-```
-
-LangChain treats this as the tool's response. The LLM sees the denial message
-and can adjust its behavior accordingly.
-
-### Post-check
-
-After the tool executes, the middleware runs postconditions and records the
-execution in the session. Postcondition results are logged to the audit sink but
-do not modify the tool's return value.
-
-## Known Limitation: Event Loops
-
-The LangChain middleware interface is synchronous, but Edictum's governance
-pipeline is async. The adapter bridges this gap using
-`asyncio.get_event_loop().run_until_complete()`.
-
-**This will raise a `RuntimeError` if an asyncio event loop is already running**
-in the current thread. This can happen when:
-
-- Running inside a Jupyter notebook
-- Running inside an async web framework (FastAPI, Starlette)
-- Running inside any context that already has an active event loop
-
-Workarounds:
-
-1. **Use `nest_asyncio`** to allow nested event loops:
-   ```python
-   import nest_asyncio
-   nest_asyncio.apply()
-   ```
-
-2. **Run the agent in a separate thread** that does not have an active event
-   loop.
-
-3. **Use `Edictum.run()` directly** in an async context instead of going
-   through the LangChain middleware.
 
 ## Observe Mode
 
@@ -158,32 +136,9 @@ blocking any tool calls:
 ```python
 guard = Edictum.from_yaml("contracts.yaml", mode="observe")
 adapter = LangChainAdapter(guard=guard)
-middleware = adapter.as_middleware()
+wrapper = adapter.as_tool_wrapper()
 ```
 
-In observe mode, the middleware always returns `None` (allow), even for calls
-that would be denied. `CALL_WOULD_DENY` audit events are emitted so you can
-review enforcement behavior before enabling it.
-
-## Custom Audit Sinks
-
-Route audit events to a file instead of stdout:
-
-```python
-from edictum.audit import FileAuditSink, RedactionPolicy
-
-redaction = RedactionPolicy()
-sink = FileAuditSink("langchain-audit.jsonl", redaction=redaction)
-
-guard = Edictum.from_yaml(
-    "contracts.yaml",
-    audit_sink=sink,
-    redaction=redaction,
-)
-
-adapter = LangChainAdapter(guard=guard)
-```
-
-Every governed tool call produces structured audit events. The `RedactionPolicy`
-scrubs sensitive values (API keys, tokens, passwords) from the logged arguments
-automatically.
+In observe mode, the wrapper always allows tool calls through.
+`CALL_WOULD_DENY` audit events are emitted so you can review enforcement
+behavior before enabling it.

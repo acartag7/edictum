@@ -20,7 +20,15 @@ defaults:
   mode: enforce
 
 contracts:
-  - # ... one or more contracts
+  - id: example-rule
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains: ".env"
+    then:
+      effect: deny
+      message: "Blocked."
 ```
 
 | Field | Type | Required | Description |
@@ -322,6 +330,62 @@ OpenTelemetry span attributes (when OTel SDK is installed):
 - `edictum.policy_error` -- set to `true` if any rule had an evaluation error.
 
 This means you can trace any audit record or OTel span back to the exact YAML file that produced it, and to the specific contract `id` that fired.
+
+---
+
+## Observability Configuration {#observability}
+
+The optional `observability` block configures how Edictum emits telemetry. Place it at the top level of your contract bundle, alongside `metadata`, `defaults`, and `contracts`:
+
+```yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: my-policy
+
+observability:
+  otel:
+    enabled: true
+    endpoint: "http://localhost:4317"
+    protocol: grpc
+    service_name: my-agent
+    resource_attributes:
+      deployment.environment: production
+  stdout: true
+  file: /var/log/edictum/events.jsonl
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: block-sensitive-reads
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains_any: [".env", ".secret", "credentials"]
+    then:
+      effect: deny
+      message: "Sensitive file '{args.path}' blocked."
+      tags: [secrets]
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `observability.otel.enabled` | bool | `false` | Enable OpenTelemetry span emission. |
+| `observability.otel.endpoint` | string | `"http://localhost:4317"` | OTLP collector endpoint. |
+| `observability.otel.protocol` | string | `"grpc"` | Transport protocol: `"grpc"` or `"http"`. |
+| `observability.otel.service_name` | string | `"edictum-agent"` | OTel service name resource attribute. |
+| `observability.otel.resource_attributes` | object | -- | Additional OTel resource attributes (string values). |
+| `observability.stdout` | bool | `true` | Emit audit events to stdout via `StdoutAuditSink`. |
+| `observability.file` | string or null | `null` | Path to a JSON lines audit file. When set, a `FileAuditSink` is created automatically. |
+
+When `observability.otel.enabled` is `true`, `Edictum.from_yaml()` calls `configure_otel()` with the provided settings. If `observability.file` is set and no explicit `audit_sink` is passed to `from_yaml()`, a `FileAuditSink` is created for that path. If `observability.stdout` is `false` and no `file` is set, audit emission is disabled entirely.
+
+Standard OpenTelemetry environment variables override YAML values: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`.
+
+For detailed sink configuration and custom sinks, see [Audit and Observability](../audit/sinks.md).
 
 ---
 

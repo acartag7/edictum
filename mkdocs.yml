@@ -54,19 +54,38 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Why Edictum?: why.md
   - Contracts:
     - YAML Reference: contracts/yaml-reference.md
     - Operators: contracts/operators.md
     - Templates: contracts/templates.md
-  - Adapters:
+    - Patterns:
+      - Overview: contracts/patterns/index.md
+      - Access Control: contracts/patterns/access-control.md
+      - Data Protection: contracts/patterns/data-protection.md
+      - Change Control: contracts/patterns/change-control.md
+      - Rate Limiting: contracts/patterns/rate-limiting.md
+      - Compliance & Audit: contracts/patterns/compliance.md
+      - Advanced: contracts/patterns/advanced.md
+  - Framework Adapters:
     - Overview: adapters/overview.md
-    - Claude SDK: adapters/claude-sdk.md
     - LangChain: adapters/langchain.md
+    - OpenAI Agents: adapters/openai-agents.md
     - CrewAI: adapters/crewai.md
-    - Others: adapters/others.md
-  - CLI: cli.md
-  - Audit:
-    - Sinks: audit/sinks.md
-    - Telemetry: audit/telemetry.md
+    - Agno: adapters/agno.md
+    - Semantic Kernel: adapters/semantic-kernel.md
+    - Claude SDK: adapters/claude-sdk.md
+  - Guides:
+    - Writing Contracts: guides/writing-contracts.md
+    - Testing Contracts: guides/testing-contracts.md
+    - Adapter Comparison: guides/adapter-comparison.md
+    - Observability: guides/observability.md
+    - Postcondition Design: guides/postcondition-design.md
+    - Adversarial Testing: guides/adversarial.md
+  - Reference:
+    - Postcondition Findings: findings.md
+    - Audit Sinks: audit/sinks.md
+    - OpenTelemetry: audit/telemetry.md
+    - CLI: cli.md
   - Architecture: architecture.md
   - Compliance: compliance.md

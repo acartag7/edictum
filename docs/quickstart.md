@@ -1,384 +1,202 @@
 # Quickstart
 
-## Installation
+## 1. Install
 
 ```bash
-pip install edictum            # core only
-pip install edictum[all]       # all 6 framework adapters + OTel
-pip install edictum[langchain] # individual adapter extras
+pip install edictum[yaml]
 ```
 
-Requires Python 3.11+. Zero runtime dependencies for the core package.
+Requires Python 3.11+.
 
-## Framework-Agnostic Usage (guard.run)
+## 2. Write a Contract
 
-`guard.run()` is the simplest way to govern a tool call. It runs the full governance pipeline, executes the tool if allowed, and raises `EdictumDenied` if blocked.
+Save this as `contracts.yaml`:
+
+```yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: agent-safety
+defaults:
+  mode: enforce
+contracts:
+  - id: block-dotenv
+    type: pre
+    tool: read_file
+    when:
+      args.path: { contains: ".env" }
+    then:
+      effect: deny
+      message: "Blocked read of sensitive file: {args.path}"
+
+  - id: block-destructive-commands
+    type: pre
+    tool: run_command
+    when:
+      any:
+        - args.command: { starts_with: "rm " }
+        - args.command: { starts_with: "DROP " }
+        - args.command: { contains: "mkfs" }
+    then:
+      effect: deny
+      message: "Destructive command blocked: {args.command}"
+
+  - id: session-limits
+    type: session
+    limits:
+      max_tool_calls: 50
+      max_attempts: 120
+      max_calls_per_tool:
+        run_command: 10
+    then:
+      effect: deny
+      message: "Session limit reached."
+```
+
+## 3. Run It
+
+Save this as `demo.py`:
 
 ```python
 import asyncio
-from edictum import (
-    Edictum,
-    EdictumDenied,
-    EdictumToolError,
-    Verdict,
-    deny_sensitive_reads,
-    precondition,
-)
+from edictum import Edictum, EdictumDenied
 
 
-# A custom precondition: block Bash commands starting with "rm"
-@precondition("Bash")
-def no_destructive_commands(envelope):
-    if envelope.bash_command and envelope.bash_command.strip().startswith("rm"):
-        return Verdict.fail(
-            "Destructive command blocked. Use a safer alternative or "
-            "request explicit approval before deleting files."
-        )
-    return Verdict.pass_()
+guard = Edictum.from_yaml("contracts.yaml")
 
 
-guard = Edictum(
-    contracts=[
-        deny_sensitive_reads(),
-        no_destructive_commands,
-    ],
-)
+async def read_file(path):
+    return f"contents of {path}"
 
 
-async def run_bash(command):
-    """Mock tool — in production this would execute a shell command."""
+async def run_command(command):
     return f"executed: {command}"
 
 
 async def main():
-    # Allowed: normal command
-    result = await guard.run("Bash", {"command": "ls -la"}, run_bash)
-    print(result)  # "executed: ls -la"
+    # Allowed: normal file read
+    result = await guard.run("read_file", {"path": "readme.txt"}, read_file)
+    print(f"OK: {result}")
+
+    # Denied: .env file
+    try:
+        await guard.run("read_file", {"path": ".env"}, read_file)
+    except EdictumDenied as e:
+        print(f"DENIED: {e.reason}")
 
     # Denied: destructive command
     try:
-        await guard.run("Bash", {"command": "rm -rf /tmp/data"}, run_bash)
+        await guard.run("run_command", {"command": "rm -rf /tmp"}, run_command)
     except EdictumDenied as e:
-        print(f"Denied: {e.reason}")
-        print(f"Source: {e.decision_source}")  # "precondition"
-
-    # Denied: sensitive path
-    try:
-        await guard.run(
-            "Read",
-            {"file_path": "/home/user/.ssh/id_rsa"},
-            lambda file_path: open(file_path).read(),
-        )
-    except EdictumDenied as e:
-        print(f"Denied: {e.reason}")
+        print(f"DENIED: {e.reason}")
 
 
 asyncio.run(main())
 ```
 
-### Observe Mode
+Expected output:
 
-Observe mode runs the full pipeline but never blocks. Denials are logged as `CALL_WOULD_DENY` instead of `CALL_DENIED`. Use this for shadow deployment -- see what *would* break before enforcing rules.
-
-```python
-import asyncio
-from edictum import Edictum, Verdict, deny_sensitive_reads, precondition
-from edictum.audit import FileAuditSink
-
-
-guard = Edictum(
-    mode="observe",
-    contracts=[deny_sensitive_reads()],
-    audit_sink=FileAuditSink("audit.jsonl"),
-)
-
-
-async def run_bash(command):
-    return f"executed: {command}"
-
-
-async def main():
-    # This would be denied in enforce mode, but observe mode allows it through.
-    # The audit log records CALL_WOULD_DENY so you can review violations.
-    result = await guard.run("Bash", {"command": "cat ~/.ssh/id_rsa"}, run_bash)
-    print(result)  # "executed: cat ~/.ssh/id_rsa"
-
-
-asyncio.run(main())
+```
+OK: contents of readme.txt
+DENIED: Blocked read of sensitive file: .env
+DENIED: Destructive command blocked: rm -rf /tmp
 ```
 
-## Framework Adapters
+## 4. Add to Your Framework
 
-Edictum ships thin adapters for 6 agent frameworks. Each translates between the framework's hook interface and the shared governance pipeline.
+Create the guard from the same YAML, then use the adapter for your framework.
 
 ```python
-from edictum import Edictum, deny_sensitive_reads, OperationLimits
+from edictum import Edictum
 
-guard = Edictum(
-    contracts=[deny_sensitive_reads()],
-    limits=OperationLimits(max_tool_calls=100),
-)
+guard = Edictum.from_yaml("contracts.yaml")
 ```
 
-**LangChain:**
+### LangChain
+
 ```python
 from edictum.adapters.langchain import LangChainAdapter
-adapter = LangChainAdapter(guard, session_id="session-lc")
-# pre_result = await adapter._pre_tool_call(request)
-# await adapter._post_tool_call(request, result)
+
+adapter = LangChainAdapter(guard)
+
+# Option A: ToolNode wrapper
+from langgraph.prebuilt import ToolNode
+
+tool_node = ToolNode(tools=tools, wrap_tool_call=adapter.as_tool_wrapper())
+
+# Option B: Middleware
+middleware = adapter.as_middleware()
+# Pass to agent as tool_call_middleware=[middleware]
 ```
 
-**CrewAI:**
-```python
-from edictum.adapters.crewai import CrewAIAdapter
-adapter = CrewAIAdapter(guard, session_id="session-crew")
-# allowed = await adapter._before_hook(context)  # False = denied
-# await adapter._after_hook(context)
-```
+### OpenAI Agents SDK
 
-**Agno:**
-```python
-from edictum.adapters.agno import AgnoAdapter
-adapter = AgnoAdapter(guard, session_id="session-agno")
-# result = await adapter._hook_async(name, callable, args)
-```
-
-**Semantic Kernel:**
-```python
-from edictum.adapters.semantic_kernel import SemanticKernelAdapter
-adapter = SemanticKernelAdapter(guard, session_id="session-sk")
-# pre = await adapter._pre(name, args, call_id)  # {} or "DENIED: ..."
-# await adapter._post(call_id, result)
-```
-
-**OpenAI Agents SDK:**
 ```python
 from edictum.adapters.openai_agents import OpenAIAgentsAdapter
-adapter = OpenAIAgentsAdapter(guard, session_id="session-oai")
-# pre = await adapter._pre(name, args, call_id)  # None or "DENIED: ..."
-# await adapter._post(call_id, result)
+from agents import function_tool
+
+adapter = OpenAIAgentsAdapter(guard)
+input_gr, output_gr = adapter.as_guardrails()
+
+@function_tool(
+    tool_input_guardrails=[input_gr],
+    tool_output_guardrails=[output_gr],
+)
+def read_file(path: str) -> str:
+    """Read a file and return its contents."""
+    return open(path).read()
 ```
 
-**Claude Agent SDK:**
+### CrewAI
+
+```python
+from edictum.adapters.crewai import CrewAIAdapter
+
+adapter = CrewAIAdapter(guard)
+adapter.register()
+# Hooks are now active for all CrewAI tool calls
+```
+
+### Agno
+
+```python
+from edictum.adapters.agno import AgnoAdapter
+from agno.agent import Agent
+
+adapter = AgnoAdapter(guard)
+hook = adapter.as_tool_hook()
+
+agent = Agent(tool_hooks=[hook])
+```
+
+### Semantic Kernel
+
+```python
+from edictum.adapters.semantic_kernel import SemanticKernelAdapter
+from semantic_kernel.kernel import Kernel
+
+kernel = Kernel()
+adapter = SemanticKernelAdapter(guard)
+adapter.register(kernel)
+```
+
+### Claude Agent SDK
+
 ```python
 from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
-adapter = ClaudeAgentSDKAdapter(guard, session_id="session-claude")
-# pre = await adapter._pre_tool_use(name, input, id)  # {} or deny dict
-# await adapter._post_tool_use(id, response)
+
+adapter = ClaudeAgentSDKAdapter(guard)
+hooks = adapter.to_sdk_hooks()
+# hooks = {"pre_tool_use": ..., "post_tool_use": ...}
 ```
 
-Each adapter manages pending state between pre and post hooks, tracks call indices, and emits audit events. See [examples/](../examples/) for live demos of all 6 adapters.
+## 5. Observe Mode
 
-## Writing Contracts
+Change one line in your YAML to shadow-test contracts without blocking anything:
 
-### Preconditions
-
-Preconditions run before execution. They receive a `ToolEnvelope` and return a `Verdict`. If the verdict fails, the tool call is denied and the agent receives the failure message.
-
-```python
-from edictum import Verdict, precondition
-
-
-# Target a specific tool
-@precondition("Bash")
-def require_safe_prefix(envelope):
-    allowed = ["ls", "cat", "git status", "git diff", "pwd"]
-    cmd = (envelope.bash_command or "").strip()
-    if not any(cmd == p or cmd.startswith(p + " ") for p in allowed):
-        return Verdict.fail(
-            f"Command '{cmd}' is not in the safe prefix list. "
-            "Use one of: ls, cat, git status, git diff, pwd."
-        )
-    return Verdict.pass_()
-
-
-# Target all tools with a wildcard
-@precondition("*")
-def block_production(envelope):
-    if envelope.environment == "production":
-        return Verdict.fail("Tool calls are disabled in production.")
-    return Verdict.pass_()
+```yaml
+defaults:
+  mode: observe   # was: enforce
 ```
 
-### Postconditions
-
-Postconditions run after execution. They are observe-only -- they emit warnings but never block. The warning message adapts to the tool's side-effect classification:
-
-- **Pure/Read tools:** warning suggests retrying.
-- **Write/Irreversible tools:** warning says "assess before proceeding" (no retry coaching for something that already mutated state).
-
-```python
-from edictum import Verdict
-from edictum.contracts import postcondition
-
-
-@postcondition("Bash")
-def check_exit_status(envelope, result):
-    if isinstance(result, str) and "Error:" in result:
-        return Verdict.fail(
-            f"Bash command returned an error: {result[:200]}"
-        )
-    return Verdict.pass_()
-```
-
-### Session Contracts
-
-Session contracts check cross-turn state using persisted atomic counters. They must be async because session methods are async.
-
-```python
-from edictum import Verdict
-from edictum.contracts import session_contract
-
-
-@session_contract
-async def limit_bash_calls(session):
-    bash_count = await session.tool_execution_count("Bash")
-    if bash_count >= 50:
-        return Verdict.fail(
-            "Bash execution limit reached (50). Summarize progress "
-            "and use non-Bash tools to continue."
-        )
-    return Verdict.pass_()
-```
-
-## Writing Hooks
-
-Hooks are lower-level than contracts. A before-hook receives the `ToolEnvelope` and returns a `HookDecision`. Hooks run before preconditions in the pipeline.
-
-```python
-from edictum import Edictum
-from edictum.hooks import HookDecision
-from edictum.types import HookRegistration
-
-
-def log_and_allow(envelope):
-    print(f"[hook] tool={envelope.tool_name} args={envelope.args}")
-    return HookDecision.allow()
-
-
-def deny_after_hours(envelope):
-    from datetime import datetime, timezone
-    hour = datetime.now(timezone.utc).hour
-    if hour < 6 or hour > 22:
-        return HookDecision.deny("Tool calls blocked outside business hours (06-22 UTC).")
-    return HookDecision.allow()
-
-
-guard = Edictum(
-    hooks=[
-        HookRegistration(phase="before", tool="*", callback=log_and_allow),
-        HookRegistration(phase="before", tool="Bash", callback=deny_after_hours),
-    ],
-)
-```
-
-After-hooks observe the result. They receive `(envelope, result)` and don't return a decision.
-
-```python
-def audit_after(envelope, result):
-    print(f"[after] {envelope.tool_name} completed")
-
-
-guard = Edictum(
-    hooks=[
-        HookRegistration(phase="after", tool="*", callback=audit_after),
-    ],
-)
-```
-
-## Audit & Redaction
-
-Every tool call emits a structured `AuditEvent` to a configurable sink. Two built-in sinks are provided:
-
-```python
-from edictum import Edictum
-from edictum.audit import FileAuditSink, RedactionPolicy, StdoutAuditSink
-
-# JSON to stdout (default)
-guard = Edictum(audit_sink=StdoutAuditSink())
-
-# JSON lines to a file
-guard = Edictum(audit_sink=FileAuditSink("audit.jsonl"))
-```
-
-### Redaction
-
-`RedactionPolicy` strips sensitive data at write time. Redaction is destructive -- there is no recovery path.
-
-What gets auto-redacted:
-
-- **Sensitive keys:** any dict key containing `token`, `key`, `secret`, `password`, or `credential` (plus a full default set).
-- **Secret value patterns:** OpenAI keys (`sk-...`), AWS access keys (`AKIA...`), JWTs (`eyJ...`), GitHub tokens (`ghp_...`), Slack tokens (`xox...`).
-- **Bash credentials:** `export SECRET_KEY=...`, `-p password`, URL credentials (`://user:pass@`).
-- **Payload cap:** audit events exceeding 32KB are truncated.
-
-Custom configuration:
-
-```python
-from edictum import Edictum
-from edictum.audit import FileAuditSink, RedactionPolicy
-
-redaction = RedactionPolicy(
-    sensitive_keys={"my_internal_token", "database_url", "password"},
-)
-
-guard = Edictum(
-    audit_sink=FileAuditSink("audit.jsonl", redaction=redaction),
-    redaction=redaction,
-)
-```
-
-### Custom Sink
-
-Implement the `AuditSink` protocol -- a single async `emit(event)` method:
-
-```python
-class MyAuditSink:
-    async def emit(self, event):
-        # event is an AuditEvent dataclass
-        print(f"{event.action}: {event.tool_name}")
-```
-
-## Operation Limits
-
-Operation limits cap how many tool calls an agent can make in a session. Two counter types serve different purposes:
-
-- **`max_attempts`** caps all governance evaluations, including denied ones. This catches denial loops where an agent keeps retrying the same blocked call.
-- **`max_tool_calls`** caps only successful executions. This caps total work done.
-- **`max_calls_per_tool`** caps individual tools independently.
-
-```python
-from edictum import Edictum, OperationLimits
-
-guard = Edictum(
-    limits=OperationLimits(
-        max_attempts=100,
-        max_tool_calls=50,
-        max_calls_per_tool={"Bash": 20, "Write": 10},
-    ),
-)
-```
-
-When a limit fires, the denial message tells the agent to stop and reassess rather than retry.
-
-## Observe Mode
-
-Set `mode="observe"` to run the full governance pipeline without blocking anything. The pipeline evaluates all rules, emits audit events, but converts denials to `CALL_WOULD_DENY` and allows the tool through.
-
-Use this for:
-
-- **Shadow deployment.** Deploy Edictum alongside your agent, collect audit logs, and tune rules before switching to enforce mode.
-- **Rule development.** Write new preconditions and see what they'd block without disrupting the agent.
-- **Compliance auditing.** Record every tool call with governance evaluation results, even if you don't want to block anything yet.
-
-The audit trail distinguishes three states:
-
-| Audit Action | Meaning |
-|---|---|
-| `CALL_ALLOWED` | Pipeline passed, tool executed |
-| `CALL_DENIED` | Pipeline denied, tool did not execute (enforce mode) |
-| `CALL_WOULD_DENY` | Pipeline denied, tool executed anyway (observe mode) |
-
-## What's Next
-
-- [Architecture overview](architecture.md) for the full module structure and design decisions.
+In observe mode, calls that would be denied are logged as `CALL_WOULD_DENY` audit events but allowed to proceed. Review the audit trail, tune your rules, then switch back to `enforce` when ready.
