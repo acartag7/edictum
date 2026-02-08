@@ -69,9 +69,12 @@ $ edictum check contracts.yaml --tool read_file --args '{"path": ".env"}'
 **Framework integration (one adapter, same guard)**
 
 ```python
-from edictum.adapters.langchain import EdictumMiddleware
+from edictum import Edictum, Principal
+from edictum.adapters.langchain import LangChainAdapter
 
-middleware = EdictumMiddleware(guard)
+guard = Edictum.from_yaml("contracts.yaml")
+adapter = LangChainAdapter(guard, principal=Principal(role="analyst"))
+wrapper = adapter.as_tool_wrapper()
 # Wraps any LangChain tool — preconditions, audit, and session limits apply automatically
 ```
 
