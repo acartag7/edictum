@@ -1,89 +1,34 @@
 # Claude Agent SDK Adapter
 
-The `ClaudeAgentSDKAdapter` connects Edictum to Anthropic's Claude Agent SDK.
-It translates governance decisions into the SDK's hook format -- a dict with
-`pre_tool_use` and `post_tool_use` async functions that the SDK calls before and
-after every tool invocation.
+The `ClaudeAgentSDKAdapter` enforces contracts on tool calls made through
+Anthropic's Claude Agent SDK. It produces a hooks dict with `pre_tool_use` and
+`post_tool_use` async functions.
 
 ## Installation
-
-The Claude Agent SDK adapter requires only the YAML engine for contract loading.
-No additional framework dependencies are needed:
 
 ```bash
 pip install edictum[yaml]
 ```
 
-## Setup
+No additional framework dependencies are needed beyond the YAML engine.
 
-### 1. Create a Edictum instance
-
-Load contracts from a YAML file, a built-in template, or define them in Python:
+## Integration
 
 ```python
 from edictum import Edictum, Principal
-
-# From a YAML contract bundle
-guard = Edictum.from_yaml("contracts.yaml")
-
-# Or from a built-in template
-guard = Edictum.from_template("file-agent")
-
-# Or with Python contracts
-from edictum import deny_sensitive_reads
-guard = Edictum(contracts=[deny_sensitive_reads()])
-```
-
-### 2. Create the adapter
-
-```python
 from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 
-principal = Principal(
-    user_id="alice",
-    role="sre",
-    ticket_ref="JIRA-1234",
-    claims={"department": "platform"},
-)
-
-adapter = ClaudeAgentSDKAdapter(
-    guard=guard,
-    principal=principal,
-)
-```
-
-### 3. Get the hooks dict
-
-```python
-hooks = adapter.to_sdk_hooks()
-# hooks == {"pre_tool_use": <async fn>, "post_tool_use": <async fn>}
-```
-
-Pass this dict when creating your Claude client or agent. The SDK will call
-`pre_tool_use` before each tool invocation and `post_tool_use` after.
-
-## Full Working Example
-
-```python
-import asyncio
-from edictum import Edictum, Principal
-from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
-
-# Define contracts via YAML
 guard = Edictum.from_yaml("contracts.yaml")
-
-# Create adapter with identity context
 adapter = ClaudeAgentSDKAdapter(
     guard=guard,
     session_id="session-001",
     principal=Principal(user_id="deploy-bot", role="ci"),
 )
 
-# Get hooks for the SDK
 hooks = adapter.to_sdk_hooks()
+# hooks == {"pre_tool_use": <async fn>, "post_tool_use": <async fn>}
 
 # Pass hooks to your Claude agent/client setup:
-#
 #   client = Claude(
 #       model="claude-sonnet-4-20250514",
 #       tools=[...],
@@ -92,11 +37,30 @@ hooks = adapter.to_sdk_hooks()
 #   response = await client.run("Deploy the staging environment")
 ```
 
+The `to_sdk_hooks()` method returns a dict. Pass it when creating your Claude
+client or agent. The SDK calls `pre_tool_use` before each tool call and
+`post_tool_use` after.
+
+## Loading Contracts
+
+Contracts can be loaded from a YAML file, a built-in template, or defined in
+Python:
+
+```python
+# From a YAML contract bundle
+guard = Edictum.from_yaml("contracts.yaml")
+
+# From a built-in template
+guard = Edictum.from_template("file-agent")
+
+# From Python contracts
+from edictum import deny_sensitive_reads
+guard = Edictum(contracts=[deny_sensitive_reads()])
+```
+
 ## Hook Behavior
 
 ### Pre-hook (`pre_tool_use`)
-
-The pre-hook receives three positional arguments and optional kwargs:
 
 ```python
 async def pre_tool_use(tool_name: str, tool_input: dict, tool_use_id: str, **kwargs) -> dict
@@ -127,7 +91,7 @@ The post-hook runs after tool execution to evaluate postconditions:
 async def post_tool_use(tool_use_id: str, tool_response: Any = None, **kwargs) -> dict
 ```
 
-If postconditions produce warnings, they are returned as additional context:
+If postconditions produce findings, they are returned as additional context:
 
 ```python
 {
@@ -138,11 +102,21 @@ If postconditions produce warnings, they are returned as additional context:
 }
 ```
 
-If no warnings are raised, the post-hook returns `{}`.
+If no findings are raised, the post-hook returns `{}`.
+
+## Known Limitations
+
+- **Side-effect only**: The hook cannot replace the tool result. PII detection
+  produces findings that are logged and returned as additional context, but the
+  original tool output still reaches the model.
+
+- **No result transformation**: Unlike wrap-around adapters (LangChain, Agno),
+  the `on_postcondition_warn` callback return value is ignored. Use the callback
+  for side effects only (logging, alerting).
 
 ## Observe Mode
 
-To deploy contracts without enforcement, create the guard in observe mode:
+Deploy contracts without enforcement to see what would be denied:
 
 ```python
 guard = Edictum.from_yaml("contracts.yaml", mode="observe")
@@ -151,17 +125,17 @@ adapter = ClaudeAgentSDKAdapter(guard=guard)
 
 In observe mode, calls that would be denied are instead allowed through. The
 adapter emits `CALL_WOULD_DENY` audit events so you can see what would have been
-blocked. This is useful for validating contracts in production before switching
+denied. This is useful for validating contracts in production before switching
 to `mode="enforce"`.
 
 The pre-hook returns `{}` (allow) even for denied calls, and the OTel span
-records `governance.action = "would_deny"` with the reason.
+records `edictum.verdict = "would_deny"` with the reason.
 
 ## Audit and Observability
 
 By default, audit events are printed to stdout as JSON. You can direct them to a
-file for local development, or enable OpenTelemetry to route governance spans to
-any observability backend (Datadog, Splunk, Grafana, Jaeger):
+file for local development, or enable OpenTelemetry to route spans to any
+observability backend (Datadog, Splunk, Grafana, Jaeger):
 
 ```python
 from edictum import Edictum
@@ -195,7 +169,7 @@ The adapter tracks per-session state automatically:
 
 - **`session_id`** groups tool calls into a session. If you omit it, a UUID is
   generated. Access it via `adapter.session_id`.
-- **Attempt count** increments before every governance check (even denied calls).
+- **Attempt count** increments before every contract evaluation (even denied calls).
 - **Execution count** increments only when a tool actually runs.
 - **Call index** is a monotonic counter within the adapter instance.
 

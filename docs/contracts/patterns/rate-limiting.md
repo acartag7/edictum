@@ -52,7 +52,7 @@ Cap the total number of tool calls in a session. This is the most common session
 
 **How it works:**
 - `max_tool_calls` counts successful tool executions. When the agent has completed 50 tool calls, further calls are denied.
-- `max_attempts` counts all governance evaluations, including denied calls. If the agent hits 120 attempts before 50 successful calls, something is wrong -- the agent is likely stuck in a denial loop.
+- `max_attempts` counts all contract evaluations, including denied calls. If the agent hits 120 attempts before 50 successful calls, something is wrong -- the agent is likely stuck in a denial loop.
 
 **Gotchas:**
 - Set `max_attempts` higher than `max_tool_calls`. Some denied attempts are normal -- the agent may probe a few blocked paths before finding an allowed one. A ratio of roughly 2:1 to 3:1 (attempts to calls) is typical.

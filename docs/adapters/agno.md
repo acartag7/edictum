@@ -41,9 +41,9 @@ The hook function receives three arguments:
 
 The adapter controls the full lifecycle:
 
-1. Runs pre-execution governance on the tool name and arguments.
+1. Evaluates preconditions against the tool name and arguments.
 2. If allowed, calls `function_call(**arguments)` to execute the tool.
-3. Runs post-execution governance on the result.
+3. Evaluates postconditions against the result.
 4. Returns the tool result on success or `"DENIED: <reason>"` on deny.
 
 Because the adapter wraps the entire call, it can both block execution and
@@ -74,7 +74,7 @@ hook = adapter.as_tool_hook(on_postcondition_warn=redact_pii)
   keyword arguments, not a single positional dict.
 
 - **Async-to-sync bridging**: Agno hooks are synchronous, but Edictum's
-  governance pipeline is async. When no event loop is running, the adapter uses
+  pipeline is async. When no event loop is running, the adapter uses
   `asyncio.run()`. When a loop is already running (common in async frameworks),
   it spins up a `ThreadPoolExecutor` with a single worker to run the async code
   in a fresh event loop. Objects with thread affinity (e.g., some DB
@@ -90,7 +90,7 @@ from edictum import Edictum, Principal
 from edictum.adapters.agno import AgnoAdapter
 from agno import Agent
 
-# Configure governance
+# Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
 
 adapter = AgnoAdapter(
@@ -111,7 +111,7 @@ def read_file(path: str) -> str:
     with open(path) as f:
         return f.read()
 
-# Build agent with governance
+# Build agent with contract enforcement
 agent = Agent(
     model="gpt-4o-mini",
     tools=[search_documents, read_file],

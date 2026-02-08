@@ -1,6 +1,6 @@
 # Postcondition Findings
 
-When a postcondition contract detects an issue in tool output (PII, secrets, policy violations),
+When a postcondition contract detects an issue in tool output (PII, secrets, contract violations),
 Edictum produces structured **findings** that your application can act on.
 
 ## The Pattern: Detect -> Remediate
@@ -8,7 +8,7 @@ Edictum produces structured **findings** that your application can act on.
 Edictum separates detection from remediation:
 
 - **Contracts detect** -- YAML postconditions evaluate tool output, produce findings
-- **Your code remediates** -- a callback transforms the result before the LLM sees it
+- **Your code remediates** -- a callback transforms the result before the LLM sees it (when the adapter supports result interception; Claude SDK and OpenAI Agents log findings but cannot replace results)
 
 ```python
 from edictum import Edictum
@@ -146,7 +146,7 @@ The callback behavior differs depending on whether the adapter controls tool exe
 | **LangChain** | Wrap-around | **Replaces** tool result — the LLM sees the callback return value |
 | **Agno** | Wrap-around | **Replaces** tool result |
 | **Semantic Kernel** | Filter | **Replaces** `context.function_result` |
-| **CrewAI** | Hook | Side-effect only — return value ignored (framework controls result) |
+| **CrewAI** | Hook | **Replaces** tool result — callback return value replaces the original |
 | **Claude Agent SDK** | Hook | Side-effect only — return value ignored |
 | **OpenAI Agents SDK** | Guardrail | Side-effect only — return value ignored |
 
@@ -181,7 +181,7 @@ transformed result reaches the LLM depends on the framework:
 | Agno | `str` | Yes — return new string | Full |
 | Semantic Kernel | `str` (wrapped in `FunctionResult`) | Yes | Full |
 | OpenAI Agents | `str` | No — allow/reject only | Logged only |
-| CrewAI | `str` | Partial (undocumented) | Partial |
+| CrewAI | `str` | Yes — via register() callback | Via callback |
 | Claude Agent SDK | `Any` | No — side-effect only | Logged only |
 
 For regulated environments requiring PII interception, use LangChain, Agno,

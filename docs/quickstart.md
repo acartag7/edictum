@@ -1,5 +1,7 @@
 # Quickstart
 
+In five minutes you will install Edictum, write a contract, and see it deny a dangerous tool call. The denied call never executes -- the agent sees a denial message and the audit trail records what happened.
+
 ## 1. Install
 
 ```bash
@@ -39,7 +41,7 @@ contracts:
         - args.command: { contains: "mkfs" }
     then:
       effect: deny
-      message: "Destructive command blocked: {args.command}"
+      message: "Destructive command denied: {args.command}"
 
   - id: session-limits
     type: session
@@ -52,6 +54,8 @@ contracts:
       effect: deny
       message: "Session limit reached."
 ```
+
+Three contracts: one denies reads of `.env` files, one denies destructive commands, and one caps the session at 50 tool calls.
 
 ## 3. Run It
 
@@ -78,13 +82,13 @@ async def main():
     result = await guard.run("read_file", {"path": "readme.txt"}, read_file)
     print(f"OK: {result}")
 
-    # Denied: .env file
+    # DENIED: agent tries to read .env
     try:
         await guard.run("read_file", {"path": ".env"}, read_file)
     except EdictumDenied as e:
         print(f"DENIED: {e.reason}")
 
-    # Denied: destructive command
+    # DENIED: agent tries to rm -rf
     try:
         await guard.run("run_command", {"command": "rm -rf /tmp"}, run_command)
     except EdictumDenied as e:
@@ -94,13 +98,21 @@ async def main():
 asyncio.run(main())
 ```
 
+Run it:
+
+```bash
+python demo.py
+```
+
 Expected output:
 
 ```
 OK: contents of readme.txt
 DENIED: Blocked read of sensitive file: .env
-DENIED: Destructive command blocked: rm -rf /tmp
+DENIED: Destructive command denied: rm -rf /tmp
 ```
+
+The `.env` file was never read. The `rm -rf` command never executed. Both calls were denied by contracts evaluated in Python, outside the LLM. The agent cannot talk its way past these checks.
 
 ## 4. Add to Your Framework
 
@@ -116,17 +128,10 @@ guard = Edictum.from_yaml("contracts.yaml")
 
 ```python
 from edictum.adapters.langchain import LangChainAdapter
-
-adapter = LangChainAdapter(guard)
-
-# Option A: ToolNode wrapper
 from langgraph.prebuilt import ToolNode
 
+adapter = LangChainAdapter(guard)
 tool_node = ToolNode(tools=tools, wrap_tool_call=adapter.as_tool_wrapper())
-
-# Option B: Middleware
-middleware = adapter.as_middleware()
-# Pass to agent as tool_call_middleware=[middleware]
 ```
 
 ### OpenAI Agents SDK
@@ -164,9 +169,7 @@ from edictum.adapters.agno import AgnoAdapter
 from agno.agent import Agent
 
 adapter = AgnoAdapter(guard)
-hook = adapter.as_tool_hook()
-
-agent = Agent(tool_hooks=[hook])
+agent = Agent(tool_hooks=[adapter.as_tool_hook()])
 ```
 
 ### Semantic Kernel
@@ -190,13 +193,27 @@ hooks = adapter.to_sdk_hooks()
 # hooks = {"pre_tool_use": ..., "post_tool_use": ...}
 ```
 
-## 5. Observe Mode
+All six adapters enforce the same contracts. The YAML does not change between frameworks.
 
-Change one line in your YAML to shadow-test contracts without blocking anything:
+## 5. Observe Mode (Bonus)
+
+Not ready to deny calls in production? Change one line to shadow-test contracts without denying anything:
 
 ```yaml
 defaults:
   mode: observe   # was: enforce
 ```
 
-In observe mode, calls that would be denied are logged as `CALL_WOULD_DENY` audit events but allowed to proceed. Review the audit trail, tune your rules, then switch back to `enforce` when ready.
+In observe mode, calls that would be denied are logged as `CALL_WOULD_DENY` audit events but allowed to proceed. Review the audit trail, tune your contracts, then switch back to `enforce` when ready.
+
+See [observe mode](concepts/observe-mode.md) for the full workflow.
+
+## Next Steps
+
+- **Concepts** -- start here to understand the system:
+    - [How it works](concepts/how-it-works.md) -- the pipeline that evaluates every tool call
+    - [Contracts](concepts/contracts.md) -- the three contract types
+    - [Principals](concepts/principals.md) -- attaching identity context
+    - [Observe mode](concepts/observe-mode.md) -- shadow-testing before enforcement
+- [YAML reference](contracts/yaml-reference.md) -- full contract syntax
+- [Adapters overview](adapters/overview.md) -- detailed setup and limitations for each framework

@@ -1,6 +1,6 @@
 # Advanced Patterns
 
-This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive governance bundles, and per-contract mode overrides.
+This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive contract bundles, and per-contract mode overrides.
 
 ---
 
@@ -8,7 +8,7 @@ This page covers patterns that combine multiple Edictum features: nested boolean
 
 Boolean combinators (`all`, `any`, `not`) nest arbitrarily. Use them to build complex access rules from simple leaves.
 
-**When to use:** Your access policy cannot be expressed as a single condition. You need AND, OR, and NOT logic combined.
+**When to use:** Your access contract cannot be expressed as a single condition. You need AND, OR, and NOT logic combined.
 
 === "YAML"
 
@@ -134,7 +134,7 @@ Combine multiple regex patterns in a single postcondition to detect several cate
 
 **Gotchas:**
 - `matches_any` short-circuits on the first matching pattern. Order patterns from most likely to least likely for performance.
-- All patterns are compiled at policy load time. Invalid regex in any element causes a validation error for the entire bundle.
+- All patterns are compiled at load time. Invalid regex in any element causes a validation error for the entire bundle.
 - Use single-quoted strings in YAML for regex. Double-quoted strings interpret backslash sequences (`\b` becomes backspace, `\d` is literal `d`).
 
 ---
@@ -143,7 +143,7 @@ Combine multiple regex patterns in a single postcondition to detect several cate
 
 The `principal.claims.<key>` selector accesses custom attributes from the `Principal.claims` dictionary. Claims support any value type: strings, numbers, booleans, and lists.
 
-**When to use:** Your authorization model needs attributes beyond role, user_id, and org_id. Claims let you attach domain-specific metadata like department, clearance level, or feature flags.
+**When to use:** Your authorization model needs attributes beyond role, user_id, and org_id. Claims let you attach domain-specific metadata like department, clearance level, or capability entitlements.
 
 === "YAML"
 
@@ -170,17 +170,19 @@ The `principal.claims.<key>` selector accesses custom attributes from the `Princ
           message: "Classified file access requires secret or top-secret clearance."
           tags: [access-control, classified]
 
-      - id: feature-flag-gate
+      - id: entitlement-gate
         type: pre
         tool: send_email
         when:
           not:
-            principal.claims.feature_flags_email: { equals: true }
+            principal.claims.can_send_email: { equals: true }
         then:
           effect: deny
-          message: "Email feature is not enabled for this principal."
-          tags: [feature-flags]
+          message: "Email capability is not enabled for this principal."
+          tags: [entitlements]
     ```
+
+    The `entitlement-gate` contract uses principal claims for identity-based gating -- it checks a per-principal boolean attribute, not a feature flag. This is capability enforcement: the principal either has the entitlement or they don't.
 
 === "Python"
 
@@ -203,13 +205,13 @@ The `principal.claims.<key>` selector accesses custom attributes from the `Princ
         return Verdict.pass_()
 
     @precondition("send_email")
-    def feature_flag_gate(envelope):
+    def entitlement_gate(envelope):
         enabled = (
-            envelope.principal.claims.get("feature_flags_email")
+            envelope.principal.claims.get("can_send_email")
             if envelope.principal else False
         )
         if not enabled:
-            return Verdict.fail("Email feature is not enabled for this principal.")
+            return Verdict.fail("Email capability is not enabled for this principal.")
         return Verdict.pass_()
     ```
 
@@ -240,7 +242,7 @@ principal = Principal(
 
 Edictum ships built-in templates that you can load directly. Templates are complete YAML bundles that go through the same validation and hashing path as custom bundles.
 
-**When to use:** You want a ready-made policy for common agent patterns without writing YAML from scratch.
+**When to use:** You want a ready-made contract bundle for common agent patterns without writing YAML from scratch.
 
 ```python
 from edictum import Edictum
@@ -429,7 +431,7 @@ Messages support `{placeholder}` expansion using the same selector paths as the 
 
 ## Combining Pre + Post + Session
 
-A comprehensive governance bundle combines all three contract types: preconditions block before execution, postconditions warn after execution, and session contracts track cumulative behavior.
+A comprehensive contract bundle combines all three contract types: preconditions block before execution, postconditions warn after execution, and session contracts track cumulative behavior.
 
 **When to use:** Production agent deployments where you need defense in depth across all three dimensions.
 
@@ -613,7 +615,7 @@ Individual contracts can override the bundle's default mode. This lets you mix e
           args.query: { matches: '\\bSELECT\\s+\\*\\b' }
         then:
           effect: deny
-          message: "SELECT * detected (shadow mode). Use explicit column lists."
+          message: "SELECT * detected (observe mode). Use explicit column lists."
           tags: [experimental, sql-quality]
     ```
 

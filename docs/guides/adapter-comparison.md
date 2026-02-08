@@ -15,7 +15,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 | Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets cancel + error | $0.008 |
 | Claude SDK | `to_sdk_hooks()` | No (side-effect only) | Returns deny dict to SDK | N/A |
 
-Cost column reflects a standardized benchmark task using each framework's default model. N/A indicates no published benchmark data for that framework.
+Cost column reflects benchmarks from [edictum-demo](https://github.com/acartag7/edictum-demo) using each framework's default model. N/A indicates no published benchmark data.
 
 ---
 

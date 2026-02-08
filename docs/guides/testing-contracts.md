@@ -25,7 +25,7 @@ Validation checks include:
 
 ---
 
-## CLI Dry Run
+## CLI Contract Check
 
 Use `edictum check` to simulate a tool call against your contracts without executing anything:
 
@@ -136,7 +136,7 @@ Key features:
 
 !!! note "Preconditions only"
     `edictum test` evaluates preconditions only. Postconditions require actual tool
-    output, and session contracts (rate limits, max-calls policies) require
+    output, and session contracts (rate limits, max-calls contracts) require
     accumulated state across multiple calls. For postcondition and session contract
     testing, use pytest (see below).
 
@@ -175,7 +175,7 @@ def test_normal_read_allowed(guard):
 
 Test patterns to cover:
 
-- **Denied calls** -- assert that `EdictumDenied` is raised for calls that should be blocked.
+- **Denied calls** -- assert that `EdictumDenied` is raised for calls that should be denied.
 - **Allowed calls** -- assert that the tool result is returned for calls that should pass.
 - **Edge cases** -- test boundary values, missing principal fields, wildcard tool targets.
 - **Session limits** -- call `guard.run()` in a loop to verify session-level limits fire at the correct count.
@@ -184,7 +184,7 @@ Test patterns to cover:
 
 ## Integration Testing With Observe Mode
 
-Test contracts in a running system without blocking real tool calls. Deploy with `mode: observe` and collect audit events:
+Test contracts in a running system without denying real tool calls. Deploy with `mode: observe` and collect audit events:
 
 ```python
 from edictum import Edictum, Principal
@@ -199,7 +199,7 @@ guard = Edictum.from_yaml("contracts.yaml", audit_sink=sink, redaction=redaction
 
 After running your agent through a test scenario, inspect `test-audit.jsonl` for:
 
-- `CALL_WOULD_DENY` events -- these are calls that would be blocked in enforce mode.
+- `CALL_WOULD_DENY` events -- these are calls that would be denied in enforce mode.
 - Absence of false positives -- legitimate calls should not produce would-deny events.
 
 ---
@@ -228,7 +228,7 @@ Changed verdicts:
     Rule: block-destructive-commands
 ```
 
-Incorporate replay into your CI pipeline to catch unintended policy regressions:
+Incorporate replay into your CI pipeline to catch unintended contract regressions:
 
 ```yaml
 # GitHub Actions example

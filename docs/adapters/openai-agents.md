@@ -28,7 +28,7 @@ def search_documents(query: str) -> str:
 ```
 
 Guardrails are passed per-tool on the `@function_tool` decorator, not on the
-`Agent` constructor. Each tool that needs governance gets its own guardrail
+`Agent` constructor. Each tool that needs contract enforcement gets its own guardrail
 references.
 
 ## Guardrail Behavior
@@ -41,7 +41,7 @@ tool name and arguments from the guardrail data context. Returns
 **Output guardrail (post-execution)**: Fires after tool execution. Runs
 postconditions and records the execution in the session. The output guardrail
 always returns `ToolGuardrailFunctionOutput.allow()` -- post-execution
-governance produces audit events and warnings but does not block the response.
+evaluation produces audit events and warnings but does not block the response.
 The SDK does not support transforming the tool result from an output guardrail.
 
 ## PII Redaction Callback
@@ -73,7 +73,7 @@ input_gr, output_gr = adapter.as_guardrails(on_postcondition_warn=log_pii_warnin
 
 - **Per-tool, not per-agent**: Guardrails are attached to `@function_tool`
   decorators, not to the `Agent` constructor. You must pass `input_gr` and
-  `output_gr` to each tool that needs governance.
+  `output_gr` to each tool that needs contract enforcement.
 
 ## Full Working Example
 
