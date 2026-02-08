@@ -41,7 +41,7 @@ tool name and arguments from the guardrail data context. Returns
 **Output guardrail (post-execution)**: Fires after tool execution. Runs
 postconditions and records the execution in the session. The output guardrail
 always returns `ToolGuardrailFunctionOutput.allow()` -- post-execution
-governance produces audit events and warnings but cannot block the response.
+governance produces audit events and warnings but does not block the response.
 The SDK does not support transforming the tool result from an output guardrail.
 
 ## PII Redaction Callback
