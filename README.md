@@ -69,9 +69,12 @@ $ edictum check contracts.yaml --tool read_file --args '{"path": ".env"}'
 **Framework integration (one adapter, same guard)**
 
 ```python
-from edictum.adapters.langchain import EdictumMiddleware
+from edictum import Edictum, Principal
+from edictum.adapters.langchain import LangChainAdapter
 
-middleware = EdictumMiddleware(guard)
+guard = Edictum.from_yaml("contracts.yaml")
+adapter = LangChainAdapter(guard, principal=Principal(role="analyst"))
+wrapper = adapter.as_tool_wrapper()
 # Wraps any LangChain tool — preconditions, audit, and session limits apply automatically
 ```
 
@@ -111,7 +114,7 @@ same governance, different integration patterns:
 | CrewAI | `register()` | Partial | High |
 | Claude Agent SDK | `to_sdk_hooks()` | Logged only | Low |
 
-See [Adapter Docs](docs/adapters.md) for setup, known limitations, and recommendations.
+See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for setup, known limitations, and recommendations.
 
 ## Install
 
@@ -130,6 +133,12 @@ guard = Edictum.from_template("file-agent")      # secret file protection, destr
 guard = Edictum.from_template("research-agent")   # output PII detection, session limits
 guard = Edictum.from_template("devops-agent")     # role gates, ticket requirements, bash safety
 ```
+
+## Demos & Examples
+
+- **[edictum-demo](https://github.com/acartag7/edictum-demo)** -- Full scenario demos, adversarial tests, benchmarks, and Grafana observability
+- **[Contract Patterns](https://acartag7.github.io/edictum/contracts/patterns/)** -- Real-world contract recipes by concern
+- **[Framework Adapters](https://acartag7.github.io/edictum/adapters/overview/)** -- Integration guides for 6 frameworks
 
 ## Links
 

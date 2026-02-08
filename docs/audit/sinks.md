@@ -203,6 +203,21 @@ observability:
       deployment.environment: production
   stdout: true
   file: /var/log/edictum/events.jsonl
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: block-sensitive-reads
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains_any: [".env", ".secret", "credentials"]
+    then:
+      effect: deny
+      message: "Sensitive file '{args.path}' blocked."
+      tags: [secrets]
 ```
 
 #### Routing to Specific Backends

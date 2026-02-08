@@ -101,6 +101,44 @@ DENIED by rule block-sensitive-reads
   Rules evaluated: 1
 ```
 
+**Example -- role-gated production deploy**
+
+```
+$ edictum check contracts/production.yaml \
+    --tool deploy_service \
+    --args '{"env": "production", "service": "api"}' \
+    --principal-role developer
+
+DENIED by rule prod-deploy-requires-senior
+  Message: Production deploys require senior role (sre/admin).
+  Tags: change-control, production
+  Rules evaluated: 2
+```
+
+**Example -- passing with ticket and senior role**
+
+```
+$ edictum check contracts/production.yaml \
+    --tool deploy_service \
+    --args '{"env": "production", "service": "api"}' \
+    --principal-role sre \
+    --principal-user alice \
+    --principal-ticket INC-4421
+
+ALLOWED
+  Rules evaluated: 2 contract(s)
+```
+
+The principal flags map directly to `Principal` fields:
+
+| CLI Flag | Principal Field |
+|----------|----------------|
+| `--principal-role TEXT` | `Principal.role` |
+| `--principal-user TEXT` | `Principal.user_id` |
+| `--principal-ticket TEXT` | `Principal.ticket_ref` |
+
+A `Principal` is constructed only when at least one `--principal-*` flag is provided. If none are set, the check runs without principal context (all `principal.*` selectors evaluate to `false`).
+
 Exit codes: `0` on allow, `1` on deny, `2` on invalid JSON.
 
 ---

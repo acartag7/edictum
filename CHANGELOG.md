@@ -15,14 +15,14 @@
 ### Added
 - CrewAI adapter: automatic tool name normalization
   ("Search Documents" → "search_documents")
-- Comprehensive framework comparison documentation in `docs/adapters.md`
+- Comprehensive framework comparison documentation in `docs/adapters/overview.md`
   covering integration patterns, PII redaction capabilities, token costs,
   and known limitations for all 6 frameworks
 - Framework-specific `on_postcondition_warn` callback behavior documented
   in `docs/findings.md`
 
 ### Documentation
-- `docs/adapters.md`: Full rewrite with real-world integration patterns,
+- `docs/adapters/overview.md`: Full rewrite with real-world integration patterns,
   cross-framework comparison table, choosing-a-framework guide, and
   per-adapter known limitations
 - `docs/findings.md`: Added framework-specific callback behavior table
