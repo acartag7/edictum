@@ -462,11 +462,28 @@ def test_cmd(file: str, cases: str) -> None:
     failed = 0
     total = len(test_cases)
 
-    for tc in test_cases:
-        tc_id = tc.get("id", "unnamed")
-        tool = tc.get("tool", "unknown")
+    valid_expects = {"allow", "deny"}
+
+    for i, tc in enumerate(test_cases):
+        tc_id = tc.get("id", f"case-{i + 1}")
+
+        # Validate required fields
+        missing = [f for f in ("tool", "expect") if f not in tc]
+        if missing:
+            _err_console.print(f"[red]  {escape(tc_id)}: missing required field(s): {', '.join(missing)}[/red]")
+            sys.exit(2)
+
+        tool = tc["tool"]
         args = tc.get("args", {})
-        expect = tc.get("expect", "allow").lower()
+        expect = tc["expect"].lower()
+
+        if expect not in valid_expects:
+            _err_console.print(
+                f"[red]  {escape(tc_id)}: invalid expect value '{escape(tc['expect'])}' "
+                f"(must be one of: {', '.join(sorted(valid_expects))})[/red]"
+            )
+            sys.exit(2)
+
         match_contract = tc.get("match_contract")
 
         # Build principal

@@ -1080,6 +1080,47 @@ class TestTestCommand:
         result = runner.invoke(cli, ["test", contracts, "--cases", bad_cases])
         assert result.exit_code != 0
 
+    def test_missing_tool_field(self):
+        """edictum test should reject cases missing the 'tool' field."""
+        bad = write_file("cases:\n  - id: no-tool\n    expect: deny\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "missing" in result.output.lower()
+        assert "tool" in result.output
+
+    def test_missing_expect_field(self):
+        """edictum test should reject cases missing the 'expect' field."""
+        bad = write_file("cases:\n  - id: no-expect\n    tool: read_file\n    args:\n      path: x\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "missing" in result.output.lower()
+        assert "expect" in result.output
+
+    def test_invalid_expect_value(self):
+        """edictum test should reject invalid expect values like 'warn' or 'block'."""
+        bad = write_file(
+            "cases:\n  - id: bad-expect\n    tool: read_file\n    args:\n      path: x\n    expect: warn\n"
+        )
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "invalid" in result.output.lower()
+        assert "warn" in result.output
+
+    def test_invalid_expect_value_block(self):
+        """edictum test should reject 'block' as an expect value."""
+        bad = write_file("cases:\n  - id: bad\n    tool: bash\n    args:\n      command: ls\n    expect: block\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "block" in result.output
+
     def test_mixed_pass_and_fail(self):
         """Mixed results should report correct counts."""
         mixed_cases = """\

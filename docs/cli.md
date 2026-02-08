@@ -317,7 +317,9 @@ Exit codes: `0` if all cases pass, `1` if any case fails.
 
 !!! note "Preconditions only"
     `edictum test` evaluates preconditions only. Postconditions require actual tool
-    output which doesn't exist in a dry-run. For postcondition testing, use
+    output which doesn't exist in a dry-run, and session contracts (rate limits,
+    max-calls policies) require accumulated state across multiple calls. For
+    postcondition and session contract testing, use
     [unit tests with pytest](guides/testing-contracts.md#unit-testing-with-pytest).
 
 ---

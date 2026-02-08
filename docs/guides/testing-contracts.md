@@ -136,7 +136,9 @@ Key features:
 
 !!! note "Preconditions only"
     `edictum test` evaluates preconditions only. Postconditions require actual tool
-    output. For postcondition testing, use pytest (see below).
+    output, and session contracts (rate limits, max-calls policies) require
+    accumulated state across multiple calls. For postcondition and session contract
+    testing, use pytest (see below).
 
 This is the recommended approach for contract regression testing in CI. Keep your test
 cases file alongside your contracts and run `edictum test` on every PR.
