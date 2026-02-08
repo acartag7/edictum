@@ -411,3 +411,126 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
         _console.print("[green]No changes detected.[/green]")
 
     sys.exit(1 if changes else 0)
+
+
+# ---------------------------------------------------------------------------
+# test
+# ---------------------------------------------------------------------------
+
+
+@cli.command("test")
+@click.argument("file", type=click.Path(exists=True))
+@click.option("--cases", required=True, type=click.Path(exists=True), help="YAML file with test cases.")
+def test_cmd(file: str, cases: str) -> None:
+    """Test contracts against YAML test cases (preconditions only).
+
+    Evaluates each test case against the contract bundle and reports
+    pass/fail results. Postcondition testing is not supported — this
+    command evaluates preconditions only since postconditions require
+    actual tool output.
+
+    Exit code 0: all cases pass.
+    Exit code 1: one or more cases fail.
+    """
+    import yaml
+
+    # Load contracts
+    try:
+        _, _, compiled = _load_and_compile(file)
+    except EdictumConfigError as e:
+        _err_console.print(f"[red]Failed to load contracts: {escape(str(e))}[/red]")
+        sys.exit(1)
+
+    # Load test cases
+    try:
+        with open(cases) as f:
+            cases_data = yaml.safe_load(f)
+    except Exception as e:
+        _err_console.print(f"[red]Failed to load test cases: {escape(str(e))}[/red]")
+        sys.exit(1)
+
+    if not isinstance(cases_data, dict) or "cases" not in cases_data:
+        _err_console.print("[red]Test cases file must contain a 'cases' list.[/red]")
+        sys.exit(1)
+
+    test_cases = cases_data["cases"]
+    if not isinstance(test_cases, list):
+        _err_console.print("[red]'cases' must be a list.[/red]")
+        sys.exit(1)
+
+    passed = 0
+    failed = 0
+    total = len(test_cases)
+
+    valid_expects = {"allow", "deny"}
+
+    for i, tc in enumerate(test_cases):
+        tc_id = tc.get("id", f"case-{i + 1}")
+
+        # Validate required fields
+        missing = [f for f in ("tool", "expect") if f not in tc]
+        if missing:
+            _err_console.print(f"[red]  {escape(tc_id)}: missing required field(s): {', '.join(missing)}[/red]")
+            sys.exit(2)
+
+        tool = tc["tool"]
+        args = tc.get("args", {})
+        expect = tc["expect"].lower()
+
+        if expect not in valid_expects:
+            _err_console.print(
+                f"[red]  {escape(tc_id)}: invalid expect value '{escape(tc['expect'])}' "
+                f"(must be one of: {', '.join(sorted(valid_expects))})[/red]"
+            )
+            sys.exit(2)
+
+        match_contract = tc.get("match_contract")
+
+        # Build principal
+        principal = None
+        principal_data = tc.get("principal")
+        if principal_data and isinstance(principal_data, dict):
+            principal = Principal(
+                role=principal_data.get("role"),
+                user_id=principal_data.get("user_id"),
+                ticket_ref=principal_data.get("ticket_ref"),
+                claims=principal_data.get("claims", {}),
+            )
+
+        # Build envelope and evaluate
+        envelope = _build_envelope(tool, args, principal=principal)
+        verdict, rule_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+
+        # Map verdict to expected format
+        actual = "deny" if verdict == "denied" else "allow"
+
+        # Check match_contract
+        contract_match_ok = True
+        if match_contract and actual == "deny":
+            contract_match_ok = rule_id == match_contract
+
+        if actual == expect and contract_match_ok:
+            passed += 1
+            detail = f"{tool} {json.dumps(args)}"
+            verdict_label = "DENIED" if actual == "deny" else "ALLOWED"
+            contract_info = f" ({rule_id})" if rule_id else ""
+            _console.print(f"[green]  {escape(tc_id)}:[/green] {escape(detail)} -> {verdict_label}{contract_info}")
+        else:
+            failed += 1
+            detail = f"{tool} {json.dumps(args)}"
+            actual_label = "DENIED" if actual == "deny" else "ALLOWED"
+            expected_label = expect.upper()
+            if not contract_match_ok:
+                _console.print(
+                    f"[red]  {escape(tc_id)}:[/red] {escape(detail)} -> "
+                    f"expected contract {escape(match_contract)}, got {escape(rule_id or 'none')}"
+                )
+            else:
+                _console.print(
+                    f"[red]  {escape(tc_id)}:[/red] {escape(detail)} -> "
+                    f"expected {expected_label}, got {actual_label}"
+                )
+
+    # Summary
+    _console.print(f"\n{passed}/{total} passed, {failed} failed")
+    sys.exit(1 if failed else 0)

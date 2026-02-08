@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from edictum import Edictum, Verdict, precondition
+from edictum import Edictum, Verdict, postcondition, precondition
 from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 from edictum.audit import AuditAction
+from edictum.findings import Finding
 from edictum.storage import MemoryBackend
 from tests.conftest import NullAuditSink
 
@@ -256,3 +259,105 @@ class TestEdictumRun:
         actions = [e.action for e in sink.events]
         assert AuditAction.CALL_WOULD_DENY in actions
         assert AuditAction.CALL_EXECUTED in actions
+
+
+class TestClaudeSDKPostconditionCallback:
+    """Test on_postcondition_warn callback via to_sdk_hooks()."""
+
+    async def test_to_sdk_hooks_accepts_postcondition_callback(self):
+        """to_sdk_hooks() should accept on_postcondition_warn parameter."""
+        guard = make_guard()
+        adapter = ClaudeAgentSDKAdapter(guard)
+        callback = MagicMock(return_value="redacted")
+        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+        assert "pre_tool_use" in hooks
+        assert "post_tool_use" in hooks
+
+    async def test_postcondition_callback_optional(self):
+        """to_sdk_hooks() should work without callback (backward compatible)."""
+        guard = make_guard()
+        adapter = ClaudeAgentSDKAdapter(guard)
+        hooks = adapter.to_sdk_hooks()
+        assert "pre_tool_use" in hooks
+        assert "post_tool_use" in hooks
+
+    async def test_postcondition_callback_invoked_on_warn(self):
+        """Callback should be invoked when postconditions produce findings."""
+
+        @postcondition("TestTool")
+        def detect_pii(envelope, result):
+            return Verdict.fail("PII detected in output")
+
+        callback = MagicMock(return_value="redacted")
+        guard = make_guard(contracts=[detect_pii])
+        adapter = ClaudeAgentSDKAdapter(guard)
+        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+
+        await hooks["pre_tool_use"]("TestTool", {"key": "val"}, "tu-1")
+        await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="Patient SSN: 123-45-6789")
+
+        callback.assert_called_once()
+        # Verify callback args: (result, findings)
+        call_args = callback.call_args[0]
+        assert call_args[0] == "Patient SSN: 123-45-6789"
+        findings = call_args[1]
+        assert len(findings) >= 1
+        assert isinstance(findings[0], Finding)
+        assert "PII detected" in findings[0].message
+
+    async def test_postcondition_callback_not_called_when_passing(self):
+        """Callback should NOT be invoked when postconditions pass."""
+        guard = make_guard()
+        adapter = ClaudeAgentSDKAdapter(guard)
+        callback = MagicMock(return_value="redacted")
+        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+
+        await hooks["pre_tool_use"]("TestTool", {"key": "val"}, "tu-1")
+        await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="ok")
+
+        callback.assert_not_called()
+
+    async def test_postcondition_callback_exception_does_not_break(self):
+        """Callback exception should be caught, not break the hook."""
+
+        @postcondition("TestTool")
+        def detect_issue(envelope, result):
+            return Verdict.fail("issue found")
+
+        def exploding_callback(result, findings):
+            raise RuntimeError("callback exploded")
+
+        guard = make_guard(contracts=[detect_issue])
+        adapter = ClaudeAgentSDKAdapter(guard)
+        hooks = adapter.to_sdk_hooks(on_postcondition_warn=exploding_callback)
+
+        await hooks["pre_tool_use"]("TestTool", {}, "tu-1")
+        # Should not raise
+        result = await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="bad data")
+        # Hook should still return (warnings may be present)
+        assert isinstance(result, dict)
+
+    async def test_postcondition_callback_receives_correct_findings(self):
+        """Callback should receive Finding objects with correct attributes."""
+
+        @postcondition("TestTool")
+        def detect_secret(envelope, result):
+            return Verdict.fail("API token exposed in output")
+
+        received_findings = []
+
+        def capture_callback(result, findings):
+            received_findings.extend(findings)
+
+        guard = make_guard(contracts=[detect_secret])
+        adapter = ClaudeAgentSDKAdapter(guard)
+        hooks = adapter.to_sdk_hooks(on_postcondition_warn=capture_callback)
+
+        await hooks["pre_tool_use"]("TestTool", {}, "tu-1")
+        await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="token=abc123")
+
+        assert len(received_findings) == 1
+        f = received_findings[0]
+        assert isinstance(f, Finding)
+        assert f.contract_id == "detect_secret"
+        assert "API token" in f.message

@@ -213,6 +213,117 @@ Exit codes: `0` if no changes, `1` if changes detected.
 
 ---
 
+### `edictum test`
+
+Run a batch of test cases against your contracts and report pass/fail results. Each
+test case specifies a tool call with expected verdict — like `pytest` for contracts.
+Only preconditions are evaluated; postcondition testing requires actual tool output
+and is not supported in dry-run mode.
+
+**Usage**
+
+```
+edictum test <file.yaml> --cases <cases.yaml>
+```
+
+**Options**
+
+| Flag | Description |
+|------|-------------|
+| `--cases PATH` | YAML file with test cases (required) |
+
+**Test cases format**
+
+```yaml
+cases:
+  - id: test-sensitive-read
+    tool: read_file
+    args:
+      path: "/app/.env"
+    principal:
+      role: analyst
+    expect: deny
+    match_contract: block-sensitive-reads  # optional
+
+  - id: test-normal-read
+    tool: read_file
+    args:
+      path: "report.txt"
+    principal:
+      role: analyst
+    expect: allow
+
+  - id: test-with-claims
+    tool: deploy_service
+    args:
+      env: production
+    principal:
+      role: developer
+      claims:
+        department: platform
+        clearance: high
+    expect: allow
+```
+
+Each test case supports:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | No | Test case identifier (shown in output) |
+| `tool` | Yes | Tool name to simulate |
+| `args` | Yes | Tool arguments as a YAML mapping |
+| `expect` | Yes | Expected verdict: `allow` or `deny` |
+| `principal` | No | Principal context (see below) |
+| `match_contract` | No | Verify that this contract ID triggered the result |
+
+The `principal` field supports `role`, `user_id`, `ticket_ref`, and `claims` (arbitrary key-value pairs).
+
+**Example -- all passing**
+
+```
+$ edictum test contracts/production.yaml --cases tests/cases.yaml
+
+  test-sensitive-read: read_file {"path": "/app/.env"} -> DENIED (block-sensitive-reads)
+  test-normal-read: read_file {"path": "report.txt"} -> ALLOWED
+
+2/2 passed, 0 failed
+```
+
+**Example -- with failures**
+
+```
+$ edictum test contracts/production.yaml --cases tests/cases.yaml
+
+  test-block-env: read_file {"path": "/app/.env"} -> DENIED (block-sensitive-reads)
+  test-wrong-expect: read_file {"path": "safe.txt"} -> expected DENY, got ALLOWED
+
+1/2 passed, 1 failed
+```
+
+**Example -- wrong contract match**
+
+When `match_contract` is specified but the wrong contract fires, the output shows
+which contract actually triggered:
+
+```
+$ edictum test contracts/production.yaml --cases tests/cases.yaml
+
+  test-wrong-match: read_file {"path": "/app/.env"} -> expected contract wrong-id, got block-sensitive-reads
+
+0/1 passed, 1 failed
+```
+
+Exit codes: `0` if all cases pass, `1` if any case fails.
+
+!!! note "Preconditions only"
+    `edictum test` evaluates preconditions only. Postconditions require actual tool
+    output which doesn't exist in a dry-run, and session contracts (rate limits,
+    max-calls policies) require accumulated state across multiple calls. For
+    postcondition and session contract testing, use
+    [unit tests with pytest](guides/testing-contracts.md#unit-testing-with-pytest).
+
+---
+
 ## Combining with CI/CD
 
 All commands return structured exit codes suitable for pipeline gating:
@@ -221,6 +332,9 @@ All commands return structured exit codes suitable for pipeline gating:
 # GitHub Actions example
 - name: Validate contracts
   run: edictum validate contracts/production.yaml
+
+- name: Test contracts against cases
+  run: edictum test contracts/production.yaml --cases tests/contract-cases.yaml
 
 - name: Diff against main
   run: |

@@ -875,6 +875,7 @@ class TestCLIGeneral:
         assert "check" in result.output
         assert "diff" in result.output
         assert "replay" in result.output
+        assert "test" in result.output
 
     def test_validate_help(self):
         runner = CliRunner()
@@ -899,3 +900,246 @@ class TestCLIGeneral:
         assert result.exit_code == 0
         # Should show help/usage
         assert "Usage" in result.output or "validate" in result.output
+
+    def test_test_help(self):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", "--help"])
+        assert result.exit_code == 0
+        assert "precondition" in result.output.lower() or "test case" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# 6. edictum test
+# ---------------------------------------------------------------------------
+
+PASSING_CASES = """\
+cases:
+  - id: test-block-env
+    tool: read_file
+    args:
+      path: "/app/.env"
+    expect: deny
+    match_contract: block-env-reads
+  - id: test-allow-normal
+    tool: read_file
+    args:
+      path: "report.txt"
+    expect: allow
+"""
+
+FAILING_CASES = """\
+cases:
+  - id: test-should-fail
+    tool: read_file
+    args:
+      path: "report.txt"
+    expect: deny
+"""
+
+CASES_WITH_PRINCIPAL = """\
+cases:
+  - id: test-no-ticket-denied
+    tool: deploy_service
+    args:
+      service: api
+    principal:
+      role: sre
+    expect: deny
+    match_contract: require-ticket
+  - id: test-with-ticket-allowed
+    tool: deploy_service
+    args:
+      service: api
+    principal:
+      role: sre
+      ticket_ref: JIRA-123
+    expect: allow
+"""
+
+CASES_WITH_CLAIMS = """\
+cases:
+  - id: test-with-claims
+    tool: read_file
+    args:
+      path: "report.txt"
+    principal:
+      role: developer
+      claims:
+        department: platform
+        clearance: high
+    expect: allow
+"""
+
+CASES_WRONG_CONTRACT = """\
+cases:
+  - id: test-wrong-match
+    tool: read_file
+    args:
+      path: "/app/.env"
+    expect: deny
+    match_contract: nonexistent-rule
+"""
+
+
+class TestTestCommand:
+    """
+    SPEC: edictum test <file.yaml> --cases <cases.yaml>
+
+    Validate contracts against YAML test cases (preconditions only).
+    For each test case:
+    - Build an envelope from tool, args, principal
+    - Evaluate preconditions
+    - Compare result to expected verdict (allow/deny)
+    - Optionally verify that the correct contract triggered
+
+    Exit code 0: all cases pass
+    Exit code 1: any case fails
+
+    Output: pass/fail per case, summary line.
+    """
+
+    def test_all_pass(self):
+        """edictum test should exit 0 when all cases pass."""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(PASSING_CASES)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code == 0
+        assert "2/2 passed" in result.output
+        assert "0 failed" in result.output
+
+    def test_with_failure(self):
+        """edictum test should exit non-zero when cases fail."""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(FAILING_CASES)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code != 0
+        assert "failed" in result.output
+        assert "0/1 passed" in result.output or "1 failed" in result.output
+
+    def test_match_contract(self):
+        """edictum test should verify match_contract when specified."""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(PASSING_CASES)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code == 0
+        # The output should show the matching contract for deny cases
+        assert "block-env-reads" in result.output
+
+    def test_match_contract_wrong_id(self):
+        """edictum test should fail when match_contract doesn't match the firing rule."""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(CASES_WRONG_CONTRACT)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code != 0
+        assert "1 failed" in result.output
+
+    def test_principal_with_ticket(self):
+        """edictum test should support principal fields in test cases."""
+        contracts = write_file(BUNDLE_V2)
+        cases = write_file(CASES_WITH_PRINCIPAL)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code == 0
+        assert "2/2 passed" in result.output
+
+    def test_principal_with_claims(self):
+        """edictum test should support principal claims in test cases."""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(CASES_WITH_CLAIMS)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code == 0
+        assert "1/1 passed" in result.output
+
+    def test_invalid_contracts(self):
+        """edictum test should fail gracefully on invalid contract YAML."""
+        contracts = write_file(INVALID_WRONG_EFFECT)
+        cases = write_file(PASSING_CASES)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code != 0
+
+    def test_invalid_cases_no_cases_key(self):
+        """edictum test should fail gracefully on malformed test cases."""
+        contracts = write_file(VALID_BUNDLE)
+        bad_cases = write_file("not_cases:\n  - foo: bar\n")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad_cases])
+        assert result.exit_code != 0
+        assert "cases" in result.output.lower()
+
+    def test_invalid_cases_not_a_list(self):
+        """edictum test should fail when cases is not a list."""
+        contracts = write_file(VALID_BUNDLE)
+        bad_cases = write_file("cases: not-a-list\n")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad_cases])
+        assert result.exit_code != 0
+
+    def test_missing_tool_field(self):
+        """edictum test should reject cases missing the 'tool' field."""
+        bad = write_file("cases:\n  - id: no-tool\n    expect: deny\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "missing" in result.output.lower()
+        assert "tool" in result.output
+
+    def test_missing_expect_field(self):
+        """edictum test should reject cases missing the 'expect' field."""
+        bad = write_file("cases:\n  - id: no-expect\n    tool: read_file\n    args:\n      path: x\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "missing" in result.output.lower()
+        assert "expect" in result.output
+
+    def test_invalid_expect_value(self):
+        """edictum test should reject invalid expect values like 'warn' or 'block'."""
+        bad = write_file(
+            "cases:\n  - id: bad-expect\n    tool: read_file\n    args:\n      path: x\n    expect: warn\n"
+        )
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "invalid" in result.output.lower()
+        assert "warn" in result.output
+
+    def test_invalid_expect_value_block(self):
+        """edictum test should reject 'block' as an expect value."""
+        bad = write_file("cases:\n  - id: bad\n    tool: bash\n    args:\n      command: ls\n    expect: block\n")
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", bad])
+        assert result.exit_code == 2
+        assert "block" in result.output
+
+    def test_mixed_pass_and_fail(self):
+        """Mixed results should report correct counts."""
+        mixed_cases = """\
+cases:
+  - id: test-block-env
+    tool: read_file
+    args:
+      path: "/app/.env"
+    expect: deny
+  - id: test-wrong-expect
+    tool: read_file
+    args:
+      path: "safe.txt"
+    expect: deny
+"""
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(mixed_cases)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases])
+        assert result.exit_code != 0
+        assert "1/2 passed" in result.output
+        assert "1 failed" in result.output

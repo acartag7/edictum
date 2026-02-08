@@ -53,7 +53,95 @@ ALLOWED
   Rules evaluated: 1 contract(s)
 ```
 
-This is useful for quick spot-checks during development. For comprehensive coverage, use unit tests.
+This is useful for quick spot-checks during development. For batch testing, use `edictum test`.
+
+---
+
+## Batch Testing With YAML Test Cases
+
+Use `edictum test` to run a suite of test cases against your contracts. Define expected
+outcomes in a YAML file and let the CLI verify them all at once:
+
+```yaml
+# tests/contract-cases.yaml
+cases:
+  - id: block-env-file
+    tool: read_file
+    args:
+      path: "/app/.env"
+    principal:
+      role: analyst
+    expect: deny
+    match_contract: block-sensitive-reads
+
+  - id: allow-readme
+    tool: read_file
+    args:
+      path: "README.md"
+    principal:
+      role: analyst
+    expect: allow
+
+  - id: deny-deploy-without-ticket
+    tool: deploy_service
+    args:
+      service: api
+      env: production
+    principal:
+      role: sre
+    expect: deny
+    match_contract: require-ticket
+
+  - id: allow-deploy-with-ticket
+    tool: deploy_service
+    args:
+      service: api
+      env: production
+    principal:
+      role: sre
+      ticket_ref: JIRA-456
+    expect: allow
+
+  - id: platform-team-access
+    tool: deploy_service
+    args:
+      env: production
+    principal:
+      role: developer
+      claims:
+        department: platform
+        clearance: high
+    expect: allow
+```
+
+Run it:
+
+```
+$ edictum test contracts.yaml --cases tests/contract-cases.yaml
+
+  block-env-file: read_file {"path": "/app/.env"} -> DENIED (block-sensitive-reads)
+  allow-readme: read_file {"path": "README.md"} -> ALLOWED
+  deny-deploy-without-ticket: deploy_service {"service": "api", "env": "production"} -> DENIED (require-ticket)
+  allow-deploy-with-ticket: deploy_service {"service": "api", "env": "production"} -> ALLOWED
+  platform-team-access: deploy_service {"env": "production"} -> ALLOWED
+
+5/5 passed, 0 failed
+```
+
+Key features:
+
+- **`expect`** -- `allow` or `deny`. The test passes if the precondition verdict matches.
+- **`match_contract`** -- optional. When set, verifies that the specific contract ID triggered the denial. Catches cases where the right verdict happens for the wrong reason.
+- **`principal`** -- supports `role`, `user_id`, `ticket_ref`, and `claims` (arbitrary key-value pairs). Omit to test without principal context.
+
+!!! note "Preconditions only"
+    `edictum test` evaluates preconditions only. Postconditions require actual tool
+    output, and session contracts (rate limits, max-calls policies) require
+    accumulated state across multiple calls. For postcondition and session contract
+    testing, use pytest (see below).
+
+This is the recommended approach for contract regression testing in CI. Keep your test
+cases file alongside your contracts and run `edictum test` on every PR.
 
 ---
 
@@ -159,7 +247,8 @@ Incorporate replay into your CI pipeline to catch unintended policy regressions:
 
 1. **Validate** -- `edictum validate` passes with zero errors.
 2. **Dry-run** -- `edictum check` produces expected deny/allow for key scenarios.
-3. **Unit tests** -- pytest tests cover denied, allowed, and edge cases.
-4. **Observe mode** -- deploy in observe mode and review `CALL_WOULD_DENY` events.
-5. **Replay** -- `edictum replay` against a baseline audit log shows no regressions.
-6. **Enforce** -- flip to `mode: enforce` after all checks pass.
+3. **Batch test** -- `edictum test` passes all YAML test cases with correct verdicts and contract matches.
+4. **Unit tests** -- pytest tests cover denied, allowed, and edge cases (especially postconditions).
+5. **Observe mode** -- deploy in observe mode and review `CALL_WOULD_DENY` events.
+6. **Replay** -- `edictum replay` against a baseline audit log shows no regressions.
+7. **Enforce** -- flip to `mode: enforce` after all checks pass.
