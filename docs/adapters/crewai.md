@@ -30,7 +30,9 @@ through Edictum governance.
 
 Use `on_postcondition_warn` to react when postconditions flag issues. If the
 callback returns a string, it replaces the tool result before the LLM sees it.
-If it returns `None`, the original result is kept:
+If it returns `None`, the original result is kept. This works because CrewAI's
+`register_after_tool_call_hook` uses the hook's return value as a replacement
+result -- the adapter passes your callback's return value through directly:
 
 ```python
 import re
