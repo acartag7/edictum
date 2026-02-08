@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3
+
+### Added
+- `edictum test` CLI command — validate contracts against YAML test cases
+  without spinning up an agent. Supports precondition testing with principal
+  claims, expected verdicts, and contract ID matching.
+- Tests for `on_postcondition_warn` callback in Claude SDK adapter — all 6
+  adapters now have test coverage for postcondition callbacks.
+
+### Notes
+- `edictum test` evaluates preconditions only. Postcondition testing requires
+  tool output and is not supported in dry-run mode.
+
 ## 0.5.2
 
 ### Fixed
