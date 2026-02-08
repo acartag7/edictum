@@ -117,6 +117,8 @@ See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for se
 
 ## Install
 
+Requires Python 3.11+. Current version: **v0.5.3**.
+
 ```bash
 pip install edictum              # core (zero deps)
 pip install edictum[yaml]        # + YAML contract engine

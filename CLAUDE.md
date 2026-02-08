@@ -49,11 +49,11 @@ Core provides protocols/interfaces. ee/ provides implementations.
 - edictum check + edictum test CLI
 - AuditEvent dataclass + StdoutAuditSink + FileAuditSink (.jsonl) + RedactionPolicy
 - OTel span instrumentation + GovernanceTelemetry
-- PIIDetector protocol (interface only, no implementations in core)
+- PIIDetector protocol + RegexPIIDetector (8 built-in regex patterns)
 
 ## Enterprise (ee/) — not yet created
 
-- PII detection backends: RegexPIIDetector, PresidioPIIDetector, CompositePIIDetector
+- PII detection backends: PresidioPIIDetector, CompositePIIDetector
 - YAML `pii_detection` shorthand
 - Audit sinks: Webhook, Splunk HEC, Datadog
 - Alert rules (denial spikes, PII detections, session exhaustion)
@@ -73,7 +73,7 @@ The tier split follows one rule: **evaluation engine = OSS, infrastructure = ent
 
 - Pipeline that takes a tool call and returns allow/deny/warn -- OSS
 - Persistence beyond local files, networking, coordination -- enterprise
-- PIIDetector protocol in OSS (users write their own). Implementations (regex, Presidio) -- enterprise
+- PIIDetector protocol + RegexPIIDetector in OSS. ML-grade detection (Presidio, Composite) -- enterprise
 - Stdout + File (.jsonl) sinks for dev/local audit -- OSS. Network destinations (Webhook, Splunk, Datadog) -- enterprise
 - OTel instrumentation (emitting spans) -- OSS. Dashboards and alerting -- enterprise
 - Session (MemoryBackend) for single-process -- OSS. Multi-process coordination via Edictum Server -- enterprise

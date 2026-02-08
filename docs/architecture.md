@@ -29,7 +29,7 @@ Agent decides to call tool
   +----------------+
 ```
 
-If any precondition fails, the tool call is denied. The tool never executes. There is no "soft deny" -- either every check passes or the call does not happen.
+In enforce mode, if any precondition fails, the tool call is denied. The tool never executes. There is no "soft deny" -- either every check passes or the call does not happen. (In [observe mode](concepts/observe-mode.md), failures are logged as `CALL_WOULD_DENY` but the call proceeds.)
 
 ---
 

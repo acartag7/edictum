@@ -25,11 +25,11 @@ The foundation is production-usable today as an in-process library (v0.5.3).
 Tool outputs often contain personally identifiable information that should not propagate back to the LLM or appear in logs. v0.6.0 adds pluggable PII detection as a first-class pipeline feature.
 
 - **PIIDetector protocol** in core (MIT-licensed) -- a pluggable detection interface that any implementation can satisfy
-- **RegexPIIDetector** -- 8 built-in patterns: SSN, email, phone, IBAN, credit card, patient ID, date of birth, name
-- **YAML `pii_detection` shorthand** for declaring PII checks directly in contract bundles
+- **RegexPIIDetector** in core -- 8 built-in regex patterns (SSN, email, phone, IBAN, credit card, patient ID, date of birth, name) for immediate use without enterprise dependencies
 - **Enterprise detectors** (separate `edictum-ee` package, shipped under `ee/`):
     - `PresidioPIIDetector` -- ML/NER-based detection via Microsoft Presidio
     - `CompositePIIDetector` -- combine multiple detectors with configurable thresholds
+    - YAML `pii_detection` shorthand for declaring PII checks directly in contract bundles
 
 ---
 

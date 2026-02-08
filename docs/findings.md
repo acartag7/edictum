@@ -8,7 +8,7 @@ Edictum produces structured **findings** that your application can act on.
 Edictum separates detection from remediation:
 
 - **Contracts detect** -- YAML postconditions evaluate tool output, produce findings
-- **Your code remediates** -- a callback transforms the result before the LLM sees it
+- **Your code remediates** -- a callback transforms the result before the LLM sees it (when the adapter supports result interception; Claude SDK and OpenAI Agents log findings but cannot replace results)
 
 ```python
 from edictum import Edictum

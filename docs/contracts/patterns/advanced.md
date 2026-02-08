@@ -143,7 +143,7 @@ Combine multiple regex patterns in a single postcondition to detect several cate
 
 The `principal.claims.<key>` selector accesses custom attributes from the `Principal.claims` dictionary. Claims support any value type: strings, numbers, booleans, and lists.
 
-**When to use:** Your authorization model needs attributes beyond role, user_id, and org_id. Claims let you attach domain-specific metadata like department, clearance level, or feature flags.
+**When to use:** Your authorization model needs attributes beyond role, user_id, and org_id. Claims let you attach domain-specific metadata like department, clearance level, or capability entitlements.
 
 === "YAML"
 
@@ -170,19 +170,19 @@ The `principal.claims.<key>` selector accesses custom attributes from the `Princ
           message: "Classified file access requires secret or top-secret clearance."
           tags: [access-control, classified]
 
-      - id: feature-flag-gate
+      - id: entitlement-gate
         type: pre
         tool: send_email
         when:
           not:
-            principal.claims.feature_flags_email: { equals: true }
+            principal.claims.can_send_email: { equals: true }
         then:
           effect: deny
-          message: "Email feature is not enabled for this principal."
-          tags: [feature-flags]
+          message: "Email capability is not enabled for this principal."
+          tags: [entitlements]
     ```
 
-    The `feature-flag-gate` contract uses principal claims for identity-based gating -- it checks a per-principal boolean attribute, not a traditional feature flag system.
+    The `entitlement-gate` contract uses principal claims for identity-based gating -- it checks a per-principal boolean attribute, not a feature flag. This is capability enforcement: the principal either has the entitlement or they don't.
 
 === "Python"
 
@@ -205,13 +205,13 @@ The `principal.claims.<key>` selector accesses custom attributes from the `Princ
         return Verdict.pass_()
 
     @precondition("send_email")
-    def feature_flag_gate(envelope):
+    def entitlement_gate(envelope):
         enabled = (
-            envelope.principal.claims.get("feature_flags_email")
+            envelope.principal.claims.get("can_send_email")
             if envelope.principal else False
         )
         if not enabled:
-            return Verdict.fail("Email feature is not enabled for this principal.")
+            return Verdict.fail("Email capability is not enabled for this principal.")
         return Verdict.pass_()
     ```
 
