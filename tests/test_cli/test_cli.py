@@ -1143,3 +1143,105 @@ cases:
         assert result.exit_code != 0
         assert "1/2 passed" in result.output
         assert "1 failed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 7. edictum test --calls
+# ---------------------------------------------------------------------------
+
+SAFE_CALLS = json.dumps(
+    [
+        {"tool": "read_file", "args": {"path": "README.md"}},
+        {"tool": "bash", "args": {"command": "ls -la"}},
+    ]
+)
+
+DENY_CALLS = json.dumps(
+    [
+        {"tool": "read_file", "args": {"path": "/app/.env"}},
+        {"tool": "bash", "args": {"command": "rm -rf /tmp"}},
+    ]
+)
+
+CALLS_WITH_OUTPUT = json.dumps(
+    [
+        {"tool": "read_file", "args": {"path": "data.txt"}, "output": "SSN: 123-45-6789"},
+    ]
+)
+
+
+class TestCallsCommand:
+    """
+    SPEC: edictum test <file.yaml> --calls <calls.json> [--json]
+
+    Evaluate JSON tool calls against contracts using guard.evaluate_batch().
+    Supports both preconditions and postconditions (via output field).
+
+    Exit code 0: no denials.
+    Exit code 1: one or more denials.
+    Exit code 2: usage error (invalid JSON, both flags, etc.).
+    """
+
+    def test_safe_calls_exit_0(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file(SAFE_CALLS, suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls])
+        assert result.exit_code == 0
+
+    def test_denied_calls_exit_1(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file(DENY_CALLS, suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls])
+        assert result.exit_code == 1
+
+    def test_json_flag(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file(SAFE_CALLS, suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls, "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert isinstance(parsed, list)
+        assert len(parsed) == 2
+        assert parsed[0]["verdict"] == "allow"
+
+    def test_with_output_field(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file(CALLS_WITH_OUTPUT, suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls, "--json"])
+        assert result.exit_code == 0  # postconditions warn, don't deny
+        parsed = json.loads(result.output)
+        assert parsed[0]["verdict"] == "warn"
+        assert len(parsed[0]["warn_reasons"]) > 0
+
+    def test_invalid_json_exit_2(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file("not valid json {{{", suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls])
+        assert result.exit_code == 2
+
+    def test_non_array_json_exit_2(self):
+        contracts = write_file(VALID_BUNDLE)
+        calls = write_file('{"tool": "bash"}', suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--calls", calls])
+        assert result.exit_code == 2
+        assert "array" in result.output.lower()
+
+    def test_both_cases_and_calls_exit_2(self):
+        contracts = write_file(VALID_BUNDLE)
+        cases = write_file(PASSING_CASES)
+        calls = write_file(SAFE_CALLS, suffix=".json")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts, "--cases", cases, "--calls", calls])
+        assert result.exit_code == 2
+
+    def test_neither_cases_nor_calls_exit_2(self):
+        contracts = write_file(VALID_BUNDLE)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["test", contracts])
+        assert result.exit_code == 2

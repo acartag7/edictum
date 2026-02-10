@@ -135,19 +135,110 @@ Key features:
 - **`principal`** -- supports `role`, `user_id`, `ticket_ref`, and `claims` (arbitrary key-value pairs). Omit to test without principal context.
 
 !!! note "Preconditions only"
-    `edictum test` evaluates preconditions only. Postconditions require actual tool
-    output, and session contracts (rate limits, max-calls contracts) require
-    accumulated state across multiple calls. For postcondition and session contract
-    testing, use pytest (see below).
+    `--cases` evaluates preconditions only. For postcondition testing, use `--calls`
+    (see below) or pytest with `guard.evaluate()`.
 
 This is the recommended approach for contract regression testing in CI. Keep your test
 cases file alongside your contracts and run `edictum test` on every PR.
 
 ---
 
+## Evaluating Tool Calls With `--calls`
+
+When you need to test postconditions or want a quick evaluation without defining expected verdicts, use `--calls` with a JSON file:
+
+```json
+[
+  {"tool": "read_file", "args": {"path": "README.md"}},
+  {"tool": "read_file", "args": {"path": "/app/.env"}},
+  {"tool": "read_file", "args": {"path": "data.txt"}, "output": "SSN: 123-45-6789"}
+]
+```
+
+Run it:
+
+```
+$ edictum test contracts.yaml --calls tests/calls.json
+
+  #  Tool        Verdict  Rules  Details
+  1  read_file   ALLOW    1      all rules passed
+  2  read_file   DENY     1      Sensitive file '/app/.env' blocked.
+  3  read_file   WARN     1      PII detected.
+```
+
+Key differences from `--cases`:
+
+- **Postconditions supported** -- include an `output` field to trigger postcondition evaluation.
+- **Exhaustive evaluation** -- all matching contracts run, no short-circuit on first denial.
+- **No expected verdicts** -- results report what happened, not pass/fail against expectations.
+- **JSON output** -- add `--json` for machine-readable output in CI pipelines.
+
+See the [CLI reference](../cli.md#edictum-test) for the full format.
+
+---
+
 ## Unit Testing With pytest
 
-Write pytest tests that exercise your contracts programmatically using `Edictum.run()`:
+For programmatic testing, use `guard.evaluate()` for dry-run checks or `guard.run()` to test with actual tool execution.
+
+### Dry-run with `evaluate()`
+
+`evaluate()` checks a tool call against all matching contracts without executing the tool. It evaluates exhaustively (all matching rules, no short-circuit) and returns an `EvaluationResult`:
+
+```python
+from edictum import Edictum, Principal
+
+guard = Edictum.from_yaml("contracts.yaml")
+
+# Test a precondition denial
+result = guard.evaluate("read_file", {"path": ".env"})
+assert result.verdict == "deny"
+assert "block-dotenv" in result.rules[0].rule_id
+
+# Test an allowed call
+result = guard.evaluate("read_file", {"path": "readme.txt"})
+assert result.verdict == "allow"
+
+# Test a postcondition warning (pass output to trigger postconditions)
+result = guard.evaluate("read_file", {"path": "data.txt"}, output="SSN: 123-45-6789")
+assert result.verdict == "warn"
+assert len(result.warn_reasons) > 0
+
+# Test with principal context
+result = guard.evaluate(
+    "deploy_service",
+    {"service": "api"},
+    principal=Principal(role="sre", ticket_ref="JIRA-123"),
+)
+assert result.verdict == "allow"
+```
+
+`evaluate()` is sync and does not require `asyncio`. The `EvaluationResult` contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `verdict` | `str` | `"allow"`, `"deny"`, or `"warn"` |
+| `tool_name` | `str` | The tool name evaluated |
+| `rules` | `list[RuleResult]` | Per-rule results with `rule_id`, `passed`, `message`, `tags`, `observed`, `policy_error` |
+| `deny_reasons` | `list[str]` | Messages from failed preconditions |
+| `warn_reasons` | `list[str]` | Messages from failed postconditions |
+| `rules_evaluated` | `int` | Total number of rules checked |
+| `policy_error` | `bool` | `True` if any rule had an evaluation error |
+
+For batch evaluation, use `evaluate_batch()`:
+
+```python
+results = guard.evaluate_batch([
+    {"tool": "read_file", "args": {"path": ".env"}},
+    {"tool": "read_file", "args": {"path": "readme.txt"}},
+])
+assert results[0].verdict == "deny"
+assert results[1].verdict == "allow"
+```
+
+### Full execution with `run()`
+
+Use `guard.run()` when you need to test the complete pipeline including tool execution, session tracking, and audit:
 
 ```python
 import asyncio
@@ -179,6 +270,11 @@ Test patterns to cover:
 - **Allowed calls** -- assert that the tool result is returned for calls that should pass.
 - **Edge cases** -- test boundary values, missing principal fields, wildcard tool targets.
 - **Session limits** -- call `guard.run()` in a loop to verify session-level limits fire at the correct count.
+
+!!! tip "When to use `evaluate()` vs `run()`"
+    Use `evaluate()` for contract logic testing -- it's sync, fast, and doesn't need
+    mock tool functions. Use `run()` when you need to test the full pipeline including
+    session state, hooks, and audit.
 
 ---
 
@@ -247,8 +343,9 @@ Incorporate replay into your CI pipeline to catch unintended contract regression
 
 1. **Validate** -- `edictum validate` passes with zero errors.
 2. **Dry-run** -- `edictum check` produces expected deny/allow for key scenarios.
-3. **Batch test** -- `edictum test` passes all YAML test cases with correct verdicts and contract matches.
-4. **Unit tests** -- pytest tests cover denied, allowed, and edge cases (especially postconditions).
-5. **Observe mode** -- deploy in observe mode and review `CALL_WOULD_DENY` events.
-6. **Replay** -- `edictum replay` against a baseline audit log shows no regressions.
-7. **Enforce** -- flip to `mode: enforce` after all checks pass.
+3. **Batch test (cases)** -- `edictum test --cases` passes all YAML test cases with correct verdicts and contract matches.
+4. **Batch test (calls)** -- `edictum test --calls` evaluates representative tool calls including postconditions.
+5. **Unit tests** -- pytest tests with `guard.evaluate()` cover preconditions, postconditions, and edge cases. Use `guard.run()` for session limit tests.
+6. **Observe mode** -- deploy in observe mode and review `CALL_WOULD_DENY` events.
+7. **Replay** -- `edictum replay` against a baseline audit log shows no regressions.
+8. **Enforce** -- flip to `mode: enforce` after all checks pass.

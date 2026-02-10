@@ -215,26 +215,35 @@ Exit codes: `0` if no changes, `1` if changes detected.
 
 ### `edictum test`
 
-Run a batch of test cases against your contracts and report pass/fail results. Each
-test case specifies a tool call with expected verdict — like `pytest` for contracts.
-Only preconditions are evaluated; postcondition testing requires actual tool output
-and is not supported in dry-run mode.
+Two modes: YAML test cases with expected verdicts (`--cases`), or JSON tool calls
+for dry-run evaluation (`--calls`). Exactly one must be provided.
 
 **Usage**
 
 ```
 edictum test <file.yaml> --cases <cases.yaml>
+edictum test <file.yaml> --calls <calls.json> [--json]
 ```
 
 **Options**
 
 | Flag | Description |
 |------|-------------|
-| `--cases PATH` | YAML file with test cases (required) |
+| `--cases PATH` | YAML file with test cases (preconditions only) |
+| `--calls PATH` | JSON file with tool calls to evaluate (pre + postconditions) |
+| `--json` | Output results as JSON (only with `--calls`) |
 
-**Test cases format**
+Exit codes: `0` if all cases pass / no denials, `1` if any fail / any denial, `2` on usage error.
+
+---
+
+#### Mode 1: `--cases` (YAML test cases)
+
+Define expected outcomes in YAML and verify them in batch. Each case specifies a tool
+call and the expected verdict -- like `pytest` for contracts.
 
 ```yaml
+# tests/contract-cases.yaml
 cases:
   - id: test-sensitive-read
     tool: read_file
@@ -313,14 +322,75 @@ $ edictum test contracts/production.yaml --cases tests/cases.yaml
 0/1 passed, 1 failed
 ```
 
-Exit codes: `0` if all cases pass, `1` if any case fails.
-
 !!! note "Preconditions only"
-    `edictum test` evaluates preconditions only. Postconditions require actual tool
-    output which doesn't exist in a check, and session contracts (rate limits,
-    max-calls contracts) require accumulated state across multiple calls. For
-    postcondition and session contract testing, use
-    [unit tests with pytest](guides/testing-contracts.md#unit-testing-with-pytest).
+    `--cases` evaluates preconditions only. For postcondition testing, use `--calls`
+    (see below) or [unit tests with pytest](guides/testing-contracts.md#unit-testing-with-pytest).
+
+---
+
+#### Mode 2: `--calls` (JSON tool calls)
+
+Evaluate a JSON array of tool calls against contracts. Unlike `--cases`, this mode
+supports both preconditions and postconditions (via the `output` field) and uses
+`guard.evaluate_batch()` under the hood. All matching contracts are evaluated
+exhaustively -- no short-circuit on first denial.
+
+```json
+[
+  {"tool": "read_file", "args": {"path": "README.md"}},
+  {"tool": "read_file", "args": {"path": "/app/.env"}},
+  {"tool": "bash", "args": {"command": "ls -la"}},
+  {
+    "tool": "read_file",
+    "args": {"path": "data.txt"},
+    "output": "SSN: 123-45-6789"
+  }
+]
+```
+
+Each call object supports:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `tool` | Yes | Tool name |
+| `args` | No | Tool arguments (defaults to `{}`) |
+| `output` | No | Tool output string for postcondition evaluation |
+| `principal` | No | Principal as `{"role": ..., "user_id": ..., "ticket_ref": ..., "claims": {...}}` |
+| `environment` | No | Environment override |
+
+**Example -- table output (default)**
+
+```
+$ edictum test contracts/production.yaml --calls tests/calls.json
+
+  #  Tool        Verdict  Rules  Details
+  1  read_file   ALLOW    1      all rules passed
+  2  read_file   DENY     1      Sensitive file '/app/.env' blocked.
+  3  bash        ALLOW    0      all rules passed
+  4  read_file   WARN     1      PII detected.
+```
+
+**Example -- JSON output**
+
+```
+$ edictum test contracts/production.yaml --calls tests/calls.json --json
+
+[
+  {
+    "verdict": "allow",
+    "tool_name": "read_file",
+    "rules_evaluated": 1,
+    "deny_reasons": [],
+    "warn_reasons": [],
+    "policy_error": false,
+    "rules": [...]
+  },
+  ...
+]
+```
+
+The `--json` output includes the full `rules` array with `rule_id`, `rule_type`,
+`passed`, `message`, `tags`, `observed`, and `policy_error` for each evaluated contract.
 
 ---
 
@@ -335,6 +405,9 @@ All commands return structured exit codes suitable for pipeline gating:
 
 - name: Test contracts against cases
   run: edictum test contracts/production.yaml --cases tests/contract-cases.yaml
+
+- name: Evaluate tool calls (including postconditions)
+  run: edictum test contracts/production.yaml --calls tests/calls.json
 
 - name: Diff against main
   run: |

@@ -418,20 +418,8 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-@cli.command("test")
-@click.argument("file", type=click.Path(exists=True))
-@click.option("--cases", required=True, type=click.Path(exists=True), help="YAML file with test cases.")
-def test_cmd(file: str, cases: str) -> None:
-    """Test contracts against YAML test cases (preconditions only).
-
-    Evaluates each test case against the contract bundle and reports
-    pass/fail results. Postcondition testing is not supported — this
-    command evaluates preconditions only since postconditions require
-    actual tool output.
-
-    Exit code 0: all cases pass.
-    Exit code 1: one or more cases fail.
-    """
+def _run_cases(file: str, cases: str) -> None:
+    """Run YAML test cases against contracts (preconditions only)."""
     import yaml
 
     # Load contracts
@@ -534,3 +522,108 @@ def test_cmd(file: str, cases: str) -> None:
     # Summary
     _console.print(f"\n{passed}/{total} passed, {failed} failed")
     sys.exit(1 if failed else 0)
+
+
+def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
+    """Evaluate JSON tool calls against contracts using guard.evaluate_batch()."""
+    from dataclasses import asdict
+
+    from edictum import Edictum
+
+    class _NullSink:
+        async def emit(self, event):
+            pass
+
+    # Load guard
+    try:
+        guard = Edictum.from_yaml(file, audit_sink=_NullSink())
+    except EdictumConfigError as e:
+        _err_console.print(f"[red]Failed to load contracts: {escape(str(e))}[/red]")
+        sys.exit(1)
+
+    # Load JSON calls
+    try:
+        calls_data = json.loads(Path(calls_path).read_text())
+    except json.JSONDecodeError as e:
+        _err_console.print(f"[red]Invalid JSON in --calls file: {escape(str(e))}[/red]")
+        sys.exit(2)
+
+    if not isinstance(calls_data, list):
+        _err_console.print("[red]--calls file must contain a JSON array.[/red]")
+        sys.exit(2)
+
+    results = guard.evaluate_batch(calls_data)
+
+    if json_output:
+        output = []
+        for r in results:
+            output.append(
+                {
+                    "verdict": r.verdict,
+                    "tool_name": r.tool_name,
+                    "rules_evaluated": r.rules_evaluated,
+                    "deny_reasons": list(r.deny_reasons),
+                    "warn_reasons": list(r.warn_reasons),
+                    "policy_error": r.policy_error,
+                    "rules": [asdict(rule) for rule in r.rules],
+                }
+            )
+        _console.print(json.dumps(output, indent=2))
+    else:
+        from rich.table import Table
+
+        table = Table(show_header=True)
+        table.add_column("#", style="dim", width=4)
+        table.add_column("Tool")
+        table.add_column("Verdict")
+        table.add_column("Rules", justify="right")
+        table.add_column("Details")
+
+        for i, r in enumerate(results, 1):
+            if r.verdict == "deny":
+                verdict_styled = "[red bold]DENY[/red bold]"
+                details = "; ".join(r.deny_reasons) if r.deny_reasons else ""
+            elif r.verdict == "warn":
+                verdict_styled = "[yellow bold]WARN[/yellow bold]"
+                details = "; ".join(r.warn_reasons) if r.warn_reasons else ""
+            else:
+                verdict_styled = "[green bold]ALLOW[/green bold]"
+                details = "all rules passed"
+
+            table.add_row(str(i), r.tool_name, verdict_styled, str(r.rules_evaluated), escape(details))
+
+        _console.print(table)
+
+    has_deny = any(r.verdict == "deny" for r in results)
+    sys.exit(1 if has_deny else 0)
+
+
+@cli.command("test")
+@click.argument("file", type=click.Path(exists=True))
+@click.option("--cases", default=None, type=click.Path(exists=True), help="YAML file with test cases.")
+@click.option("--calls", default=None, type=click.Path(exists=True), help="JSON file with tool calls to evaluate.")
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output results as JSON.")
+def test_cmd(file: str, cases: str | None, calls: str | None, json_output: bool) -> None:
+    """Test contracts against test cases or evaluate tool calls.
+
+    Two modes:
+      --cases: YAML test cases with expected verdicts (preconditions only).
+      --calls: JSON tool calls for dry-run evaluation (pre + postconditions).
+
+    Exactly one of --cases or --calls must be provided.
+
+    Exit code 0: all cases pass / no denials.
+    Exit code 1: one or more failures / denials.
+    Exit code 2: usage error.
+    """
+    if cases and calls:
+        _err_console.print("[red]Cannot use both --cases and --calls. Pick one.[/red]")
+        sys.exit(2)
+    if not cases and not calls:
+        _err_console.print("[red]Must provide either --cases or --calls.[/red]")
+        sys.exit(2)
+
+    if cases:
+        _run_cases(file, cases)
+    else:
+        _run_calls(file, calls, json_output)
