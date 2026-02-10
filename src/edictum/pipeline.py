@@ -41,6 +41,8 @@ class PostDecision:
     warnings: list[str] = field(default_factory=list)
     contracts_evaluated: list[dict] = field(default_factory=list)
     policy_error: bool = False
+    redacted_response: Any = None
+    output_suppressed: bool = False
 
 
 class GovernancePipeline:
@@ -226,6 +228,8 @@ class GovernancePipeline:
         """Run all post-execution governance checks."""
         warnings: list[str] = []
         contracts_evaluated: list[dict] = []
+        redacted_response: Any = None
+        output_suppressed: bool = False
 
         # 1. Postconditions (Fix 5: catch exceptions)
         for contract in self._guard.get_postconditions(envelope):
@@ -248,7 +252,42 @@ class GovernancePipeline:
             contracts_evaluated.append(contract_record)
 
             if not verdict.passed:
-                if envelope.side_effect in (SideEffect.PURE, SideEffect.READ):
+                effect = getattr(contract, "_edictum_effect", "warn")
+                contract_mode = getattr(contract, "_edictum_mode", None)
+                is_safe = envelope.side_effect in (SideEffect.PURE, SideEffect.READ)
+
+                # Observe mode takes precedence
+                if contract_mode == "observe":
+                    warnings.append(f"\u26a0\ufe0f [observe] {verdict.message}")
+                elif effect == "redact" and is_safe:
+                    patterns = getattr(contract, "_edictum_redact_patterns", [])
+                    source = redacted_response if redacted_response is not None else tool_response
+                    text = str(source) if source is not None else ""
+                    if patterns:
+                        for pat in patterns:
+                            text = pat.sub("[REDACTED]", text)
+                    else:
+                        from edictum.audit import RedactionPolicy
+
+                        text = RedactionPolicy().redact_result(text, max_length=len(text) + 100)
+                    redacted_response = text
+                    warnings.append(f"\u26a0\ufe0f Content redacted by {contract_record['name']}.")
+                elif effect == "deny" and is_safe:
+                    redacted_response = f"[OUTPUT SUPPRESSED] {verdict.message}"
+                    output_suppressed = True
+                    warnings.append(f"\u26a0\ufe0f Output suppressed by {contract_record['name']}.")
+                elif effect in ("redact", "deny") and not is_safe:
+                    logger.warning(
+                        "Postcondition %s declares effect=%s but tool %s has side_effect=%s; " "falling back to warn.",
+                        contract_record["name"],
+                        effect,
+                        envelope.tool_name,
+                        envelope.side_effect.value,
+                    )
+                    warnings.append(
+                        f"\u26a0\ufe0f {verdict.message} Tool already executed \u2014 assess before proceeding."
+                    )
+                elif is_safe:
                     warnings.append(f"\u26a0\ufe0f {verdict.message} Consider retrying.")
                 else:
                     warnings.append(
@@ -275,4 +314,6 @@ class GovernancePipeline:
             warnings=warnings,
             contracts_evaluated=contracts_evaluated,
             policy_error=pe,
+            redacted_response=redacted_response,
+            output_suppressed=output_suppressed,
         )

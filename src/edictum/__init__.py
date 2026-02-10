@@ -387,6 +387,7 @@ class Edictum:
                 tags = verdict.metadata.get("tags", []) if verdict.metadata else []
                 is_observed = getattr(contract, "_edictum_mode", None) == "observe" and not verdict.passed
                 pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
+                effect = getattr(contract, "_edictum_effect", "warn")
 
                 rule = RuleResult(
                     rule_id=rule_id,
@@ -395,6 +396,7 @@ class Edictum:
                     message=verdict.message,
                     tags=tags,
                     observed=is_observed,
+                    effect=effect,
                     policy_error=pe,
                 )
                 rules.append(rule)
@@ -582,7 +584,7 @@ class Edictum:
         if not tool_success:
             raise EdictumToolError(result)
 
-        return result
+        return post.redacted_response if post.redacted_response is not None else result
 
     async def _emit_run_pre_audit(self, envelope, session, action: AuditAction, pre: PreDecision) -> None:
         event = AuditEvent(

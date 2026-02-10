@@ -126,7 +126,7 @@ class AgnoAdapter:
             except Exception:
                 logger.exception("on_postcondition_warn callback raised")
 
-        return result
+        return post_result.result
 
     async def _pre(self, tool_name: str, tool_input: dict, call_id: str) -> dict | str:
         """Pre-execution governance. Returns {} on allow, denial string on deny."""
@@ -215,6 +215,10 @@ class AgnoAdapter:
         # Run pipeline
         post_decision = await self._pipeline.post_execute(envelope, tool_response, tool_success)
 
+        effective_response = (
+            post_decision.redacted_response if post_decision.redacted_response is not None else tool_response
+        )
+
         # Record in session
         await self._session.record_execution(envelope.tool_name, success=tool_success)
 
@@ -249,7 +253,7 @@ class AgnoAdapter:
 
         findings = build_findings(post_decision)
         return PostCallResult(
-            result=tool_response,
+            result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
         )

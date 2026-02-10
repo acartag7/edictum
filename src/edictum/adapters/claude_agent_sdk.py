@@ -29,6 +29,10 @@ class ClaudeAgentSDKAdapter:
     2. Manages pending state (envelope + span) between Pre/Post
     3. Translates PreDecision/PostDecision into SDK hook output format
     4. Handles observe mode (deny -> allow conversion)
+
+    Note: Native SDK hooks (to_sdk_hooks) cannot substitute tool results.
+    Postcondition effects (redact/deny) require the wrapper integration path
+    for full enforcement. Native hooks can only warn.
     """
 
     def __init__(
@@ -61,6 +65,14 @@ class ClaudeAgentSDKAdapter:
                 for side effects.
         """
         self._on_postcondition_warn = on_postcondition_warn
+
+        has_effects = any(getattr(p, "_edictum_effect", "warn") != "warn" for p in self._guard._postconditions)
+        if has_effects:
+            logger.warning(
+                "Postcondition effects (redact/deny) require the wrapper integration path "
+                "for full enforcement. Native hooks (to_sdk_hooks) can only warn."
+            )
+
         return {
             "pre_tool_use": self._pre_tool_use,
             "post_tool_use": self._post_tool_use,
@@ -181,12 +193,15 @@ class ClaudeAgentSDKAdapter:
         span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
         span.end()
 
-        # Build findings and call callback
+        # Build findings and call callback with effective response
+        effective_response = (
+            post_decision.redacted_response if post_decision.redacted_response is not None else tool_response
+        )
         findings = build_findings(post_decision)
         on_warn = getattr(self, "_on_postcondition_warn", None)
         if not post_decision.postconditions_passed and findings and on_warn:
             try:
-                on_warn(tool_response, findings)
+                on_warn(effective_response, findings)
             except Exception:
                 logger.exception("on_postcondition_warn callback raised")
 

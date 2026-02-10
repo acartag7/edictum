@@ -34,6 +34,10 @@ class OpenAIAgentsAdapter:
     Input and output guardrails are separate functions with no shared tool_use_id.
     Correlation uses tool_name as the pending key since the SDK is typically
     single-threaded per agent run.
+
+    Note: Native guardrails (as_guardrails) cannot substitute tool results.
+    Postcondition effects (redact/deny) require the wrapper integration path
+    for full enforcement. Native hooks can only warn.
     """
 
     def __init__(
@@ -77,6 +81,13 @@ class OpenAIAgentsAdapter:
             def my_tool(...): ...
         """
         self._on_postcondition_warn = on_postcondition_warn
+
+        has_effects = any(getattr(p, "_edictum_effect", "warn") != "warn" for p in self._guard._postconditions)
+        if has_effects:
+            logger.warning(
+                "Postcondition effects (redact/deny) require the wrapper integration path "
+                "for full enforcement. Native hooks (as_guardrails) can only warn."
+            )
 
         from agents import ToolGuardrailFunctionOutput
         from agents.tool_guardrails import (
@@ -223,6 +234,10 @@ class OpenAIAgentsAdapter:
         # Run pipeline
         post_decision = await self._pipeline.post_execute(envelope, tool_response, tool_success)
 
+        effective_response = (
+            post_decision.redacted_response if post_decision.redacted_response is not None else tool_response
+        )
+
         # Record in session
         await self._session.record_execution(envelope.tool_name, success=tool_success)
 
@@ -257,7 +272,7 @@ class OpenAIAgentsAdapter:
 
         findings = build_findings(post_decision)
         return PostCallResult(
-            result=tool_response,
+            result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
         )
