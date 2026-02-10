@@ -68,9 +68,26 @@ Run all checks in sequence. Abort immediately on any failure.
    new_string: version = "{new_version}"
    ```
 
-2. **Commit the change:**
+2. **Audit all version references in the repo:**
    ```
-   Bash: git add pyproject.toml && git commit -m "chore: bump version to {version}"
+   Grep: pattern="{current_version}" (search tracked files only, exclude CHANGELOG.md)
+   ```
+   For each match, determine if it is a **"current version" reference** or a **historical reference**:
+   - **Current version references** — strings like `Current version: **v0.5.3**`, `version 0.5.3`, `(v0.5.3)` in docs/README/CLAUDE.md that describe the *current* state of the library. **Update these** to `{new_version}`.
+   - **Historical references** — changelog entries, "What's Shipped" bullet points, test docstrings noting when a fix was introduced (e.g., `Regression tests for ... (v0.5.2)`), git commit messages. **Leave these unchanged.**
+
+   Use `Edit` to update each current-version reference. Common locations to check:
+   - `README.md` — install/version badges, "Current version" line
+   - `CLAUDE.md` — "Current version" line in header (but NOT the "What's Shipped" history)
+   - `docs/index.md` — homepage version mention
+   - `docs/roadmap.md` — version references in prose
+   - Any other `.md` or `.py` file that mentions the old version as current
+
+   If unsure whether a reference is current or historical, **leave it unchanged** and flag it to the user.
+
+3. **Commit the change:**
+   ```
+   Bash: git add -A && git commit -m "chore: bump version to {version}"
    ```
    - Do NOT include `Co-Authored-By` in the commit message.
 
