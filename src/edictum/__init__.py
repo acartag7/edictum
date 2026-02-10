@@ -35,6 +35,7 @@ from edictum.envelope import (
     ToolRegistry,
     create_envelope,
 )
+from edictum.evaluation import EvaluationResult, RuleResult
 from edictum.findings import Finding, PostCallResult
 from edictum.hooks import HookDecision, HookResult
 from edictum.limits import OperationLimits
@@ -82,6 +83,8 @@ __all__ = [
     "has_otel",
     "Finding",
     "PostCallResult",
+    "EvaluationResult",
+    "RuleResult",
 ]
 
 
@@ -299,6 +302,157 @@ class Edictum:
 
     def get_session_contracts(self) -> list:
         return self._session_contracts
+
+    def evaluate(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        *,
+        principal: Principal | None = None,
+        output: str | None = None,
+        environment: str | None = None,
+    ) -> EvaluationResult:
+        """Dry-run evaluation of a tool call against all matching contracts.
+
+        Unlike run(), this never executes the tool and evaluates all
+        matching rules exhaustively (no short-circuit on first deny).
+        Session contracts are skipped (no session state in dry-run).
+        """
+        env = environment or self.environment
+        envelope = create_envelope(
+            tool_name=tool_name,
+            tool_input=args,
+            environment=env,
+            principal=principal,
+            registry=self.tool_registry,
+        )
+
+        rules: list[RuleResult] = []
+        deny_reasons: list[str] = []
+        warn_reasons: list[str] = []
+
+        # Evaluate all matching preconditions (exhaustive, no short-circuit)
+        for contract in self.get_preconditions(envelope):
+            rule_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
+            try:
+                verdict = contract(envelope)
+            except Exception as exc:
+                rule = RuleResult(
+                    rule_id=rule_id,
+                    rule_type="precondition",
+                    passed=False,
+                    message=f"Precondition error: {exc}",
+                    policy_error=True,
+                )
+                rules.append(rule)
+                deny_reasons.append(rule.message)
+                continue
+
+            tags = verdict.metadata.get("tags", []) if verdict.metadata else []
+            is_observed = getattr(contract, "_edictum_mode", None) == "observe" and not verdict.passed
+            pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
+
+            rule = RuleResult(
+                rule_id=rule_id,
+                rule_type="precondition",
+                passed=verdict.passed,
+                message=verdict.message,
+                tags=tags,
+                observed=is_observed,
+                policy_error=pe,
+            )
+            rules.append(rule)
+
+            if not verdict.passed and not is_observed:
+                deny_reasons.append(verdict.message or "")
+
+        # Evaluate postconditions only when output is provided
+        if output is not None:
+            for contract in self.get_postconditions(envelope):
+                rule_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
+                try:
+                    verdict = contract(envelope, output)
+                except Exception as exc:
+                    rule = RuleResult(
+                        rule_id=rule_id,
+                        rule_type="postcondition",
+                        passed=False,
+                        message=f"Postcondition error: {exc}",
+                        policy_error=True,
+                    )
+                    rules.append(rule)
+                    warn_reasons.append(rule.message)
+                    continue
+
+                tags = verdict.metadata.get("tags", []) if verdict.metadata else []
+                pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
+
+                rule = RuleResult(
+                    rule_id=rule_id,
+                    rule_type="postcondition",
+                    passed=verdict.passed,
+                    message=verdict.message,
+                    tags=tags,
+                    policy_error=pe,
+                )
+                rules.append(rule)
+
+                if not verdict.passed:
+                    warn_reasons.append(verdict.message or "")
+
+        # Compute verdict
+        if deny_reasons:
+            verdict_str = "deny"
+        elif warn_reasons:
+            verdict_str = "warn"
+        else:
+            verdict_str = "allow"
+
+        return EvaluationResult(
+            verdict=verdict_str,
+            tool_name=tool_name,
+            rules=rules,
+            deny_reasons=deny_reasons,
+            warn_reasons=warn_reasons,
+            rules_evaluated=len(rules),
+            policy_error=any(r.policy_error for r in rules),
+        )
+
+    def evaluate_batch(self, calls: list[dict[str, Any]]) -> list[EvaluationResult]:
+        """Evaluate a batch of tool calls. Thin wrapper over evaluate()."""
+        results: list[EvaluationResult] = []
+        for call in calls:
+            tool = call["tool"]
+            args = call.get("args", {})
+
+            # Convert principal dict to Principal object
+            principal = None
+            principal_data = call.get("principal")
+            if principal_data and isinstance(principal_data, dict):
+                principal = Principal(
+                    role=principal_data.get("role"),
+                    user_id=principal_data.get("user_id"),
+                    ticket_ref=principal_data.get("ticket_ref"),
+                    claims=principal_data.get("claims", {}),
+                )
+
+            # Normalize output
+            output = call.get("output")
+            if isinstance(output, dict):
+                output = json.dumps(output)
+
+            environment = call.get("environment")
+
+            results.append(
+                self.evaluate(
+                    tool,
+                    args,
+                    principal=principal,
+                    output=output,
+                    environment=environment,
+                )
+            )
+        return results
 
     async def run(
         self,
