@@ -38,6 +38,7 @@ contracts:
 | `metadata.name` | string | yes | Bundle identifier. Slug format: `[a-z0-9][a-z0-9._-]*`. |
 | `metadata.description` | string | no | Human-readable description. |
 | `defaults.mode` | string | yes | `enforce` or `observe`. Applied to every contract that does not set its own `mode`. |
+| `tools` | object | no | Tool side-effect classifications. See [Tool Classifications](#tool-classifications). |
 | `contracts` | array | yes | Minimum one contract. Each item is a precondition, postcondition, or session contract. |
 
 The bundle is loaded with `Edictum.from_yaml()`:
@@ -49,6 +50,54 @@ guard = Edictum.from_yaml("contracts/my-policy.yaml")
 ```
 
 A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact contract bundle that produced it.
+
+---
+
+## Tool Classifications {#tool-classifications}
+
+The optional `tools:` section declares side-effect classifications for your agent's tools. This controls how postcondition `redact` and `deny` effects behave -- without it, all tools default to `SideEffect.IRREVERSIBLE` and redact/deny effects fall back to `warn`.
+
+```yaml
+tools:
+  read_config:
+    side_effect: read
+  get_weather:
+    side_effect: pure
+    idempotent: true
+  update_record:
+    side_effect: write
+  deploy_service:
+    side_effect: irreversible
+```
+
+Each tool entry has the following fields:
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `side_effect` | string | yes | -- | `pure`, `read`, `write`, or `irreversible`. |
+| `idempotent` | boolean | no | `false` | Whether repeated calls with the same arguments produce the same result. |
+
+**Side-effect levels:**
+
+| Level | Meaning | Postcondition redact/deny |
+|-------|---------|--------------------------|
+| `pure` | No side effects. Returns computed data. | Enforced |
+| `read` | Reads external state but does not modify it. | Enforced |
+| `write` | Modifies external state (can be undone). | Falls back to `warn` |
+| `irreversible` | Modifies external state (cannot be undone). | Falls back to `warn` |
+
+Tools not listed in the `tools:` section default to `irreversible`. This is the conservative default -- if Edictum does not know a tool's side effects, it assumes the worst.
+
+You can also pass tool classifications as a parameter to `from_yaml()`. Parameter values override YAML values for the same tool name:
+
+```python
+guard = Edictum.from_yaml(
+    "contracts.yaml",
+    tools={"my_custom_reader": {"side_effect": "read"}},
+)
+```
+
+Both sources are merged: tools defined in the YAML `tools:` section and tools passed via the `tools=` parameter are combined, with the parameter winning on conflict.
 
 ---
 
@@ -449,6 +498,18 @@ metadata:
 
 defaults:
   mode: enforce
+
+tools:
+  read_file:
+    side_effect: read
+  bash:
+    side_effect: irreversible
+  deploy_service:
+    side_effect: irreversible
+  call_api:
+    side_effect: write
+  send_notification:
+    side_effect: write
 
 contracts:
   # --- File safety ---
