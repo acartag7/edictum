@@ -75,7 +75,7 @@ Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way pa
 pip install edictum[yaml]
 ```
 
-Requires Python 3.11+. Current version: **v0.6.0**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
+Requires Python 3.11+. Current version: **v0.6.1**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
 
 ## Framework Support
 
