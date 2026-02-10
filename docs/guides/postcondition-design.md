@@ -1,35 +1,68 @@
-# Why Postconditions Warn, Not Deny
+# Postcondition Design
 
-Edictum postconditions can only `warn`, never `deny`. This is a deliberate design decision, not a limitation. This guide explains the reasoning and shows how to handle postcondition findings in practice.
+Postconditions evaluate *after* the tool has already executed. Their behavior depends on two factors: the declared **effect** and the tool's **side-effect classification**.
 
 ---
 
-## The Design Decision
+## Three Effects
 
-Postconditions evaluate *after* the tool has already executed. The file was already written. The API was already called. The database row was already inserted.
+Postconditions support three effects:
 
-Denying at this point is theater -- it hides the result from the agent while the side effect persists in the real world. The action happened. A "deny" response only prevents the agent from seeing the result, which is worse than useless: it creates a false sense of safety while the damage is already done.
+| Effect | What it does | When it applies |
+|--------|-------------|-----------------|
+| `warn` | Produces a finding. The tool result is unchanged. | All tools. |
+| `redact` | Replaces matched patterns in the output with `[REDACTED]`. | READ/PURE tools only. Falls back to `warn` for WRITE/IRREVERSIBLE. |
+| `deny` | Suppresses the entire output with `[OUTPUT SUPPRESSED]`. | READ/PURE tools only. Falls back to `warn` for WRITE/IRREVERSIBLE. |
 
-This is why setting `effect: deny` on a postcondition is a validation error:
+## Why Side Effects Matter
+
+The side-effect constraint is deliberate. For tools that only read data (`SideEffect.READ` or `SideEffect.PURE`), the output can be safely redacted or suppressed because the tool has no lasting effect. Nothing happened in the real world -- we are only controlling what the agent sees.
+
+For tools that write or mutate state (`SideEffect.WRITE` or `SideEffect.IRREVERSIBLE`), the file was already written, the API was already called, the database row was already inserted. Hiding the result at this point only removes context the agent needs. The action happened regardless. Effects fall back to `warn` so the agent retains awareness of what occurred.
+
+---
+
+## Choosing an Effect
+
+**Use `warn`** (default) when you want detection without enforcement. Your `on_postcondition_warn` callback decides what to do -- redact, replace, log, or ignore.
+
+**Use `redact`** when the output contains structured sensitive tokens (API keys, SSNs, patient IDs) embedded in otherwise useful data. The pipeline uses the `when` clause's regex patterns to find and replace only the sensitive tokens:
 
 ```yaml
-# This will fail validation at load time
-- id: bad-post
+- id: secrets-in-output
   type: post
   tool: "*"
   when:
     output.text:
-      contains: "SSN"
+      matches_any:
+        - 'sk-prod-[a-z0-9]{8}'
+        - 'AKIA-PROD-[A-Z]{12}'
   then:
-    effect: deny   # validation error: postconditions cannot deny
-    message: "..."
+    effect: redact
+    message: "Secrets detected and redacted."
+    tags: [secrets]
+```
+
+**Use `deny`** when the entire output is sensitive content where partial redaction still leaks information (accommodation records, privileged legal documents, medical info):
+
+```yaml
+- id: accommodation-confidential
+  type: post
+  tool: "*"
+  when:
+    output.text:
+      matches: '\b(504\s*Plan|IEP|accommodation)\b'
+  then:
+    effect: deny
+    message: "Accommodation info cannot be returned."
+    tags: [ferpa]
 ```
 
 ---
 
 ## The Detect-Remediate Pattern
 
-Edictum separates detection from remediation:
+For `effect: warn`, Edictum separates detection from remediation:
 
 1. **Contracts detect** -- a YAML postcondition evaluates tool output and produces findings.
 2. **Your code remediates** -- an `on_postcondition_warn` callback transforms the result before the LLM sees it.
@@ -73,52 +106,38 @@ This separation has organizational benefits:
 - **Engineering teams write remediation** -- Python callbacks, testable, framework-specific. No contract knowledge required.
 - Neither team needs to understand the other's domain.
 
+With `effect: redact` and `effect: deny`, the pipeline handles common remediation patterns automatically -- no callback needed. The callback approach remains available for `warn` and for custom remediation logic beyond what the built-in effects provide.
+
 ---
 
-## Alternatives Considered
+## Design Rationale
 
-### Deny and rollback
+### Why not deny all postconditions?
 
-Rejected. Rollback is domain-specific and cannot be generalized. Undoing a file write is different from undoing an API call, which is different from undoing a database insert. Some actions have no rollback at all (sending an email, posting to a public API). A contract enforcement library cannot implement rollback for arbitrary tools.
+For WRITE/IRREVERSIBLE tools, denying after execution is theater. The action happened. A "deny" response only prevents the agent from seeing the result, creating a false sense of safety while the damage is already done. This is why effects fall back to `warn` for these tools.
 
-### Deny and log
+### Why not let contracts remediate?
 
-Rejected. This prevents the agent from seeing the result but does not undo the action. The side effect persists while the agent loses context about what happened. This creates a confusing state where the action occurred but the agent does not know about it.
-
-### Let contracts remediate
-
-Rejected. Contracts should be declarative, not imperative. A YAML contract that says "replace SSNs with asterisks" is no longer a policy declaration -- it is code masquerading as configuration. Remediation logic belongs in code where it can be tested, debugged, and reviewed with standard engineering tools.
+Contracts should be declarative, not imperative. The `redact` and `deny` effects are intentionally simple: `redact` uses the same patterns from the `when` clause (no new syntax), and `deny` suppresses entirely (no partial logic). Complex remediation (custom replacement text, conditional logic, external service calls) belongs in `on_postcondition_warn` callbacks where it can be tested and debugged with standard engineering tools.
 
 ---
 
 ## Callback Capabilities by Adapter
 
-Whether the callback can actually replace the tool result depends on the adapter pattern:
+Whether the `on_postcondition_warn` callback can replace the tool result depends on the adapter pattern:
 
-| Adapter | Pattern | Callback replaces result |
-|---------|---------|--------------------------|
-| LangChain | Wrap-around | Yes |
-| Agno | Wrap-around | Yes |
-| Semantic Kernel | Filter | Yes |
-| CrewAI | Hook | Yes (callback return replaces result) |
-| Claude SDK | Hook | Side-effect only |
-| OpenAI Agents | Guardrail | Side-effect only |
+| Adapter | Pattern | Callback replaces result | Built-in redact/deny |
+|---------|---------|--------------------------|---------------------|
+| LangChain | Wrap-around | Yes | Yes |
+| Agno | Wrap-around | Yes | Yes |
+| Semantic Kernel | Filter | Yes | Yes |
+| CrewAI | Hook | Yes (callback return replaces result) | Yes |
+| Claude SDK | Native hook | Side-effect only | Side-effect only |
+| OpenAI Agents | Native guardrail | Side-effect only | Side-effect only |
 
-For **wrap-around** and **hook** adapters that support result replacement (LangChain, Agno, Semantic Kernel, CrewAI), the callback return value replaces the tool result. The LLM sees the redacted version:
+For **wrap-around** adapters (LangChain, Agno, Semantic Kernel, CrewAI), both `on_postcondition_warn` callbacks and built-in `redact`/`deny` effects work fully. The LLM sees the modified result.
 
-```python
-def redact(result, findings):
-    return mask_pii(result)  # returned value replaces the original
-```
-
-For **hook-based** adapters where the SDK controls the result flow (Claude SDK, OpenAI Agents), the return value is ignored. Use the callback for side effects like logging or alerting:
-
-```python
-def log_and_alert(result, findings):
-    logger.warning("PII detected: %s", findings)
-    alert_service.notify(findings)
-    # return value is ignored
-```
+For **native hook** adapters (Claude SDK, OpenAI Agents), the SDK controls the result flow and the hook cannot substitute it. Built-in `redact`/`deny` effects set the `PostCallResult.result` field (available to wrapper consumers and callbacks) but cannot intercept the result before the SDK passes it to the model. A warning is logged at adapter construction time when postconditions declare `redact` or `deny` effects with these adapters.
 
 If your environment requires PII interception (not just detection), use LangChain, CrewAI, Agno, or Semantic Kernel.
 
@@ -126,4 +145,4 @@ If your environment requires PII interception (not just detection), use LangChai
 
 ## Summary
 
-Postconditions detect. Your code remediates. This separation keeps contracts declarative, remediation testable, and the overall system honest about what actually happened.
+Postconditions detect and, for READ/PURE tools, can enforce. `warn` produces findings for your code to act on. `redact` removes sensitive tokens. `deny` suppresses the entire output. WRITE/IRREVERSIBLE tools always get `warn` because the action already happened.

@@ -77,10 +77,12 @@ The patterns above detect:
 | Phone number | `\b\d{3}[-.]?\d{3}[-.]?\d{4}\b` | 555-867-5309 |
 
 **Gotchas:**
-- Postconditions cannot undo the tool call. The data has already been returned. The warning tells the agent to redact, but the data is in the conversation context.
+- With `effect: warn`, postconditions detect but do not modify the output. Use `on_postcondition_warn` callbacks or switch to `effect: redact` for automatic pattern replacement on READ/PURE tools.
 - Regex-based PII detection is a baseline. Production deployments should use ML-based PII scanners (Presidio, Phileas, etc.) behind the same postcondition contract interface.
 - `matches_any` short-circuits on the first match. Order patterns from most common to least common for performance.
 - The phone number regex will match some non-phone patterns like version numbers (e.g., `123.456.7890`). Tune patterns based on your data.
+
+**Tip:** For automatic redaction, change `effect: warn` to `effect: redact`. The pipeline uses the same `matches_any` patterns from the `when` clause to replace matched text with `[REDACTED]`. This works for READ/PURE tools; WRITE/IRREVERSIBLE tools fall back to `warn`.
 
 ---
 

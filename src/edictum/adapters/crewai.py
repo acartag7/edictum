@@ -249,6 +249,10 @@ class CrewAIAdapter:
         # Run pipeline
         post_decision = await self._pipeline.post_execute(envelope, tool_result, tool_success)
 
+        effective_response = (
+            post_decision.redacted_response if post_decision.redacted_response is not None else tool_result
+        )
+
         # Record in session
         await self._session.record_execution(envelope.tool_name, success=tool_success)
 
@@ -284,7 +288,7 @@ class CrewAIAdapter:
         # Build findings
         findings = build_findings(post_decision)
         post_result = PostCallResult(
-            result=tool_result,
+            result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
         )

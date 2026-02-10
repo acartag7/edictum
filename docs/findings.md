@@ -5,10 +5,13 @@ Edictum produces structured **findings** that your application can act on.
 
 ## The Pattern: Detect -> Remediate
 
-Edictum separates detection from remediation:
+Postconditions detect issues in tool output. What happens next depends on the declared `effect`:
 
-- **Contracts detect** -- YAML postconditions evaluate tool output, produce findings
-- **Your code remediates** -- a callback transforms the result before the LLM sees it (when the adapter supports result interception; Claude SDK and OpenAI Agents log findings but cannot replace results)
+- **`effect: warn`** (default) -- the contract produces findings and your `on_postcondition_warn` callback remediates
+- **`effect: redact`** -- the pipeline automatically replaces matched patterns with `[REDACTED]` (READ/PURE tools only)
+- **`effect: deny`** -- the pipeline suppresses the entire output (READ/PURE tools only)
+
+For `warn`, your code handles remediation. For `redact` and `deny`, the pipeline handles it automatically. In all cases, findings are still produced and the callback is still invoked if provided. Claude SDK and OpenAI Agents native hooks cannot substitute results -- see [adapter limitations](guides/adapter-comparison.md#known-limitations).
 
 ```python
 from edictum import Edictum
@@ -189,10 +192,10 @@ or Semantic Kernel.
 
 ## Relationship to Contracts
 
-Contracts stay declarative. They **detect**, they don't **remediate**.
+Contracts are declarative. With `effect: warn`, they **detect** and your code **remediates**. With `effect: redact` or `effect: deny`, the pipeline handles common remediation automatically.
 
 ```yaml
-# This contract DETECTS PII in tool output
+# Detect and warn -- your callback remediates
 - id: pii-in-any-output
   type: post
   tool: "*"
@@ -202,13 +205,23 @@ Contracts stay declarative. They **detect**, they don't **remediate**.
   then:
     effect: warn
     message: "PII pattern detected in tool output"
+
+# Detect and redact -- pipeline handles it
+- id: secrets-in-output
+  type: post
+  tool: "*"
+  when:
+    output.text:
+      matches_any: ['sk-prod-[a-z0-9]{8}', 'AKIA-PROD-[A-Z]{12}']
+  then:
+    effect: redact
+    message: "Secrets detected and redacted."
 ```
 
-The contract says "this output contains PII." Your `on_postcondition_warn`
-callback decides what to do about it -- redact, replace, log, or ignore.
+For `warn`, the contract says "this output contains PII" and your `on_postcondition_warn` callback decides what to do. For `redact`, the pipeline removes the matched patterns automatically. For `deny`, the pipeline suppresses the entire output.
 
 This separation means:
 
 - Compliance teams write contracts (YAML, auditable, versioned)
-- Engineering teams write remediation (code, testable, framework-specific)
-- Neither needs to understand the other's domain
+- Engineering teams write remediation for `warn` effects (code, testable, framework-specific)
+- `redact` and `deny` effects require no application code -- the pipeline handles enforcement

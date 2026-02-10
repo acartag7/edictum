@@ -191,6 +191,10 @@ class SemanticKernelAdapter:
 
         post_decision = await self._pipeline.post_execute(envelope, tool_response, tool_success)
 
+        effective_response = (
+            post_decision.redacted_response if post_decision.redacted_response is not None else tool_response
+        )
+
         await self._session.record_execution(envelope.tool_name, success=tool_success)
 
         action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
@@ -222,7 +226,7 @@ class SemanticKernelAdapter:
 
         findings = build_findings(post_decision)
         return PostCallResult(
-            result=tool_response,
+            result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
         )

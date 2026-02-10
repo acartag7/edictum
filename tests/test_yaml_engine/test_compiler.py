@@ -276,6 +276,97 @@ class TestPolicyError:
         assert verdict.metadata.get("policy_error") is True
 
 
+class TestPostconditionEffectMetadata:
+    """Tests that _edictum_effect and _edictum_redact_patterns are stamped on compiled post functions."""
+
+    def test_effect_stamped_on_post_function(self):
+        bundle_data = {
+            "apiVersion": "edictum/v1",
+            "kind": "ContractBundle",
+            "metadata": {"name": "test"},
+            "defaults": {"mode": "enforce"},
+            "contracts": [
+                {
+                    "id": "redact-secrets",
+                    "type": "post",
+                    "tool": "*",
+                    "when": {"output.text": {"matches_any": ["sk-[a-z0-9]+"]}},
+                    "then": {"effect": "redact", "message": "Secrets found."},
+                }
+            ],
+        }
+        compiled = compile_contracts(bundle_data)
+        fn = compiled.postconditions[0]
+        assert fn._edictum_effect == "redact"
+
+    def test_default_effect_is_warn(self):
+        bundle_data = {
+            "apiVersion": "edictum/v1",
+            "kind": "ContractBundle",
+            "metadata": {"name": "test"},
+            "defaults": {"mode": "enforce"},
+            "contracts": [
+                {
+                    "id": "pii-check",
+                    "type": "post",
+                    "tool": "*",
+                    "when": {"output.text": {"matches": "\\d{3}-\\d{2}-\\d{4}"}},
+                    "then": {"message": "PII detected."},
+                }
+            ],
+        }
+        compiled = compile_contracts(bundle_data)
+        fn = compiled.postconditions[0]
+        assert fn._edictum_effect == "warn"
+
+    def test_redact_patterns_extracted(self):
+        import re
+
+        bundle_data = {
+            "apiVersion": "edictum/v1",
+            "kind": "ContractBundle",
+            "metadata": {"name": "test"},
+            "defaults": {"mode": "enforce"},
+            "contracts": [
+                {
+                    "id": "redact-keys",
+                    "type": "post",
+                    "tool": "*",
+                    "when": {"output.text": {"matches_any": ["sk-prod-[a-z0-9]{8}", "AKIA-PROD-[A-Z]{12}"]}},
+                    "then": {"effect": "redact", "message": "Keys found."},
+                }
+            ],
+        }
+        compiled = compile_contracts(bundle_data)
+        fn = compiled.postconditions[0]
+        patterns = fn._edictum_redact_patterns
+        assert len(patterns) == 2
+        assert all(isinstance(p, re.Pattern) for p in patterns)
+        # Verify they actually match expected strings
+        assert patterns[0].search("sk-prod-abcd1234")
+        assert patterns[1].search("AKIA-PROD-ABCDEFGHIJKL")
+
+    def test_no_patterns_for_contains_operator(self):
+        bundle_data = {
+            "apiVersion": "edictum/v1",
+            "kind": "ContractBundle",
+            "metadata": {"name": "test"},
+            "defaults": {"mode": "enforce"},
+            "contracts": [
+                {
+                    "id": "contains-check",
+                    "type": "post",
+                    "tool": "*",
+                    "when": {"output.text": {"contains": "secret"}},
+                    "then": {"effect": "redact", "message": "Secret found."},
+                }
+            ],
+        }
+        compiled = compile_contracts(bundle_data)
+        fn = compiled.postconditions[0]
+        assert fn._edictum_redact_patterns == []
+
+
 class TestSessionLimitsMerging:
     def test_multiple_session_contracts_merge(self):
         bundle_data = {

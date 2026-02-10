@@ -476,3 +476,78 @@ class TestEvaluateBatch:
         assert len(results) == 2
         assert results[0].verdict == "deny"
         assert results[1].verdict == "allow"
+
+
+# ---------------------------------------------------------------------------
+# Tests: RuleResult.effect for postconditions
+# ---------------------------------------------------------------------------
+
+REDACT_EFFECT_BUNDLE = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: test-effect
+defaults:
+  mode: enforce
+contracts:
+  - id: redact-secrets
+    type: post
+    tool: "*"
+    when:
+      output.text:
+        matches_any: ['sk-prod-[a-z0-9]{8}']
+    then:
+      effect: redact
+      message: "Secrets found."
+      tags: [secrets]
+"""
+
+DENY_EFFECT_BUNDLE = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: test-deny-effect
+defaults:
+  mode: enforce
+contracts:
+  - id: deny-ferpa
+    type: post
+    tool: "*"
+    when:
+      output.text:
+        matches: '\\b(IEP|accommodation)\\b'
+    then:
+      effect: deny
+      message: "FERPA violation."
+      tags: [ferpa]
+"""
+
+
+class TestRuleResultEffect:
+    """Tests that RuleResult.effect is populated for postconditions."""
+
+    def test_effect_redact_in_rule_result(self):
+        guard = Edictum.from_yaml(_write_yaml(REDACT_EFFECT_BUNDLE), audit_sink=_NullSink())
+        result = guard.evaluate("search", {"q": "x"}, output="key: sk-prod-abcd1234")
+
+        assert len(result.rules) == 1
+        assert result.rules[0].effect == "redact"
+        assert result.rules[0].rule_type == "postcondition"
+        assert result.rules[0].passed is False
+
+    def test_effect_deny_in_rule_result(self):
+        guard = Edictum.from_yaml(_write_yaml(DENY_EFFECT_BUNDLE), audit_sink=_NullSink())
+        result = guard.evaluate("search", {"q": "x"}, output="Student has an IEP")
+
+        assert len(result.rules) == 1
+        assert result.rules[0].effect == "deny"
+        assert result.rules[0].rule_type == "postcondition"
+        assert result.rules[0].passed is False
+
+    def test_effect_warn_default_in_rule_result(self):
+        guard = Edictum.from_yaml(_write_yaml(POST_BUNDLE), audit_sink=_NullSink())
+        result = guard.evaluate("search", {"q": "x"}, output="SSN: 123-45-6789")
+
+        assert len(result.rules) == 1
+        assert result.rules[0].effect == "warn"
+        assert result.rules[0].rule_type == "postcondition"

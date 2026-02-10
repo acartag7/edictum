@@ -149,12 +149,51 @@ def _compile_pre(contract: dict, mode: str) -> Any:
     return precondition_fn
 
 
+def _extract_output_patterns(expr: dict | Any) -> list[re.Pattern]:
+    """Walk an expression tree and collect regex patterns from output.text leaves.
+
+    Returns a flat list of compiled ``re.Pattern`` objects found under
+    ``matches`` or ``matches_any`` operators where the selector is
+    ``output.text``.  By the time this runs, ``_precompile_regexes``
+    has already converted string patterns to ``re.Pattern``.
+    """
+    if not isinstance(expr, dict):
+        return []
+
+    if "all" in expr:
+        patterns: list[re.Pattern] = []
+        for sub in expr["all"]:
+            patterns.extend(_extract_output_patterns(sub))
+        return patterns
+    if "any" in expr:
+        patterns = []
+        for sub in expr["any"]:
+            patterns.extend(_extract_output_patterns(sub))
+        return patterns
+    if "not" in expr:
+        return _extract_output_patterns(expr["not"])
+
+    # Leaf node
+    collected: list[re.Pattern] = []
+    for selector, operator in expr.items():
+        if selector != "output.text" or not isinstance(operator, dict):
+            continue
+        if "matches" in operator and isinstance(operator["matches"], re.Pattern):
+            collected.append(operator["matches"])
+        if "matches_any" in operator:
+            for p in operator["matches_any"]:
+                if isinstance(p, re.Pattern):
+                    collected.append(p)
+    return collected
+
+
 def _compile_post(contract: dict, mode: str) -> Any:
     """Compile a post-contract into a postcondition callable."""
     contract_id = contract["id"]
     tool = contract["tool"]
     when_expr = _precompile_regexes(contract["when"])
     then = contract["then"]
+    effect = then.get("effect", "warn")
     message_template = then["message"]
     tags = then.get("tags", [])
     then_metadata = then.get("metadata", {})
@@ -190,6 +229,8 @@ def _compile_post(contract: dict, mode: str) -> Any:
     postcondition_fn._edictum_mode = mode
     postcondition_fn._edictum_id = contract_id
     postcondition_fn._edictum_source = "yaml_postcondition"
+    postcondition_fn._edictum_effect = effect
+    postcondition_fn._edictum_redact_patterns = _extract_output_patterns(when_expr)
 
     return postcondition_fn
 

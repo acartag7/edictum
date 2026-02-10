@@ -2,18 +2,18 @@ apiVersion: edictum/v1
 kind: ContractBundle
 
 metadata:
-  name: bad-effect
+  name: post-redact
 
 defaults:
   mode: enforce
 
 contracts:
-  - id: bad-post
+  - id: redact-pii
     type: post
     tool: "*"
     when:
       output.text:
-        contains: "secret"
+        matches: '\b\d{3}-\d{2}-\d{4}\b'
     then:
-      effect: explode
-      message: "This should fail — explode is not a valid effect."
+      effect: redact
+      message: "PII detected — redacting output."

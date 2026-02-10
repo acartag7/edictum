@@ -15,6 +15,7 @@ class RuleResult:
     message: str | None = None
     tags: list[str] = field(default_factory=list)
     observed: bool = False
+    effect: str = "warn"
     policy_error: bool = False
 
 

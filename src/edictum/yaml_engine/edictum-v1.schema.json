@@ -126,7 +126,7 @@
           "required": ["effect", "message"],
           "additionalProperties": false,
           "properties": {
-            "effect": { "const": "warn" },
+            "effect": { "enum": ["warn", "redact", "deny"] },
             "message": { "$ref": "#/$defs/MessageString" },
             "tags": { "$ref": "#/$defs/Tags" },
             "metadata": { "$ref": "#/$defs/ThenMetadata" }
