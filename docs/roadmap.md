@@ -6,7 +6,7 @@ This page tracks what Edictum has shipped, what is actively being built, and wha
 
 ## [Shipped] Core Pipeline (v0.5.x)
 
-The foundation is production-usable today as an in-process library (v0.5.4).
+The foundation is production-usable today as an in-process library (v0.6.0).
 
 - **Enforcement pipeline** with preconditions, postconditions, and session contracts
 - **6 framework adapters**: LangChain, OpenAI Agents SDK, CrewAI, Agno, Semantic Kernel, Claude Agent SDK
