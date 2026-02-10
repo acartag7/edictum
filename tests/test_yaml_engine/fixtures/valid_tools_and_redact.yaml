@@ -1,0 +1,35 @@
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: tools-redact
+
+defaults:
+  mode: enforce
+
+tools:
+  read_config:
+    side_effect: read
+  search_db:
+    side_effect: pure
+
+contracts:
+  - id: redact-secrets
+    type: post
+    tool: "*"
+    when:
+      output.text:
+        matches: 'sk-[a-zA-Z0-9]{10,}'
+    then:
+      effect: redact
+      message: "API key detected — redacting."
+
+  - id: deny-pii
+    type: post
+    tool: "*"
+    when:
+      output.text:
+        matches: '\b\d{3}-\d{2}-\d{4}\b'
+    then:
+      effect: deny
+      message: "PII detected — suppressing output."

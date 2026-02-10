@@ -1,0 +1,28 @@
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: tools-test
+
+defaults:
+  mode: enforce
+
+tools:
+  read_config:
+    side_effect: read
+  get_weather:
+    side_effect: pure
+    idempotent: true
+  deploy:
+    side_effect: irreversible
+
+contracts:
+  - id: block-sensitive-reads
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains: ".env"
+    then:
+      effect: deny
+      message: "Blocked."
