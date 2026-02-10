@@ -20,6 +20,33 @@ The side-effect constraint is deliberate. For tools that only read data (`SideEf
 
 For tools that write or mutate state (`SideEffect.WRITE` or `SideEffect.IRREVERSIBLE`), the file was already written, the API was already called, the database row was already inserted. Hiding the result at this point only removes context the agent needs. The action happened regardless. Effects fall back to `warn` so the agent retains awareness of what occurred.
 
+### Classifying Tools
+
+For `redact` and `deny` to work, Edictum needs to know each tool's side effect. Without classification, all tools default to `irreversible` and effects fall back to `warn`.
+
+Declare tool classifications in the `tools:` section of your contract bundle:
+
+```yaml
+tools:
+  read_config:
+    side_effect: read
+  search_db:
+    side_effect: pure
+  deploy_service:
+    side_effect: irreversible
+```
+
+Or pass them as a parameter to `from_yaml()`:
+
+```python
+guard = Edictum.from_yaml(
+    "contracts.yaml",
+    tools={"read_config": {"side_effect": "read"}},
+)
+```
+
+Both sources are merged (parameter wins on conflict). See the [YAML reference](../contracts/yaml-reference.md#tool-classifications) for the full schema.
+
 ---
 
 ## Choosing an Effect

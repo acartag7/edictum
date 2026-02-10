@@ -117,7 +117,8 @@ YAML file
   |       @session_contract decorated callables
   |     Compile regex match patterns
   |     Build OperationLimits from session limits section
-  |     Return list of contract objects + OperationLimits
+  |     Extract tool classifications from optional tools: section
+  |     Return list of contract objects + OperationLimits + tool registry
   |
   +-- Result: identical objects to Python-defined contracts
         Registered in Edictum the same way

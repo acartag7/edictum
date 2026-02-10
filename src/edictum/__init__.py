@@ -150,6 +150,7 @@ class Edictum:
         cls,
         path: str | Path,
         *,
+        tools: dict[str, dict] | None = None,
         mode: str | None = None,
         audit_sink: AuditSink | None = None,
         redaction: RedactionPolicy | None = None,
@@ -160,6 +161,8 @@ class Edictum:
 
         Args:
             path: Path to a YAML contract file.
+            tools: Tool side-effect classifications. Merged with any ``tools:``
+                section in the YAML bundle (parameter wins on conflict).
             mode: Override the bundle's default mode (enforce/observe).
             audit_sink: Custom audit sink.
             redaction: Custom redaction policy.
@@ -208,10 +211,15 @@ class Edictum:
         effective_mode = mode or compiled.default_mode
         all_contracts = compiled.preconditions + compiled.postconditions + compiled.session_contracts
 
+        # Merge YAML tools with parameter tools (parameter wins on conflict)
+        yaml_tools = compiled.tools
+        merged_tools = {**yaml_tools, **(tools or {})}
+
         return cls(
             environment=environment,
             mode=effective_mode,
             limits=compiled.limits,
+            tools=merged_tools if merged_tools else None,
             contracts=all_contracts,
             audit_sink=audit_sink,
             redaction=redaction,
@@ -224,6 +232,7 @@ class Edictum:
         cls,
         name: str,
         *,
+        tools: dict[str, dict] | None = None,
         mode: str | None = None,
         audit_sink: AuditSink | None = None,
         redaction: RedactionPolicy | None = None,
@@ -234,6 +243,7 @@ class Edictum:
 
         Args:
             name: Template name (e.g., "file-agent", "research-agent", "devops-agent").
+            tools: Tool side-effect classifications. Forwarded to ``from_yaml()``.
 
         Returns:
             Configured Edictum instance.
@@ -249,6 +259,7 @@ class Edictum:
             )
         return cls.from_yaml(
             template_path,
+            tools=tools,
             mode=mode,
             audit_sink=audit_sink,
             redaction=redaction,

@@ -25,6 +25,7 @@ class CompiledBundle:
     session_contracts: list = field(default_factory=list)
     limits: OperationLimits = field(default_factory=OperationLimits)
     default_mode: str = "enforce"
+    tools: dict[str, dict] = field(default_factory=dict)
 
 
 def compile_contracts(bundle: dict) -> CompiledBundle:
@@ -62,12 +63,15 @@ def compile_contracts(bundle: dict) -> CompiledBundle:
             fn = _compile_session(contract, contract_mode, limits)
             session_contracts.append(fn)
 
+    tools = bundle.get("tools", {})
+
     return CompiledBundle(
         preconditions=preconditions,
         postconditions=postconditions,
         session_contracts=session_contracts,
         limits=limits,
         default_mode=default_mode,
+        tools=tools,
     )
 
 

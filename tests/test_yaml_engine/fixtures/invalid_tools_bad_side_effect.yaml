@@ -1,0 +1,23 @@
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: bad-tools
+
+defaults:
+  mode: enforce
+
+tools:
+  explode_tool:
+    side_effect: explode
+
+contracts:
+  - id: placeholder
+    type: pre
+    tool: "*"
+    when:
+      args.path:
+        exists: true
+    then:
+      effect: deny
+      message: "Blocked."
