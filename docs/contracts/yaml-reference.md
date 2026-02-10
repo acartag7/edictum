@@ -96,7 +96,7 @@ Preconditions evaluate **before** tool execution. If the expression matches, the
 
 ### Postcondition (`type: post`) {#postcondition}
 
-Postconditions evaluate **after** tool execution. Because the tool has already run, postconditions can only warn -- they cannot undo what happened.
+Postconditions evaluate **after** tool execution. They inspect the tool's output and produce findings.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -105,7 +105,7 @@ Postconditions evaluate **after** tool execution. Because the tool has already r
 
 **Constraints:**
 
-- `then.effect` must be `warn`. Setting `effect: deny` on a postcondition is a validation error.
+- `then.effect` must be `warn`, `redact`, or `deny`. See [Postcondition Effects](#postcondition-effects) for behavior.
 - The `output.text` selector is available in postconditions. It contains the stringified tool response.
 
 ```yaml
@@ -122,6 +122,52 @@ Postconditions evaluate **after** tool execution. Because the tool has already r
     message: "PII pattern detected in output. Redact before using."
     tags: [pii, compliance]
 ```
+
+#### Postcondition Effects {#postcondition-effects}
+
+Postconditions support three effects that control what happens when the condition matches:
+
+| Effect | Behavior | Side-effect constraint |
+|--------|----------|----------------------|
+| `warn` | Produces a finding. The tool result is unchanged. | All side effects. |
+| `redact` | Replaces matched patterns in the output with `[REDACTED]`. | **READ/PURE only.** Falls back to `warn` for WRITE/IRREVERSIBLE tools. |
+| `deny` | Suppresses the entire tool output with `[OUTPUT SUPPRESSED]`. | **READ/PURE only.** Falls back to `warn` for WRITE/IRREVERSIBLE tools. |
+
+The side-effect constraint reflects a design decision: for tools that only read data (`SideEffect.READ` or `SideEffect.PURE`), the output can be safely redacted or suppressed because the tool has no lasting effect. For tools that write or mutate state (`SideEffect.WRITE` or `SideEffect.IRREVERSIBLE`), the action already happened -- hiding the result only removes context the agent needs.
+
+**`effect: redact`** uses the regex patterns from the `when` clause to do targeted replacement. If the `when` clause uses `output.text` with `matches` or `matches_any`, those exact patterns are used to find and replace sensitive tokens:
+
+```yaml
+- id: secrets-in-output
+  type: post
+  tool: "*"
+  when:
+    output.text:
+      matches_any:
+        - 'sk-prod-[a-z0-9]{8}'
+        - 'AKIA-PROD-[A-Z]{12}'
+  then:
+    effect: redact
+    message: "Secrets detected and redacted."
+    tags: [secrets]
+```
+
+**`effect: deny`** suppresses the entire output. Use this when partial redaction still leaks sensitive content (e.g., accommodation records, privileged legal documents):
+
+```yaml
+- id: accommodation-confidential
+  type: post
+  tool: "*"
+  when:
+    output.text:
+      matches: '\b(504\s*Plan|IEP|accommodation)\b'
+  then:
+    effect: deny
+    message: "Accommodation info cannot be returned."
+    tags: [ferpa]
+```
+
+**Observe mode** takes precedence over `redact` and `deny`. When a postcondition is in observe mode, the effect is always downgraded to a warning regardless of the declared effect.
 
 ### Session Contract (`type: session`) {#session-contract}
 
@@ -262,7 +308,7 @@ then:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `effect` | string | yes | `deny` (block execution) or `warn` (log only). Constrained by contract type. |
+| `effect` | string | yes | `deny` (block execution), `warn` (log only), or `redact`/`deny` for postconditions. Constrained by contract type. |
 | `message` | string | yes | Human-readable message sent to the agent and recorded in audit. 1-500 characters. |
 | `tags` | array of strings | no | Classification labels. Appear in audit events and can be filtered downstream. |
 | `metadata` | object | no | Arbitrary key-value data stamped into the `Verdict` and audit event. |
@@ -271,13 +317,13 @@ then:
 
 The allowed effect depends on the contract type:
 
-| Contract Type | Allowed Effect | Rationale |
+| Contract Type | Allowed Effects | Rationale |
 |---|---|---|
 | `pre` | `deny` only | Preconditions exist to block dangerous calls. |
-| `post` | `warn` only | The tool already ran; blocking is not possible. |
+| `post` | `warn`, `redact`, `deny` | `warn` produces findings. `redact` replaces matched patterns. `deny` suppresses output. See [Postcondition Effects](#postcondition-effects). |
 | `session` | `deny` only | Session limits gate further execution. |
 
-Using the wrong effect for a contract type is a validation error at load time.
+Using an invalid effect for a contract type is a validation error at load time.
 
 ### Message Templating
 

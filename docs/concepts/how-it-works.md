@@ -76,7 +76,7 @@ The pipeline returns `PreDecision` with `action: "allow"`. The tool function exe
 
 **4. Edictum evaluates postconditions.**
 
-The pipeline checks the tool's output against postcondition contracts. For example, a PII detection contract scans the output for SSN patterns. If a pattern matches, the contract produces a [finding](../findings.md) (a structured warning). Findings never deny -- the tool already ran.
+The pipeline checks the tool's output against postcondition contracts. For example, a PII detection contract scans the output for SSN patterns. If a pattern matches, the contract produces a [finding](../findings.md). For READ/PURE tools, postconditions with `effect: redact` replace matched patterns in the output with `[REDACTED]`, and `effect: deny` suppresses the output entirely. For WRITE/IRREVERSIBLE tools, effects fall back to `warn` because the action already happened. See [postcondition effects](../contracts/yaml-reference.md#postcondition-effects).
 
 **5. An audit event is emitted.**
 
@@ -97,7 +97,7 @@ This is the difference between a prompt instruction ("do not read .env files") a
 | Preconditions | Before tool executes | Yes | `CALL_DENIED` or pass |
 | Session limits | Before tool executes | Yes | `CALL_DENIED` if limit exceeded |
 | Tool execution | Only if all preconditions pass | -- | Tool's return value |
-| Postconditions | After tool executes | No -- produces findings | `CALL_EXECUTED` with warnings |
+| Postconditions | After tool executes | `warn`: findings only. `redact`/`deny`: enforced for READ/PURE tools | `CALL_EXECUTED` with warnings |
 | Audit | After every evaluation | -- | Structured event to all sinks |
 
 ## Next Steps

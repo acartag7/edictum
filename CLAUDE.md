@@ -120,7 +120,7 @@ edictum validate contracts.yaml  # validate YAML contracts
 ## YAML Schema (locked)
 
 - `apiVersion: edictum/v1`, `kind: ContractBundle`
-- Contract types: `type: pre` (deny only), `type: post` (warn only), `type: session` (deny only)
+- Contract types: `type: pre` (deny only), `type: post` (warn/redact/deny), `type: session` (deny only)
 - Conditions: `when:` with boolean AST (`all/any/not`) and leaves (`selector: {operator: value}`)
 - 15 operators: exists, equals, not_equals, in, not_in, contains, contains_any, starts_with, ends_with, matches, matches_any, gt, gte, lt, lte
 - Missing fields evaluate to `false`. Type mismatches yield deny/warn + `policy_error: true`

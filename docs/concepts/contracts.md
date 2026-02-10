@@ -30,7 +30,7 @@ Key properties:
 
 ## Postconditions
 
-Postconditions evaluate **after** the tool runs. Because the tool has already executed, postconditions produce findings (structured warnings) -- they never deny.
+Postconditions evaluate **after** the tool runs. They inspect the tool's output and produce findings.
 
 ```yaml
 - id: pii-in-output
@@ -52,7 +52,7 @@ Key properties:
 
 - `type: post` marks this as a postcondition.
 - `output.text` is available only in postconditions. It contains the stringified tool response.
-- `effect: warn` is the only valid effect for postconditions.
+- `effect` can be `warn`, `redact`, or `deny`. `warn` produces findings. `redact` replaces matched patterns with `[REDACTED]` for READ/PURE tools. `deny` suppresses the entire output for READ/PURE tools. WRITE/IRREVERSIBLE tools always fall back to `warn`. See [postcondition effects](../contracts/yaml-reference.md#postcondition-effects).
 - Findings are structured objects with type, contract ID, field, and message. See [findings](../findings.md).
 
 ## Session Contracts
@@ -109,7 +109,7 @@ then:
     severity: high
 ```
 
-- `effect` -- `deny` (preconditions, session) or `warn` (postconditions).
+- `effect` -- `deny` (preconditions, session) or `warn`/`redact`/`deny` (postconditions).
 - `message` -- sent to the agent and recorded in the audit event. Supports `{placeholder}` expansion from the envelope context.
 - `tags` -- optional classification labels for filtering in audit systems.
 - `metadata` -- optional key-value pairs stamped into the audit event.

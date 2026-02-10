@@ -73,25 +73,29 @@ If the `PreDecision.action` is `"allow"`, the adapter lets the tool execute.
 
 ## Post-Execution Detail
 
-Once a tool has executed, Edictum checks its output. Postconditions produce findings (warnings), never denials -- the tool already ran and may have caused side effects.
+Once a tool has executed, Edictum checks its output. Postcondition behavior depends on the declared `effect` and the tool's side-effect classification.
 
 ```
 (tool_response, tool_success) --> post_execute(envelope, response, success)
                                       |
                                       +-- 1. Evaluate postconditions
                                       |      Each returns Verdict.pass_() or .fail(msg).
-                                      |      Failures produce warnings, NEVER deny.
-                                      |      For pure/read tools: suggest retry.
-                                      |      For write/irreversible: warn only.
+                                      |      Effect determines action on failure:
+                                      |        warn:   produce a finding (all tools)
+                                      |        redact: replace matched patterns (READ/PURE only)
+                                      |        deny:   suppress entire output (READ/PURE only)
+                                      |      WRITE/IRREVERSIBLE tools: all effects fall back to warn.
+                                      |      Observe mode: all effects fall back to warn.
                                       |
                                       +-- 2. Run after-hooks
                                              Fire-and-forget observation hooks.
                                              Cannot modify the result.
 
-                                      --> PostDecision(tool_success, postconditions_passed, warnings)
+                                      --> PostDecision(tool_success, postconditions_passed, warnings,
+                                                       redacted_response, output_suppressed)
 ```
 
-The pipeline warns the agent and lets it decide how to proceed. This is deliberate -- denying after execution would be misleading.
+For `warn`, the pipeline warns the agent and lets it decide how to proceed. For `redact` and `deny` on READ/PURE tools, the pipeline modifies the response before it reaches the agent. WRITE/IRREVERSIBLE tools always get `warn` because the action already happened -- hiding the result only removes context the agent needs.
 
 ---
 
@@ -201,7 +205,7 @@ Edictum follows a fail-closed default with explicit opt-in to permissive behavio
 - **Unregistered tools** default to `SideEffect.IRREVERSIBLE` (most restrictive classification)
 - **Contract evaluation errors** deny the tool call rather than silently allowing it
 - **Observe mode** is opt-in per-contract or per-pipeline, never the default
-- **Postconditions** warn rather than deny, because the tool has already executed
+- **Postconditions** default to warn; `redact` and `deny` effects are enforced for READ/PURE tools but fall back to warn for WRITE/IRREVERSIBLE tools
 
 Audit events record `policy_error: true` when contract loading fails, ensuring that broken contract bundles are visible in monitoring even when the system falls back to a safe default.
 

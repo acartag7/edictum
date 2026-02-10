@@ -130,4 +130,8 @@ hooks = adapter.to_sdk_hooks()
 
 ### Claude SDK
 
-- Side-effect only -- the hook cannot replace the tool result. PII detection is logged but not intercepted before reaching the model. See [Claude SDK adapter docs](../adapters/claude-sdk.md).
+- Side-effect only -- the native hook (`to_sdk_hooks()`) cannot replace the tool result. PII detection is logged but not intercepted before reaching the model. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers but cannot modify the SDK's result flow. A warning is logged at adapter construction when postconditions declare these effects. See [Claude SDK adapter docs](../adapters/claude-sdk.md).
+
+### OpenAI Agents (postcondition enforcement)
+
+- The output guardrail can only `.allow()` or `.reject_content()` -- it cannot substitute the tool result. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers and invoke `on_postcondition_warn` callbacks, but the original result still reaches the model via the SDK. A warning is logged at adapter construction when postconditions declare these effects.
