@@ -2,7 +2,7 @@
 """Claude Agent SDK + Edictum demo — file cleanup agent.
 
 Uses Claude Haiku 4.5 via OpenRouter, routed through the Claude Agent SDK
-adapter's _pre_tool_use / _post_tool_use hooks to show governance in action.
+adapter's to_hook_callables() hooks to show governance in action.
 
 Usage:
     bash setup.sh                         # create /tmp/messy_files/
@@ -110,6 +110,7 @@ async def run_with_guard(client: OpenAI) -> None:
         audit_sink=FileAuditSink(audit_path),
     )
     adapter = ClaudeAgentSDKAdapter(guard, session_id="demo-claude-sdk")
+    hooks = adapter.to_hook_callables()
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -148,7 +149,7 @@ async def run_with_guard(client: OpenAI) -> None:
             print(f"[#{call_count}] {fn_name}({json.dumps(args)})")
 
             # Route through Claude Agent SDK adapter
-            pre_result = await adapter._pre_tool_use(fn_name, args, tool_use_id)
+            pre_result = await hooks["pre_tool_use"](fn_name, args, tool_use_id)
 
             # Check if denied: non-empty dict with permissionDecision == "deny"
             hook_output = pre_result.get("hookSpecificOutput", {})
@@ -161,7 +162,7 @@ async def run_with_guard(client: OpenAI) -> None:
                 tool_start = now_s()
                 result = TOOL_DISPATCH[fn_name](args)
                 record_tool(metrics, now_s() - tool_start)
-                await adapter._post_tool_use(tool_use_id, result)
+                await hooks["post_tool_use"](tool_use_id, result)
                 preview = result[:200] + "..." if len(result) > 200 else result
                 print(f"  -> {preview}\n")
 
