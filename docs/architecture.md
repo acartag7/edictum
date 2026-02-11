@@ -146,7 +146,7 @@ Adapters are thin translation layers between framework-specific hook APIs and th
 | `AgnoAdapter` | Agno | `as_tool_hook()` -- wrap-around hook |
 | `SemanticKernelAdapter` | Semantic Kernel | `register(kernel)` -- auto-invocation filter |
 | `OpenAIAgentsAdapter` | OpenAI Agents | `as_guardrails()` -- input/output guardrails |
-| `ClaudeAgentSDKAdapter` | Claude Agent SDK | `to_sdk_hooks()` -- pre/post tool use hooks |
+| `ClaudeAgentSDKAdapter` | Claude Agent SDK | `to_hook_callables()` -- pre/post tool use hooks |
 
 Adapters never contain enforcement logic. They translate formats. If you need to add a new rule, add a contract or hook -- not adapter code.
 

@@ -30,7 +30,7 @@ class ClaudeAgentSDKAdapter:
     3. Translates PreDecision/PostDecision into SDK hook output format
     4. Handles observe mode (deny -> allow conversion)
 
-    Note: Native SDK hooks (to_sdk_hooks) cannot substitute tool results.
+    Note: Hook callables (to_hook_callables) cannot substitute tool results.
     Postcondition effects (redact/deny) require the wrapper integration path
     for full enforcement. Native hooks can only warn.
     """
@@ -53,11 +53,22 @@ class ClaudeAgentSDKAdapter:
     def session_id(self) -> str:
         return self._session_id
 
-    def to_sdk_hooks(
+    def to_hook_callables(
         self,
         on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
     ) -> dict:
-        """Return SDK hook dict with optional postcondition callback.
+        """Return raw hook callables for manual agent-loop integration.
+
+        Returns a dict with ``pre_tool_use`` and ``post_tool_use`` async
+        functions that use Edictum's own calling convention::
+
+            hooks = adapter.to_hook_callables()
+            result = await hooks["pre_tool_use"](tool_name, tool_input, tool_use_id)
+            result = await hooks["post_tool_use"](tool_use_id=id, tool_response=resp)
+
+        These are **not** directly compatible with
+        ``ClaudeAgentOptions(hooks=...)``.  See the adapter docs for a bridge
+        recipe that wraps them into SDK-native format.
 
         Args:
             on_postcondition_warn: Optional callback invoked when postconditions
@@ -70,7 +81,7 @@ class ClaudeAgentSDKAdapter:
         if has_effects:
             logger.warning(
                 "Postcondition effects (redact/deny) require the wrapper integration path "
-                "for full enforcement. Native hooks (to_sdk_hooks) can only warn."
+                "for full enforcement. Hook callables can only warn."
             )
 
         return {

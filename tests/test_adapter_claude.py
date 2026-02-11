@@ -161,10 +161,10 @@ class TestClaudeAgentSDKAdapter:
         adapter = ClaudeAgentSDKAdapter(guard)
         assert adapter.session_id  # should be a UUID string
 
-    async def test_to_sdk_hooks(self):
+    async def test_to_hook_callables(self):
         guard = make_guard()
         adapter = ClaudeAgentSDKAdapter(guard)
-        hooks = adapter.to_sdk_hooks()
+        hooks = adapter.to_hook_callables()
         assert "pre_tool_use" in hooks
         assert "post_tool_use" in hooks
 
@@ -262,22 +262,22 @@ class TestEdictumRun:
 
 
 class TestClaudeSDKPostconditionCallback:
-    """Test on_postcondition_warn callback via to_sdk_hooks()."""
+    """Test on_postcondition_warn callback via to_hook_callables()."""
 
-    async def test_to_sdk_hooks_accepts_postcondition_callback(self):
-        """to_sdk_hooks() should accept on_postcondition_warn parameter."""
+    async def test_to_hook_callables_accepts_postcondition_callback(self):
+        """to_hook_callables() should accept on_postcondition_warn parameter."""
         guard = make_guard()
         adapter = ClaudeAgentSDKAdapter(guard)
         callback = MagicMock(return_value="redacted")
-        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+        hooks = adapter.to_hook_callables(on_postcondition_warn=callback)
         assert "pre_tool_use" in hooks
         assert "post_tool_use" in hooks
 
     async def test_postcondition_callback_optional(self):
-        """to_sdk_hooks() should work without callback (backward compatible)."""
+        """to_hook_callables() should work without callback (backward compatible)."""
         guard = make_guard()
         adapter = ClaudeAgentSDKAdapter(guard)
-        hooks = adapter.to_sdk_hooks()
+        hooks = adapter.to_hook_callables()
         assert "pre_tool_use" in hooks
         assert "post_tool_use" in hooks
 
@@ -291,7 +291,7 @@ class TestClaudeSDKPostconditionCallback:
         callback = MagicMock(return_value="redacted")
         guard = make_guard(contracts=[detect_pii])
         adapter = ClaudeAgentSDKAdapter(guard)
-        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+        hooks = adapter.to_hook_callables(on_postcondition_warn=callback)
 
         await hooks["pre_tool_use"]("TestTool", {"key": "val"}, "tu-1")
         await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="Patient SSN: 123-45-6789")
@@ -310,7 +310,7 @@ class TestClaudeSDKPostconditionCallback:
         guard = make_guard()
         adapter = ClaudeAgentSDKAdapter(guard)
         callback = MagicMock(return_value="redacted")
-        hooks = adapter.to_sdk_hooks(on_postcondition_warn=callback)
+        hooks = adapter.to_hook_callables(on_postcondition_warn=callback)
 
         await hooks["pre_tool_use"]("TestTool", {"key": "val"}, "tu-1")
         await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="ok")
@@ -329,7 +329,7 @@ class TestClaudeSDKPostconditionCallback:
 
         guard = make_guard(contracts=[detect_issue])
         adapter = ClaudeAgentSDKAdapter(guard)
-        hooks = adapter.to_sdk_hooks(on_postcondition_warn=exploding_callback)
+        hooks = adapter.to_hook_callables(on_postcondition_warn=exploding_callback)
 
         await hooks["pre_tool_use"]("TestTool", {}, "tu-1")
         # Should not raise
@@ -351,7 +351,7 @@ class TestClaudeSDKPostconditionCallback:
 
         guard = make_guard(contracts=[detect_secret])
         adapter = ClaudeAgentSDKAdapter(guard)
-        hooks = adapter.to_sdk_hooks(on_postcondition_warn=capture_callback)
+        hooks = adapter.to_hook_callables(on_postcondition_warn=capture_callback)
 
         await hooks["pre_tool_use"]("TestTool", {}, "tu-1")
         await hooks["post_tool_use"](tool_use_id="tu-1", tool_response="token=abc123")

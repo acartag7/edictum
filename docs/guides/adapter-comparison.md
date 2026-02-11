@@ -13,7 +13,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 | CrewAI | `register()` | Yes (callback return replaces result) | before_hook returns False | $0.040 |
 | Agno | `as_tool_hook()` | Yes (hook wraps execution) | Hook returns denial string | N/A |
 | Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets cancel + error | $0.008 |
-| Claude SDK | `to_sdk_hooks()` | No (side-effect only) | Returns deny dict to SDK | N/A |
+| Claude SDK | `to_hook_callables()` | No (side-effect only) | Returns deny dict to SDK | N/A |
 
 Cost column reflects benchmarks from [edictum-demo](https://github.com/acartag7/edictum-demo) using each framework's default model. N/A indicates no published benchmark data.
 
@@ -100,8 +100,8 @@ from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = ClaudeAgentSDKAdapter(guard=guard, principal=Principal(role="sre"))
-hooks = adapter.to_sdk_hooks()
-# Pass to your Claude agent/client setup: hooks=hooks
+hooks = adapter.to_hook_callables()
+# Use in your agent loop — see bridge recipe in Claude SDK adapter docs
 ```
 
 ---
@@ -130,7 +130,7 @@ hooks = adapter.to_sdk_hooks()
 
 ### Claude SDK
 
-- Side-effect only -- the native hook (`to_sdk_hooks()`) cannot replace the tool result. PII detection is logged but not intercepted before reaching the model. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers but cannot modify the SDK's result flow. A warning is logged at adapter construction when postconditions declare these effects. See [Claude SDK adapter docs](../adapters/claude-sdk.md).
+- Side-effect only -- the hook callables (`to_hook_callables()`) cannot replace the tool result. PII detection is logged but not intercepted before reaching the model. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers but cannot modify the SDK's result flow. A warning is logged at adapter construction when postconditions declare these effects. See [Claude SDK adapter docs](../adapters/claude-sdk.md).
 
 ### OpenAI Agents (postcondition enforcement)
 

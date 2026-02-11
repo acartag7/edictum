@@ -88,7 +88,7 @@ Edictum integrates with six agent frameworks. Same YAML contracts, same enforcem
 | CrewAI | `CrewAIAdapter` | `register()` |
 | Agno | `AgnoAdapter` | `as_tool_hook()` |
 | Semantic Kernel | `SemanticKernelAdapter` | `register(kernel)` |
-| Claude Agent SDK | `ClaudeAgentSDKAdapter` | `to_sdk_hooks()` |
+| Claude Agent SDK | `ClaudeAgentSDKAdapter` | `to_hook_callables()` |
 
 See the [adapter overview](adapters/overview.md) for setup guides and known limitations.
 

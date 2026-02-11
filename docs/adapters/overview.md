@@ -35,7 +35,7 @@ wrapper = adapter.as_tool_wrapper()
 
 | Framework | Adapter Class | Integration Method | Returns |
 |-----------|--------------|-------------------|---------|
-| Claude Agent SDK | `ClaudeAgentSDKAdapter` | `to_sdk_hooks()` | `dict` with `pre_tool_use` and `post_tool_use` async functions |
+| Claude Agent SDK | `ClaudeAgentSDKAdapter` | `to_hook_callables()` | `dict` with `pre_tool_use` and `post_tool_use` async functions |
 | LangChain | `LangChainAdapter` | `as_tool_wrapper()` | Wrapper function for `ToolNode` |
 | CrewAI | `CrewAIAdapter` | `register()` | Registers global before/after hooks |
 | Agno | `AgnoAdapter` | `as_tool_hook()` | Wrap-around function |
