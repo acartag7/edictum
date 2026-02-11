@@ -1,8 +1,8 @@
 # Claude Agent SDK Adapter
 
 The `ClaudeAgentSDKAdapter` enforces contracts on tool calls made through
-Anthropic's Claude Agent SDK. It produces a hooks dict with `pre_tool_use` and
-`post_tool_use` async functions.
+Anthropic's Claude Agent SDK. It produces raw hook callables with `pre_tool_use`
+and `post_tool_use` async functions.
 
 ## Installation
 
@@ -13,6 +13,9 @@ pip install edictum[yaml]
 No additional framework dependencies are needed beyond the YAML engine.
 
 ## Integration
+
+The adapter provides raw async callables via `to_hook_callables()`. Use them
+directly in a manual agent loop:
 
 ```python
 from edictum import Edictum, Principal
@@ -25,21 +28,66 @@ adapter = ClaudeAgentSDKAdapter(
     principal=Principal(user_id="deploy-bot", role="ci"),
 )
 
-hooks = adapter.to_sdk_hooks()
+hooks = adapter.to_hook_callables()
 # hooks == {"pre_tool_use": <async fn>, "post_tool_use": <async fn>}
 
-# Pass hooks to your Claude agent/client setup:
-#   client = Claude(
-#       model="claude-sonnet-4-20250514",
-#       tools=[...],
-#       hooks=hooks,
-#   )
-#   response = await client.run("Deploy the staging environment")
+# In your agent loop:
+result = await hooks["pre_tool_use"](tool_name, tool_input, tool_use_id)
+# ... execute tool if not denied ...
+result = await hooks["post_tool_use"](tool_use_id=id, tool_response=response)
 ```
 
-The `to_sdk_hooks()` method returns a dict. Pass it when creating your Claude
-client or agent. The SDK calls `pre_tool_use` before each tool call and
-`post_tool_use` after.
+## Using with ClaudeSDKClient (Bridge Recipe)
+
+The callables from `to_hook_callables()` use Edictum's own calling convention
+and are **not** directly compatible with `ClaudeAgentOptions(hooks=...)`. The
+SDK expects PascalCase keys, `HookMatcher` wrappers, and a different callback
+signature.
+
+To bridge the two, write a small wrapper in your code (you already depend on
+`claude-agent-sdk` there):
+
+```python
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk.types import HookMatcher
+
+from edictum import Edictum
+from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+
+guard = Edictum.from_yaml("contracts.yaml")
+adapter = ClaudeAgentSDKAdapter(guard, session_id="run-001")
+callables = adapter.to_hook_callables()
+
+
+# Bridge: wrap Edictum callables into SDK-native format
+async def pre_hook(input_data, tool_use_id, context):
+    return await callables["pre_tool_use"](
+        tool_name=input_data.get("tool_name", ""),
+        tool_input=input_data.get("tool_input", {}),
+        tool_use_id=tool_use_id or "",
+    )
+
+async def post_hook(input_data, tool_use_id, context):
+    return await callables["post_tool_use"](
+        tool_use_id=tool_use_id or "",
+        tool_response=input_data.get("tool_response"),
+    )
+
+options = ClaudeAgentOptions(
+    hooks={
+        "PreToolUse": [HookMatcher(hooks=[pre_hook])],
+        "PostToolUse": [HookMatcher(hooks=[post_hook])],
+    },
+)
+
+async with ClaudeSDKClient(options=options) as client:
+    await client.query("Deploy staging")
+    async for msg in client.receive_response():
+        print(msg)
+```
+
+The bridge lives in your codebase because you already accept the coupling to
+`claude-agent-sdk`. Edictum stays decoupled from the SDK's pre-1.0 types.
 
 ## Loading Contracts
 

@@ -189,7 +189,7 @@ adapter.register(kernel)
 from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 
 adapter = ClaudeAgentSDKAdapter(guard)
-hooks = adapter.to_sdk_hooks()
+hooks = adapter.to_hook_callables()
 # hooks = {"pre_tool_use": ..., "post_tool_use": ...}
 ```
 

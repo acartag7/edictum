@@ -111,7 +111,7 @@ Edictum integrates with six agent frameworks. Same YAML contracts, same enforcem
 | Agno | `as_tool_hook()` | Full interception | Low |
 | Semantic Kernel | `register()` | Full interception | Medium-High |
 | CrewAI | `register()` | Partial | High |
-| Claude Agent SDK | `to_sdk_hooks()` | Logged only | Low |
+| Claude Agent SDK | `to_hook_callables()` | Logged only | Low |
 
 See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for setup, known limitations, and recommendations.
 
