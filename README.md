@@ -117,7 +117,7 @@ See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for se
 
 ## Install
 
-Requires Python 3.11+. Current version: **v0.7.0**.
+Requires Python 3.11+. Current version: **v0.8.0**.
 
 ```bash
 pip install edictum              # core (zero deps)
