@@ -6,6 +6,13 @@ Requires optional dependencies: ``pip install edictum[yaml]``
 from __future__ import annotations
 
 from edictum.yaml_engine.compiler import CompiledBundle
+from edictum.yaml_engine.composer import (
+    ComposedBundle,
+    CompositionOverride,
+    CompositionReport,
+    ShadowContract,
+    compose_bundles,
+)
 from edictum.yaml_engine.loader import BundleHash
 
 
@@ -26,6 +33,11 @@ def compile_contracts(bundle: dict) -> CompiledBundle:
 __all__ = [
     "BundleHash",
     "CompiledBundle",
+    "ComposedBundle",
+    "CompositionOverride",
+    "CompositionReport",
+    "ShadowContract",
     "compile_contracts",
+    "compose_bundles",
     "load_bundle",
 ]

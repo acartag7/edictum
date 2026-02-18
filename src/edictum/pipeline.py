@@ -30,6 +30,7 @@ class PreDecision:
     contracts_evaluated: list[dict] = field(default_factory=list)
     observed: bool = False
     policy_error: bool = False
+    shadow_results: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -211,12 +212,17 @@ class GovernancePipeline:
 
         # 6. All checks passed
         pe = any(c.get("metadata", {}).get("policy_error") for c in contracts_evaluated)
+
+        # 7. Shadow contract evaluation (never affects the decision)
+        shadow_results = await self._evaluate_shadow_contracts(envelope, session)
+
         return PreDecision(
             action="allow",
             hooks_evaluated=hooks_evaluated,
             contracts_evaluated=contracts_evaluated,
             observed=has_observed_deny,
             policy_error=pe,
+            shadow_results=shadow_results,
         )
 
     async def post_execute(
@@ -317,3 +323,53 @@ class GovernancePipeline:
             redacted_response=redacted_response,
             output_suppressed=output_suppressed,
         )
+
+    async def _evaluate_shadow_contracts(
+        self,
+        envelope: ToolEnvelope,
+        session: Session,
+    ) -> list[dict]:
+        """Evaluate shadow contracts without affecting the real decision.
+
+        Shadow contracts are identified by ``_edictum_shadow = True``.
+        Results are returned as dicts for audit emission but never block calls.
+        """
+        results: list[dict] = []
+
+        # Shadow preconditions
+        for contract in self._guard.get_shadow_preconditions(envelope):
+            try:
+                verdict = contract(envelope)
+                if asyncio.iscoroutine(verdict):
+                    verdict = await verdict
+            except Exception as exc:
+                logger.exception("Shadow precondition %s raised", getattr(contract, "__name__", "anonymous"))
+                verdict = Verdict.fail(f"Shadow precondition error: {exc}", policy_error=True)
+
+            results.append({
+                "name": getattr(contract, "__name__", "anonymous"),
+                "type": "precondition",
+                "passed": verdict.passed,
+                "message": verdict.message,
+                "source": getattr(contract, "_edictum_source", "yaml_precondition"),
+            })
+
+        # Shadow session contracts — evaluate against the real session
+        for contract in self._guard.get_shadow_session_contracts():
+            try:
+                verdict = contract(session)
+                if asyncio.iscoroutine(verdict):
+                    verdict = await verdict
+            except Exception as exc:
+                logger.exception("Shadow session contract %s raised", getattr(contract, "__name__", "anonymous"))
+                verdict = Verdict.fail(f"Shadow session contract error: {exc}", policy_error=True)
+
+            results.append({
+                "name": getattr(contract, "__name__", "anonymous"),
+                "type": "session_contract",
+                "passed": verdict.passed,
+                "message": verdict.message,
+                "source": getattr(contract, "_edictum_source", "yaml_session"),
+            })
+
+        return results

@@ -17,7 +17,8 @@
       "items": { "$ref": "#/$defs/Contract" }
     },
     "tools": { "$ref": "#/$defs/Tools" },
-    "observability": { "$ref": "#/$defs/Observability" }
+    "observability": { "$ref": "#/$defs/Observability" },
+    "observe_alongside": { "type": "boolean", "default": false }
   },
 
   "$defs": {

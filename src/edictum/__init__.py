@@ -46,6 +46,7 @@ from edictum.session import Session
 from edictum.storage import MemoryBackend, StorageBackend
 from edictum.telemetry import GovernanceTelemetry
 from edictum.types import HookRegistration
+from edictum.yaml_engine.composer import CompositionReport
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ __all__ = [
     "PostCallResult",
     "EvaluationResult",
     "RuleResult",
+    "CompositionReport",
 ]
 
 
@@ -137,6 +139,9 @@ class Edictum:
         self._preconditions: list = []
         self._postconditions: list = []
         self._session_contracts: list = []
+        self._shadow_preconditions: list = []
+        self._shadow_postconditions: list = []
+        self._shadow_session_contracts: list = []
         self._before_hooks: list[HookRegistration] = []
         self._after_hooks: list[HookRegistration] = []
 
@@ -151,19 +156,21 @@ class Edictum:
     @classmethod
     def from_yaml(
         cls,
-        path: str | Path,
-        *,
+        *paths: str | Path,
         tools: dict[str, dict] | None = None,
         mode: str | None = None,
         audit_sink: AuditSink | None = None,
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
-    ) -> Edictum:
-        """Create a Edictum instance from a YAML contract bundle.
+        return_report: bool = False,
+    ) -> Edictum | tuple[Edictum, CompositionReport]:
+        """Create a Edictum instance from one or more YAML contract bundles.
 
         Args:
-            path: Path to a YAML contract file.
+            *paths: One or more paths to YAML contract files. When multiple
+                paths are given, bundles are composed left-to-right (later
+                layers override earlier ones).
             tools: Tool side-effect classifications. Merged with any ``tools:``
                 section in the YAML bundle (parameter wins on conflict).
             mode: Override the bundle's default mode (enforce/observe).
@@ -171,17 +178,46 @@ class Edictum:
             redaction: Custom redaction policy.
             backend: Custom storage backend.
             environment: Environment name for envelope context.
+            return_report: If True, return ``(guard, CompositionReport)``
+                instead of just the guard.
 
         Returns:
-            Configured Edictum instance.
+            Configured Edictum instance, or a tuple of (Edictum, CompositionReport)
+            when *return_report* is True.
 
         Raises:
             EdictumConfigError: If the YAML is invalid.
         """
+        import hashlib
+
         from edictum.yaml_engine.compiler import compile_contracts
+        from edictum.yaml_engine.composer import CompositionReport, compose_bundles
         from edictum.yaml_engine.loader import load_bundle
 
-        bundle_data, bundle_hash = load_bundle(path)
+        if not paths:
+            raise EdictumConfigError("from_yaml() requires at least one path")
+
+        # Load all bundles
+        loaded: list[tuple[dict, Any]] = []
+        for p in paths:
+            loaded.append(load_bundle(p))
+
+        if len(loaded) == 1:
+            # Single path — backward compatible, no composition
+            bundle_data, bundle_hash = loaded[0]
+            policy_version = str(bundle_hash)
+            report = CompositionReport()
+        else:
+            # Multiple paths — compose bundles
+            bundle_tuples = [(data, str(p)) for (data, _hash), p in zip(loaded, paths)]
+            composed = compose_bundles(*bundle_tuples)
+            bundle_data = composed.bundle
+            report = composed.report
+            # Combined hash from all individual hashes
+            policy_version = hashlib.sha256(
+                ":".join(str(h) for _d, h in loaded).encode()
+            ).hexdigest()
+
         compiled = compile_contracts(bundle_data)
 
         # Handle observability config
@@ -218,7 +254,7 @@ class Edictum:
         yaml_tools = compiled.tools
         merged_tools = {**yaml_tools, **(tools or {})}
 
-        return cls(
+        guard = cls(
             environment=environment,
             mode=effective_mode,
             limits=compiled.limits,
@@ -227,8 +263,12 @@ class Edictum:
             audit_sink=audit_sink,
             redaction=redaction,
             backend=backend,
-            policy_version=str(bundle_hash),
+            policy_version=policy_version,
         )
+
+        if return_report:
+            return guard, report
+        return guard
 
     @classmethod
     def from_template(
@@ -339,7 +379,16 @@ class Edictum:
 
     def _register_contract(self, item: Any) -> None:
         contract_type = getattr(item, "_edictum_type", None)
-        if contract_type == "precondition":
+        is_shadow = getattr(item, "_edictum_shadow", False)
+
+        if is_shadow:
+            if contract_type == "precondition":
+                self._shadow_preconditions.append(item)
+            elif contract_type == "postcondition":
+                self._shadow_postconditions.append(item)
+            elif contract_type == "session_contract":
+                self._shadow_session_contracts.append(item)
+        elif contract_type == "precondition":
             self._preconditions.append(item)
         elif contract_type == "postcondition":
             self._postconditions.append(item)
@@ -383,6 +432,33 @@ class Edictum:
 
     def get_session_contracts(self) -> list:
         return self._session_contracts
+
+    def get_shadow_preconditions(self, envelope: ToolEnvelope) -> list:
+        result = []
+        for p in self._shadow_preconditions:
+            tool = getattr(p, "_edictum_tool", "*")
+            when = getattr(p, "_edictum_when", None)
+            if tool != "*" and tool != envelope.tool_name:
+                continue
+            if when and not when(envelope):
+                continue
+            result.append(p)
+        return result
+
+    def get_shadow_postconditions(self, envelope: ToolEnvelope) -> list:
+        result = []
+        for p in self._shadow_postconditions:
+            tool = getattr(p, "_edictum_tool", "*")
+            when = getattr(p, "_edictum_when", None)
+            if tool != "*" and tool != envelope.tool_name:
+                continue
+            if when and not when(envelope):
+                continue
+            result.append(p)
+        return result
+
+    def get_shadow_session_contracts(self) -> list:
+        return self._shadow_session_contracts
 
     def evaluate(
         self,
@@ -620,6 +696,27 @@ class Edictum:
             await self._emit_run_pre_audit(envelope, session, AuditAction.CALL_ALLOWED, pre)
             self.telemetry.record_allowed(envelope)
             span.set_attribute("governance.action", "allowed")
+
+        # Emit shadow audit events (never affect the real decision)
+        for sr in pre.shadow_results:
+            shadow_action = AuditAction.CALL_WOULD_DENY if not sr["passed"] else AuditAction.CALL_ALLOWED
+            shadow_event = AuditEvent(
+                action=shadow_action,
+                run_id=envelope.run_id,
+                call_id=envelope.call_id,
+                tool_name=envelope.tool_name,
+                tool_args=self.redaction.redact_args(envelope.args),
+                side_effect=envelope.side_effect.value,
+                environment=envelope.environment,
+                principal=asdict(envelope.principal) if envelope.principal else None,
+                decision_source=sr["source"],
+                decision_name=sr["name"],
+                reason=sr["message"],
+                mode="observe",
+                policy_version=self.policy_version,
+            )
+            await self.audit_sink.emit(shadow_event)
+            self._emit_otel_governance_span(shadow_event)
 
         # Execute tool
         try:
