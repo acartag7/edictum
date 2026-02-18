@@ -420,3 +420,275 @@ class TestBooleanComposition:
         expr = {"not": {"args.count": {"gt": 5}}}
         result = evaluate_expression(expr, env)
         assert isinstance(result, _PolicyError)
+
+
+# --- env.* Selector ---
+
+
+class TestEnvSelector:
+    """Tests for the env.* selector with type coercion."""
+
+    def test_env_equals_matches(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "production")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_ENV": {"equals": "production"}}, env) is True
+
+    def test_env_equals_no_match(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "staging")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_ENV": {"equals": "production"}}, env) is False
+
+    def test_env_unset_evaluates_false(self, monkeypatch):
+        monkeypatch.delenv("NONEXISTENT_VAR", raising=False)
+        env = _envelope()
+        assert evaluate_expression({"env.NONEXISTENT_VAR": {"equals": "anything"}}, env) is False
+
+    # --- Type coercion: booleans ---
+
+    def test_env_true_coerces_to_bool(self, monkeypatch):
+        monkeypatch.setenv("FLAG", "true")
+        env = _envelope()
+        assert evaluate_expression({"env.FLAG": {"equals": True}}, env) is True
+
+    def test_env_false_coerces_to_bool(self, monkeypatch):
+        monkeypatch.setenv("FLAG", "false")
+        env = _envelope()
+        assert evaluate_expression({"env.FLAG": {"equals": False}}, env) is True
+
+    def test_env_true_uppercase_case_insensitive(self, monkeypatch):
+        monkeypatch.setenv("FLAG", "TRUE")
+        env = _envelope()
+        assert evaluate_expression({"env.FLAG": {"equals": True}}, env) is True
+
+    def test_env_false_mixed_case(self, monkeypatch):
+        monkeypatch.setenv("FLAG", "False")
+        env = _envelope()
+        assert evaluate_expression({"env.FLAG": {"equals": False}}, env) is True
+
+    # --- Type coercion: numbers ---
+
+    def test_env_int_coercion(self, monkeypatch):
+        monkeypatch.setenv("MAX_RETRIES", "42")
+        env = _envelope()
+        assert evaluate_expression({"env.MAX_RETRIES": {"equals": 42}}, env) is True
+
+    def test_env_float_coercion(self, monkeypatch):
+        monkeypatch.setenv("THRESHOLD", "3.14")
+        env = _envelope()
+        assert evaluate_expression({"env.THRESHOLD": {"equals": 3.14}}, env) is True
+
+    def test_env_string_stays_string(self, monkeypatch):
+        monkeypatch.setenv("APP_NAME", "edictum")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_NAME": {"equals": "edictum"}}, env) is True
+
+    # --- All operators with env.* ---
+
+    def test_env_not_equals(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "staging")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_ENV": {"not_equals": "production"}}, env) is True
+
+    def test_env_in(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "staging")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_ENV": {"in": ["staging", "development"]}}, env) is True
+
+    def test_env_not_in(self, monkeypatch):
+        monkeypatch.setenv("APP_ENV", "staging")
+        env = _envelope()
+        assert evaluate_expression({"env.APP_ENV": {"not_in": ["production"]}}, env) is True
+
+    def test_env_contains(self, monkeypatch):
+        monkeypatch.setenv("ALLOWED_HOSTS", "example.com,test.com")
+        env = _envelope()
+        assert evaluate_expression({"env.ALLOWED_HOSTS": {"contains": "example.com"}}, env) is True
+
+    def test_env_starts_with(self, monkeypatch):
+        monkeypatch.setenv("API_URL", "https://api.example.com")
+        env = _envelope()
+        assert evaluate_expression({"env.API_URL": {"starts_with": "https://"}}, env) is True
+
+    def test_env_ends_with(self, monkeypatch):
+        monkeypatch.setenv("LOG_FILE", "app.log")
+        env = _envelope()
+        assert evaluate_expression({"env.LOG_FILE": {"ends_with": ".log"}}, env) is True
+
+    def test_env_matches(self, monkeypatch):
+        monkeypatch.setenv("VERSION", "v1.2.3")
+        env = _envelope()
+        assert evaluate_expression({"env.VERSION": {"matches": r"^v\d+\.\d+\.\d+$"}}, env) is True
+
+    def test_env_gt_with_coerced_int(self, monkeypatch):
+        monkeypatch.setenv("MAX_RETRIES", "10")
+        env = _envelope()
+        assert evaluate_expression({"env.MAX_RETRIES": {"gt": 5}}, env) is True
+        assert evaluate_expression({"env.MAX_RETRIES": {"gt": 10}}, env) is False
+
+    def test_env_gte_with_coerced_int(self, monkeypatch):
+        monkeypatch.setenv("MAX_RETRIES", "10")
+        env = _envelope()
+        assert evaluate_expression({"env.MAX_RETRIES": {"gte": 10}}, env) is True
+        assert evaluate_expression({"env.MAX_RETRIES": {"gte": 11}}, env) is False
+
+    def test_env_lt_with_coerced_float(self, monkeypatch):
+        monkeypatch.setenv("THRESHOLD", "3.14")
+        env = _envelope()
+        assert evaluate_expression({"env.THRESHOLD": {"lt": 4.0}}, env) is True
+        assert evaluate_expression({"env.THRESHOLD": {"lt": 3.0}}, env) is False
+
+    def test_env_lte_with_coerced_float(self, monkeypatch):
+        monkeypatch.setenv("THRESHOLD", "3.14")
+        env = _envelope()
+        assert evaluate_expression({"env.THRESHOLD": {"lte": 3.14}}, env) is True
+        assert evaluate_expression({"env.THRESHOLD": {"lte": 3.0}}, env) is False
+
+    # --- exists operator ---
+
+    def test_env_exists_true_when_set(self, monkeypatch):
+        monkeypatch.setenv("MY_VAR", "anything")
+        env = _envelope()
+        assert evaluate_expression({"env.MY_VAR": {"exists": True}}, env) is True
+
+    def test_env_exists_false_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MY_VAR", raising=False)
+        env = _envelope()
+        assert evaluate_expression({"env.MY_VAR": {"exists": True}}, env) is False
+
+    def test_env_not_exists_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MY_VAR", raising=False)
+        env = _envelope()
+        assert evaluate_expression({"env.MY_VAR": {"exists": False}}, env) is True
+
+    def test_env_not_exists_when_set(self, monkeypatch):
+        monkeypatch.setenv("MY_VAR", "value")
+        env = _envelope()
+        assert evaluate_expression({"env.MY_VAR": {"exists": False}}, env) is False
+
+    # --- Boolean composition with env.* ---
+
+    def test_env_in_all(self, monkeypatch):
+        monkeypatch.setenv("DRY_RUN", "true")
+        env = _envelope(tool_name="Bash")
+        expr = {
+            "all": [
+                {"env.DRY_RUN": {"equals": True}},
+                {"tool.name": {"equals": "Bash"}},
+            ]
+        }
+        assert evaluate_expression(expr, env) is True
+
+    def test_env_in_any(self, monkeypatch):
+        monkeypatch.setenv("ALLOW_WRITES", "false")
+        env = _envelope()
+        expr = {
+            "any": [
+                {"env.ALLOW_WRITES": {"equals": True}},
+                {"tool.name": {"equals": "read_file"}},
+            ]
+        }
+        assert evaluate_expression(expr, env) is True
+
+    def test_env_in_not(self, monkeypatch):
+        monkeypatch.setenv("DEBUG", "false")
+        env = _envelope()
+        expr = {"not": {"env.DEBUG": {"equals": True}}}
+        assert evaluate_expression(expr, env) is True
+
+    # --- Mixed selectors ---
+
+    def test_env_mixed_with_tool_and_args(self, monkeypatch):
+        monkeypatch.setenv("SAFE_MODE", "true")
+        env = _envelope(tool_name="write_file", args={"path": "/tmp/test.txt"})
+        expr = {
+            "all": [
+                {"env.SAFE_MODE": {"equals": True}},
+                {"tool.name": {"equals": "write_file"}},
+                {"args.path": {"starts_with": "/tmp/"}},
+            ]
+        }
+        assert evaluate_expression(expr, env) is True
+
+    def test_env_mixed_partial_mismatch(self, monkeypatch):
+        monkeypatch.setenv("SAFE_MODE", "false")
+        env = _envelope(tool_name="write_file", args={"path": "/tmp/test.txt"})
+        expr = {
+            "all": [
+                {"env.SAFE_MODE": {"equals": True}},
+                {"tool.name": {"equals": "write_file"}},
+            ]
+        }
+        assert evaluate_expression(expr, env) is False
+
+    # --- Edge cases ---
+
+    def test_env_empty_string(self, monkeypatch):
+        """Empty string env var is present (not _MISSING) but empty."""
+        monkeypatch.setenv("EMPTY_VAR", "")
+        env = _envelope()
+        # Empty string is not _MISSING, so exists: true
+        assert evaluate_expression({"env.EMPTY_VAR": {"exists": True}}, env) is True
+        # But equals empty string
+        assert evaluate_expression({"env.EMPTY_VAR": {"equals": ""}}, env) is True
+        # Not equal to anything else
+        assert evaluate_expression({"env.EMPTY_VAR": {"equals": "something"}}, env) is False
+
+    def test_env_zero_coerces_to_int(self, monkeypatch):
+        """Env var '0' coerces to int 0 (falsy but present)."""
+        monkeypatch.setenv("COUNT", "0")
+        env = _envelope()
+        assert evaluate_expression({"env.COUNT": {"equals": 0}}, env) is True
+        assert evaluate_expression({"env.COUNT": {"exists": True}}, env) is True
+        assert evaluate_expression({"env.COUNT": {"gte": 0}}, env) is True
+        assert evaluate_expression({"env.COUNT": {"gt": 0}}, env) is False
+
+    def test_env_negative_number_coercion(self, monkeypatch):
+        """Negative number strings coerce correctly."""
+        monkeypatch.setenv("OFFSET", "-5")
+        env = _envelope()
+        assert evaluate_expression({"env.OFFSET": {"equals": -5}}, env) is True
+        assert evaluate_expression({"env.OFFSET": {"lt": 0}}, env) is True
+
+    def test_env_negative_float_coercion(self, monkeypatch):
+        monkeypatch.setenv("TEMP", "-3.14")
+        env = _envelope()
+        assert evaluate_expression({"env.TEMP": {"equals": -3.14}}, env) is True
+
+    def test_env_matches_any(self, monkeypatch):
+        monkeypatch.setenv("DEPLOY_TARGET", "us-east-1")
+        env = _envelope()
+        assert evaluate_expression(
+            {"env.DEPLOY_TARGET": {"matches_any": [r"^us-", r"^eu-"]}}, env
+        ) is True
+        monkeypatch.setenv("DEPLOY_TARGET", "ap-south-1")
+        assert evaluate_expression(
+            {"env.DEPLOY_TARGET": {"matches_any": [r"^us-", r"^eu-"]}}, env
+        ) is False
+
+    def test_env_contains_any(self, monkeypatch):
+        monkeypatch.setenv("FEATURES", "auth,billing,notifications")
+        env = _envelope()
+        assert evaluate_expression(
+            {"env.FEATURES": {"contains_any": ["billing", "payments"]}}, env
+        ) is True
+        assert evaluate_expression(
+            {"env.FEATURES": {"contains_any": ["payments", "shipping"]}}, env
+        ) is False
+
+    def test_env_in_postcondition_with_output(self, monkeypatch):
+        """env.* selector works alongside output.text in a postcondition when clause."""
+        monkeypatch.setenv("STRICT_MODE", "true")
+        env = _envelope()
+        expr = {
+            "all": [
+                {"env.STRICT_MODE": {"equals": True}},
+                {"output.text": {"contains": "password"}},
+            ]
+        }
+        # Both match
+        assert evaluate_expression(expr, env, output_text="contains password here") is True
+        # Env matches but output doesn't
+        assert evaluate_expression(expr, env, output_text="safe output") is False
+        # Output matches but env doesn't
+        monkeypatch.setenv("STRICT_MODE", "false")
+        assert evaluate_expression(expr, env, output_text="contains password here") is False

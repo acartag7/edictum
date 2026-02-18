@@ -303,11 +303,14 @@ Selectors resolve fields from the `ToolEnvelope` and `Principal` at evaluation t
 | `principal.role` | string or null | pre, post | `Principal.role` |
 | `principal.ticket_ref` | string or null | pre, post | `Principal.ticket_ref` |
 | `principal.claims.<key>` | any | pre, post | `Principal.claims[key]` |
+| `env.<VAR>` | string, bool, int, or float | pre, post | `os.environ[VAR]` with type coercion |
 | `output.text` | string | **post only** | Stringified tool response |
 
-**Missing fields:** If a selector references a field that does not exist (missing key, null value, no principal), the leaf evaluates to `false`. The rule does not fire. This is not an error.
+**Missing fields:** If a selector references a field that does not exist (missing key, null value, no principal, unset env var), the leaf evaluates to `false`. The rule does not fire. This is not an error.
 
 **Nested args:** Dotted paths like `args.config.timeout` resolve through nested dicts: `envelope.args["config"]["timeout"]`. If any intermediate key is missing or the value is not a dict, the leaf evaluates to `false`.
+
+**Environment variables:** The `env.<VAR>` selector reads from `os.environ` at evaluation time. No adapter changes or envelope modifications are needed -- set the env var and reference it in YAML. Values are automatically coerced: `"true"`/`"false"` (case-insensitive) become booleans, numeric strings become `int` or `float`, everything else stays a string. Unset env vars evaluate to `false` (same as any missing field). Because env vars are read at evaluation time, changing an env var mid-process takes effect on the next tool call.
 
 ---
 
@@ -382,7 +385,7 @@ Messages support `{placeholder}` expansion from the envelope context:
 message: "Blocked read of '{args.path}' by user {principal.user_id}."
 ```
 
-Available placeholders follow the same selector paths as the expression grammar: `{args.path}`, `{tool.name}`, `{environment}`, `{principal.user_id}`, `{principal.role}`, and so on.
+Available placeholders follow the same selector paths as the expression grammar: `{args.path}`, `{tool.name}`, `{environment}`, `{principal.user_id}`, `{principal.role}`, `{env.VAR_NAME}`, and so on.
 
 If a placeholder references a missing field, it is kept as-is in the output (no crash, no empty string). Each placeholder expansion is capped at 200 characters.
 

@@ -1,6 +1,6 @@
 # Advanced Patterns
 
-This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive contract bundles, and per-contract mode overrides.
+This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive contract bundles, per-contract mode overrides, environment-based conditions, and guard merging.
 
 ---
 
@@ -421,6 +421,7 @@ Messages support `{placeholder}` expansion using the same selector paths as the 
 - `{environment}` -- the current environment
 - `{principal.user_id}`, `{principal.role}`, `{principal.org_id}` -- principal fields
 - `{principal.claims.<key>}` -- custom claims
+- `{env.<VAR>}` -- environment variable values
 
 **Gotchas:**
 - If a placeholder references a missing field, it is kept as-is in the output (e.g., `{principal.user_id}` appears literally if no principal is attached). No error is raised.
@@ -656,3 +657,121 @@ Individual contracts can override the bundle's default mode. This lets you mix e
 - Observe mode emits `CALL_WOULD_DENY` audit events. The tool call proceeds normally. Review these events before switching to enforce.
 - The mode override is per-contract. Other contracts in the same bundle continue to use the bundle default.
 - Postconditions are always `warn`, so `mode: observe` has no visible effect on postconditions. Observe mode is meaningful only for preconditions and session contracts.
+
+---
+
+## Environment-Based Conditions
+
+Use `env.*` selectors to conditionally activate contracts based on environment variables. The evaluator reads `os.environ` at evaluation time -- no adapter changes, no envelope modifications, no code changes.
+
+**When to use:** You want a single YAML file with contracts that activate based on runtime flags like `DRY_RUN`, `ENVIRONMENT`, or `FEATURE_X_ENABLED`. Set the env var, and the contract activates.
+
+=== "YAML"
+
+    ```yaml
+    apiVersion: edictum/v1
+    kind: ContractBundle
+
+    metadata:
+      name: env-conditions
+
+    defaults:
+      mode: enforce
+
+    contracts:
+      # Block modifications when DRY_RUN is set
+      - id: dry-run-block
+        type: pre
+        tool: "*"
+        when:
+          all:
+            - env.DRY_RUN: { equals: true }
+            - tool.name: { in: [Bash, Write, Edit] }
+        then:
+          effect: deny
+          message: "Dry run mode — modifications blocked."
+          tags: [dry-run]
+
+      # Block destructive commands in production
+      - id: prod-destructive-block
+        type: pre
+        tool: Bash
+        when:
+          all:
+            - env.ENVIRONMENT: { equals: "production" }
+            - args.command: { matches: '\brm\s+(-rf?|--recursive)\b' }
+        then:
+          effect: deny
+          message: "Destructive commands blocked in {env.ENVIRONMENT}."
+          tags: [destructive, production]
+    ```
+
+=== "Usage"
+
+    ```bash
+    # Activate dry-run mode
+    DRY_RUN=true python agent.py
+
+    # Or set environment
+    ENVIRONMENT=production python agent.py
+    ```
+
+**Type coercion:** Env vars are strings, but the evaluator coerces them automatically:
+
+- `"true"` / `"false"` (case-insensitive) become `True` / `False`
+- Numeric strings like `"42"` or `"3.14"` become `int` or `float`
+- Everything else stays a string
+
+This means `env.DRY_RUN: { equals: true }` works when `DRY_RUN=true` is set -- you compare against the boolean `true`, not the string `"true"`.
+
+**Gotchas:**
+- Unset env vars evaluate to `false` (the rule does not fire). This is consistent with how missing fields behave everywhere in Edictum.
+- Env vars are read at evaluation time, not load time. If an env var changes mid-process, the next tool call sees the new value.
+- All 15 operators work with `env.*` selectors. Use numeric operators (`gt`, `lt`, etc.) with coerced numeric env vars.
+- `{env.VAR_NAME}` works in message templates for dynamic denial messages.
+
+---
+
+## Guard Merging
+
+Use `Edictum.from_multiple()` to combine contracts from multiple guards into a single guard. This is the public API for merging -- no need to reach into private attributes.
+
+**When to use:** You have separate YAML files for different concerns (base safety, dry-run rules, team-specific rules) and want to combine them at runtime based on context.
+
+```python
+from edictum import Edictum
+
+base = Edictum.from_yaml("contracts/base.yaml")
+dry_run = Edictum.from_yaml("contracts/dry-run.yaml")
+team = Edictum.from_yaml("contracts/team-platform.yaml")
+
+# Single guard with all contracts
+guard = Edictum.from_multiple([base, dry_run, team])
+```
+
+**Semantics:**
+
+- Contracts are concatenated in order. The first guard's contracts evaluate first.
+- The first guard's audit config, mode, environment, and limits are used as the base.
+- Duplicate contract IDs are detected: first occurrence wins, duplicates are skipped with a warning logged.
+- The returned guard is a new instance. Input guards are not mutated.
+- Works with both YAML-loaded and Python-defined contracts.
+
+**Conditional loading with env vars:**
+
+```python
+import os
+from edictum import Edictum
+
+guards = [Edictum.from_yaml("contracts/base.yaml")]
+
+if os.environ.get("DRY_RUN"):
+    guards.append(Edictum.from_yaml("contracts/dry-run.yaml"))
+
+guard = Edictum.from_multiple(guards)
+```
+
+**Gotchas:**
+- `from_multiple([])` raises `EdictumConfigError`. At least one guard is required.
+- Hooks (before/after) are not merged -- only contracts (preconditions, postconditions, session contracts).
+- Duplicate IDs are checked across all contract types. A precondition ID in guard A blocks a postcondition with the same ID in guard B.

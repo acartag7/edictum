@@ -11,6 +11,7 @@ except Exception:  # pragma: no cover — editable installs, test envs
 
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
@@ -45,6 +46,8 @@ from edictum.session import Session
 from edictum.storage import MemoryBackend, StorageBackend
 from edictum.telemetry import GovernanceTelemetry
 from edictum.types import HookRegistration
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "__version__",
@@ -266,6 +269,73 @@ class Edictum:
             backend=backend,
             environment=environment,
         )
+
+    @classmethod
+    def from_multiple(cls, guards: list[Edictum]) -> Edictum:
+        """Create a new Edictum instance by merging multiple guards.
+
+        Concatenates preconditions, postconditions, and session contracts
+        from all guards in order.  The first guard's audit config, mode,
+        environment, and limits are used as the base.
+
+        Duplicate contract IDs are detected: first occurrence wins and
+        a warning is logged for each duplicate.
+
+        Args:
+            guards: List of Edictum instances to merge. Must not be empty.
+
+        Returns:
+            A new Edictum instance containing all contracts.
+
+        Raises:
+            EdictumConfigError: If the guards list is empty.
+        """
+        if not guards:
+            raise EdictumConfigError("from_multiple() requires at least one guard")
+
+        first = guards[0]
+        merged = cls(
+            environment=first.environment,
+            mode=first.mode,
+            limits=first.limits,
+            audit_sink=first.audit_sink,
+            redaction=first.redaction,
+            backend=first.backend,
+            policy_version=first.policy_version,
+        )
+        merged.tool_registry = first.tool_registry
+
+        seen_ids: set[str] = set()
+
+        for guard in guards:
+            for contract in guard._preconditions:
+                cid = getattr(contract, "_edictum_id", None)
+                if cid and cid in seen_ids:
+                    logger.warning("Duplicate contract id '%s' in from_multiple() — first wins", cid)
+                    continue
+                if cid:
+                    seen_ids.add(cid)
+                merged._preconditions.append(contract)
+
+            for contract in guard._postconditions:
+                cid = getattr(contract, "_edictum_id", None)
+                if cid and cid in seen_ids:
+                    logger.warning("Duplicate contract id '%s' in from_multiple() — first wins", cid)
+                    continue
+                if cid:
+                    seen_ids.add(cid)
+                merged._postconditions.append(contract)
+
+            for contract in guard._session_contracts:
+                cid = getattr(contract, "_edictum_id", None)
+                if cid and cid in seen_ids:
+                    logger.warning("Duplicate contract id '%s' in from_multiple() — first wins", cid)
+                    continue
+                if cid:
+                    seen_ids.add(cid)
+                merged._session_contracts.append(contract)
+
+        return merged
 
     def _register_contract(self, item: Any) -> None:
         contract_type = getattr(item, "_edictum_type", None)
