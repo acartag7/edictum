@@ -37,6 +37,8 @@ jobs:
           # Pass GLM token as anthropic_api_key to satisfy action validation.
           # Actual auth is handled by ANTHROPIC_AUTH_TOKEN (Bearer) below.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
           claude_args: '--model glm-5 --max-turns 10'
         env:
           # Redirect all API calls to GLM endpoint
