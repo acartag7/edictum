@@ -59,7 +59,9 @@ def compile_contracts(bundle: dict) -> CompiledBundle:
             fn = _compile_post(contract, contract_mode)
             postconditions.append(fn)
         elif contract_type == "session":
-            limits = _merge_session_limits(contract, limits)
+            is_shadow = contract.get("_shadow", False)
+            if not is_shadow:
+                limits = _merge_session_limits(contract, limits)
             fn = _compile_session(contract, contract_mode, limits)
             session_contracts.append(fn)
 
@@ -149,6 +151,8 @@ def _compile_pre(contract: dict, mode: str) -> Any:
     precondition_fn._edictum_mode = mode
     precondition_fn._edictum_id = contract_id
     precondition_fn._edictum_source = "yaml_precondition"
+    if contract.get("_shadow"):
+        precondition_fn._edictum_shadow = True
 
     return precondition_fn
 
@@ -235,6 +239,8 @@ def _compile_post(contract: dict, mode: str) -> Any:
     postcondition_fn._edictum_source = "yaml_postcondition"
     postcondition_fn._edictum_effect = effect
     postcondition_fn._edictum_redact_patterns = _extract_output_patterns(when_expr)
+    if contract.get("_shadow"):
+        postcondition_fn._edictum_shadow = True
 
     return postcondition_fn
 
@@ -267,6 +273,8 @@ def _compile_session(contract: dict, mode: str, limits: OperationLimits) -> Any:
     session_contract_fn._edictum_tags = tags
     session_contract_fn._edictum_then_metadata = then_metadata
     session_contract_fn._edictum_source = "yaml_session"
+    if contract.get("_shadow"):
+        session_contract_fn._edictum_shadow = True
 
     return session_contract_fn
 

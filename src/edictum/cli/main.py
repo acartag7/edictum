@@ -27,6 +27,24 @@ from edictum.yaml_engine.loader import load_bundle
 # ---------------------------------------------------------------------------
 
 
+def _print_composition_report(report: Any) -> None:
+    """Print composition report (overrides and shadows)."""
+    if not report.overridden_contracts and not report.shadow_contracts:
+        return
+
+    _console.print("\n[bold]Composition report:[/bold]")
+    for o in report.overridden_contracts:
+        _console.print(
+            f"  \u21c4 {escape(o.contract_id)} \u2014 overridden by "
+            f"{escape(o.overridden_by)} (was in {escape(o.original_source)})"
+        )
+    for s in report.shadow_contracts:
+        _console.print(
+            f"  \u2295 {escape(s.contract_id)} \u2014 shadow from "
+            f"{escape(s.observed_source)} (enforced in {escape(s.enforced_source)})"
+        )
+
+
 def _load_and_compile(path: str) -> tuple[dict, str, Any]:
     """Load a YAML bundle, return (bundle_data, bundle_hash, compiled).
 
@@ -122,6 +140,7 @@ def version() -> None:
 def validate(files: tuple[str, ...]) -> None:
     """Validate one or more contract bundle files."""
     has_errors = False
+    valid_bundles: list[tuple[dict, str]] = []
 
     for file_path in files:
         path = Path(file_path)
@@ -150,6 +169,32 @@ def validate(files: tuple[str, ...]) -> None:
         total = sum(counts.values())
         breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
         _console.print(f"[green]  {escape(path.name)}[/green] — {total} contracts ({breakdown})")
+        valid_bundles.append((bundle_data, path.name))
+
+    # Compose when 2+ valid bundles
+    if len(valid_bundles) >= 2:
+        from edictum.yaml_engine.compiler import compile_contracts
+        from edictum.yaml_engine.composer import compose_bundles
+
+        composed = compose_bundles(*valid_bundles)
+
+        try:
+            compile_contracts(composed.bundle)
+        except EdictumConfigError as e:
+            _err_console.print(f"[red]Composed bundle failed compilation: {escape(str(e))}[/red]")
+            has_errors = True
+            sys.exit(1)
+
+        contracts = composed.bundle.get("contracts", [])
+        counts = {}
+        for c in contracts:
+            ct = c.get("type", "unknown")
+            counts[ct] = counts.get(ct, 0) + 1
+
+        total = sum(counts.values())
+        breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+        _console.print(f"\n[bold]Composed:[/bold] {total} contracts ({breakdown})")
+        _print_composition_report(composed.report)
 
     sys.exit(1 if has_errors else 0)
 
@@ -235,75 +280,95 @@ def _contracts_by_id(bundle: dict) -> dict[str, dict]:
 
 
 @cli.command()
-@click.argument("old_file", type=click.Path(exists=True))
-@click.argument("new_file", type=click.Path(exists=True))
-def diff(old_file: str, new_file: str) -> None:
-    """Compare two contract bundles and show changes."""
-    try:
-        old_bundle, _, _ = _load_and_compile(old_file)
-    except EdictumConfigError as e:
-        _err_console.print(f"[red]Failed to load old bundle: {escape(str(e))}[/red]")
-        sys.exit(1)
+@click.argument("files", nargs=-1, required=True, type=click.Path(exists=True))
+def diff(files: tuple[str, ...]) -> None:
+    """Compare contract bundles and show changes."""
+    if len(files) < 2:
+        _err_console.print("[red]diff requires at least 2 files.[/red]")
+        sys.exit(2)
 
-    try:
-        new_bundle, _, _ = _load_and_compile(new_file)
-    except EdictumConfigError as e:
-        _err_console.print(f"[red]Failed to load new bundle: {escape(str(e))}[/red]")
-        sys.exit(1)
+    # Load all bundles
+    loaded: list[tuple[dict, str]] = []
+    for file_path in files:
+        try:
+            bundle_data, _, _ = _load_and_compile(file_path)
+            loaded.append((bundle_data, file_path))
+        except EdictumConfigError as e:
+            _err_console.print(f"[red]Failed to load {escape(file_path)}: {escape(str(e))}[/red]")
+            sys.exit(1)
 
-    old_contracts = _contracts_by_id(old_bundle)
-    new_contracts = _contracts_by_id(new_bundle)
+    has_changes = False
 
-    old_ids = set(old_contracts.keys())
-    new_ids = set(new_contracts.keys())
+    # Standard diff for exactly 2 files
+    if len(files) == 2:
+        old_bundle = loaded[0][0]
+        new_bundle = loaded[1][0]
 
-    added = sorted(new_ids - old_ids)
-    removed = sorted(old_ids - new_ids)
-    common = sorted(old_ids & new_ids)
+        old_contracts = _contracts_by_id(old_bundle)
+        new_contracts = _contracts_by_id(new_bundle)
 
-    changed: list[str] = []
-    unchanged: list[str] = []
+        old_ids = set(old_contracts.keys())
+        new_ids = set(new_contracts.keys())
 
-    for cid in common:
-        if old_contracts[cid] != new_contracts[cid]:
-            changed.append(cid)
-        else:
-            unchanged.append(cid)
+        added = sorted(new_ids - old_ids)
+        removed = sorted(old_ids - new_ids)
+        common = sorted(old_ids & new_ids)
 
-    has_changes = bool(added or removed or changed)
+        changed: list[str] = []
+        unchanged: list[str] = []
 
-    if added:
-        _console.print("[green bold]Added:[/green bold]")
-        for cid in added:
-            c = new_contracts[cid]
-            _console.print(f"  + {cid} (type: {c.get('type', '?')})")
+        for cid in common:
+            if old_contracts[cid] != new_contracts[cid]:
+                changed.append(cid)
+            else:
+                unchanged.append(cid)
 
-    if removed:
-        _console.print("[red bold]Removed:[/red bold]")
-        for cid in removed:
-            c = old_contracts[cid]
-            _console.print(f"  - {cid} (type: {c.get('type', '?')})")
+        has_changes = bool(added or removed or changed)
 
-    if changed:
-        _console.print("[yellow bold]Changed:[/yellow bold]")
-        for cid in changed:
-            _console.print(f"  ~ {cid}")
+        if added:
+            _console.print("[green bold]Added:[/green bold]")
+            for cid in added:
+                c = new_contracts[cid]
+                _console.print(f"  + {cid} (type: {c.get('type', '?')})")
 
-    if unchanged and not has_changes:
-        _console.print("[dim]No changes detected. Bundles are identical.[/dim]")
+        if removed:
+            _console.print("[red bold]Removed:[/red bold]")
+            for cid in removed:
+                c = old_contracts[cid]
+                _console.print(f"  - {cid} (type: {c.get('type', '?')})")
 
-    # Summary
-    parts = []
-    if added:
-        parts.append(f"{len(added)} added")
-    if removed:
-        parts.append(f"{len(removed)} removed")
-    if changed:
-        parts.append(f"{len(changed)} changed")
-    if unchanged:
-        parts.append(f"{len(unchanged)} unchanged")
-    if parts:
-        _console.print(f"\nSummary: {', '.join(parts)}")
+        if changed:
+            _console.print("[yellow bold]Changed:[/yellow bold]")
+            for cid in changed:
+                _console.print(f"  ~ {cid}")
+
+        if unchanged and not has_changes:
+            _console.print("[dim]No changes detected. Bundles are identical.[/dim]")
+
+        # Summary
+        parts = []
+        if added:
+            parts.append(f"{len(added)} added")
+        if removed:
+            parts.append(f"{len(removed)} removed")
+        if changed:
+            parts.append(f"{len(changed)} changed")
+        if unchanged:
+            parts.append(f"{len(unchanged)} unchanged")
+        if parts:
+            _console.print(f"\nSummary: {', '.join(parts)}")
+
+    # Composition report for 2+ files
+    from edictum.yaml_engine.composer import compose_bundles
+
+    composed = compose_bundles(*loaded)
+    report = composed.report
+
+    if report.overridden_contracts or report.shadow_contracts:
+        # For 3+ files (no standard diff), composition is the primary output
+        if len(files) > 2:
+            has_changes = True
+        _print_composition_report(report)
 
     sys.exit(1 if has_changes else 0)
 
