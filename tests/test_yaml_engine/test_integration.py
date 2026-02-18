@@ -144,6 +144,160 @@ class TestPolicyVersionInAudit:
         assert sink.events[0].policy_version == guard.policy_version
 
 
+ENV_BUNDLE_YAML = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: env-test
+defaults:
+  mode: enforce
+contracts:
+  - id: dry-run-block
+    type: pre
+    tool: "*"
+    when:
+      all:
+        - env.DRY_RUN: { equals: true }
+        - tool.name: { in: [Bash, Write] }
+    then:
+      effect: deny
+      message: "Dry run mode — modifications blocked"
+"""
+
+
+class TestEnvSelectorIntegration:
+    """End-to-end tests for env.* selectors loaded from YAML."""
+
+    async def test_env_precondition_denies_when_set(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRY_RUN", "true")
+        bundle_path = tmp_path / "env_bundle.yaml"
+        bundle_path.write_text(ENV_BUNDLE_YAML)
+
+        sink = NullAuditSink()
+        guard = Edictum.from_yaml(bundle_path, audit_sink=sink)
+
+        with pytest.raises(EdictumDenied, match="Dry run mode"):
+            await guard.run("Bash", {"command": "rm -rf /"}, lambda **kw: "ok")
+
+    async def test_env_precondition_allows_when_unset(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DRY_RUN", raising=False)
+        bundle_path = tmp_path / "env_bundle.yaml"
+        bundle_path.write_text(ENV_BUNDLE_YAML)
+
+        sink = NullAuditSink()
+        guard = Edictum.from_yaml(bundle_path, audit_sink=sink)
+
+        result = await guard.run("Bash", {"command": "echo hello"}, lambda **kw: "hello")
+        assert result == "hello"
+
+    async def test_env_precondition_allows_non_matching_tool(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRY_RUN", "true")
+        bundle_path = tmp_path / "env_bundle.yaml"
+        bundle_path.write_text(ENV_BUNDLE_YAML)
+
+        sink = NullAuditSink()
+        guard = Edictum.from_yaml(bundle_path, audit_sink=sink)
+
+        result = await guard.run("read_file", {"path": "/tmp/test"}, lambda **kw: "contents")
+        assert result == "contents"
+
+    def test_env_evaluate_dry_run(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DRY_RUN", "true")
+        bundle_path = tmp_path / "env_bundle.yaml"
+        bundle_path.write_text(ENV_BUNDLE_YAML)
+
+        guard = Edictum.from_yaml(bundle_path)
+        result = guard.evaluate("Write", {"path": "/tmp/file", "content": "data"})
+        assert result.verdict == "deny"
+        assert any("Dry run mode" in r.message for r in result.rules if r.message)
+
+
+ENV_MESSAGE_TEMPLATE_YAML = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: env-message-test
+defaults:
+  mode: enforce
+contracts:
+  - id: env-message-expand
+    type: pre
+    tool: "*"
+    when:
+      env.BLOCK_REASON: { exists: true }
+    then:
+      effect: deny
+      message: "Blocked: {env.BLOCK_REASON}"
+"""
+
+ENV_POSTCONDITION_YAML = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: env-post-test
+defaults:
+  mode: enforce
+contracts:
+  - id: env-post-check
+    type: post
+    tool: "*"
+    when:
+      all:
+        - env.AUDIT_STRICT: { equals: true }
+        - output.text: { contains: "secret" }
+    then:
+      effect: warn
+      message: "Strict audit: sensitive output detected"
+"""
+
+
+class TestEnvSelectorEdgeCases:
+    """Edge case integration tests for env.* selectors."""
+
+    def test_env_message_template_expansion(self, tmp_path, monkeypatch):
+        """Message templates can expand {env.FOO} placeholders."""
+        monkeypatch.setenv("BLOCK_REASON", "maintenance window")
+        bundle_path = tmp_path / "env_msg.yaml"
+        bundle_path.write_text(ENV_MESSAGE_TEMPLATE_YAML)
+
+        guard = Edictum.from_yaml(bundle_path)
+        result = guard.evaluate("Bash", {"command": "deploy"})
+        assert result.verdict == "deny"
+        assert "maintenance window" in result.deny_reasons[0]
+
+    def test_env_message_template_unset_keeps_placeholder(self, tmp_path, monkeypatch):
+        """When env var is unset, message placeholder is kept as-is."""
+        monkeypatch.delenv("BLOCK_REASON", raising=False)
+        bundle_path = tmp_path / "env_msg.yaml"
+        bundle_path.write_text(ENV_MESSAGE_TEMPLATE_YAML)
+
+        guard = Edictum.from_yaml(bundle_path)
+        result = guard.evaluate("Bash", {"command": "deploy"})
+        # Contract doesn't fire because env.BLOCK_REASON doesn't exist
+        assert result.verdict == "allow"
+
+    def test_env_postcondition_with_output(self, tmp_path, monkeypatch):
+        """env.* in postcondition when clause works alongside output.text."""
+        monkeypatch.setenv("AUDIT_STRICT", "true")
+        bundle_path = tmp_path / "env_post.yaml"
+        bundle_path.write_text(ENV_POSTCONDITION_YAML)
+
+        guard = Edictum.from_yaml(bundle_path)
+        # Both env and output match → should warn
+        result = guard.evaluate("Read", {"path": "/tmp/x"}, output="contains secret data")
+        assert result.verdict == "warn"
+
+    def test_env_postcondition_unset_no_warn(self, tmp_path, monkeypatch):
+        """Postcondition with env.* doesn't fire when env var is unset."""
+        monkeypatch.delenv("AUDIT_STRICT", raising=False)
+        bundle_path = tmp_path / "env_post.yaml"
+        bundle_path.write_text(ENV_POSTCONDITION_YAML)
+
+        guard = Edictum.from_yaml(bundle_path)
+        result = guard.evaluate("Read", {"path": "/tmp/x"}, output="contains secret data")
+        assert result.verdict == "allow"
+
+
 class TestYamlVsPythonEquivalence:
     """Verify YAML-loaded guard produces identical verdicts to equivalent Python contracts."""
 

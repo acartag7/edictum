@@ -111,6 +111,24 @@ def _eval_leaf(
     return _apply_operator(op_name, value, op_value, selector)
 
 
+def _coerce_env_value(raw: str) -> str | bool | int | float:
+    """Coerce an env var string to a typed value for operator comparison."""
+    low = raw.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
 def _resolve_selector(
     selector: str,
     envelope: ToolEnvelope,
@@ -151,6 +169,15 @@ def _resolve_selector(
         if output_text is None:
             return _MISSING
         return output_text
+
+    if selector.startswith("env."):
+        import os
+
+        var_name = selector[4:]
+        raw = os.environ.get(var_name)
+        if raw is None:
+            return _MISSING
+        return _coerce_env_value(raw)
 
     return _MISSING
 
