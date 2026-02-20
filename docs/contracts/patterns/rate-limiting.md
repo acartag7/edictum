@@ -55,7 +55,7 @@ Cap the total number of tool calls in a session. This is the most common session
 - `max_attempts` counts all contract evaluations, including denied calls. If the agent hits 120 attempts before 50 successful calls, something is wrong -- the agent is likely stuck in a denial loop.
 
 **Gotchas:**
-- Set `max_attempts` higher than `max_tool_calls`. Some denied attempts are normal -- the agent may probe a few blocked paths before finding an allowed one. A ratio of roughly 2:1 to 3:1 (attempts to calls) is typical.
+- Set `max_attempts` higher than `max_tool_calls`. Some denied attempts are normal -- the agent may probe a few denied paths before finding an allowed one. A ratio of roughly 2:1 to 3:1 (attempts to calls) is typical.
 - Session counters persist for the lifetime of the `Edictum` instance. If you reuse the instance across multiple logical sessions, counters accumulate. Create a new instance for each session if isolation is needed.
 
 ---

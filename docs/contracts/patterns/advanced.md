@@ -6,7 +6,7 @@ This page covers patterns that combine multiple Edictum features: nested boolean
 
 ## Nested All/Any/Not Logic
 
-Boolean combinators (`all`, `any`, `not`) nest arbitrarily. Use them to build complex access rules from simple leaves.
+Boolean combinators (`all`, `any`, `not`) nest arbitrarily. Use them to build complex access patterns from simple leaves.
 
 **When to use:** Your access contract cannot be expressed as a single condition. You need AND, OR, and NOT logic combined.
 
@@ -274,7 +274,7 @@ To customize a template, copy its YAML source from `src/edictum/yaml_engine/temp
 
 Use `tool: "*"` to target all tools with a single contract. This is useful for cross-cutting concerns that apply regardless of which tool the agent calls.
 
-**When to use:** Security scanning (PII, secrets), session limits, or any rule that should apply to every tool.
+**When to use:** Security scanning (PII, secrets), session limits, or any contract that should apply to every tool.
 
 === "YAML"
 
@@ -308,7 +308,7 @@ Use `tool: "*"` to target all tools with a single contract. This is useful for c
           environment: { equals: maintenance }
         then:
           effect: deny
-          message: "System is in maintenance mode. All tool calls are blocked."
+          message: "System is in maintenance mode. All tool calls are denied."
           tags: [maintenance]
     ```
 
@@ -332,7 +332,7 @@ Use `tool: "*"` to target all tools with a single contract. This is useful for c
     @precondition("*")
     def block_all_in_maintenance(envelope):
         if envelope.environment == "maintenance":
-            return Verdict.fail("System is in maintenance mode. All tool calls are blocked.")
+            return Verdict.fail("System is in maintenance mode. All tool calls are denied.")
         return Verdict.pass_()
     ```
 
@@ -458,7 +458,7 @@ A comprehensive contract bundle combines all three contract types: preconditions
             contains_any: [".env", "credentials", ".pem", "id_rsa"]
         then:
           effect: deny
-          message: "Sensitive file '{args.path}' blocked."
+          message: "Sensitive file '{args.path}' denied."
           tags: [secrets, dlp]
 
       - id: prod-deploy-gate
@@ -527,7 +527,7 @@ A comprehensive contract bundle combines all three contract types: preconditions
         path = envelope.args.get("path", "")
         for s in (".env", "credentials", ".pem", "id_rsa"):
             if s in path:
-                return Verdict.fail(f"Sensitive file '{path}' blocked.")
+                return Verdict.fail(f"Sensitive file '{path}' denied.")
         return Verdict.pass_()
 
     @precondition("deploy_service")
@@ -578,9 +578,9 @@ A comprehensive contract bundle combines all three contract types: preconditions
 
 ## Per-Contract Mode Override
 
-Individual contracts can override the bundle's default mode. This lets you mix enforced and observed rules in a single bundle.
+Individual contracts can override the bundle's default mode. This lets you mix enforced and observed contracts in a single bundle.
 
-**When to use:** You are adding a new rule to an existing production bundle and want to shadow-test it before enforcing.
+**When to use:** You are adding a new contract to an existing production bundle and want to shadow-test it before enforcing.
 
 === "YAML"
 
@@ -604,10 +604,10 @@ Individual contracts can override the bundle's default mode. This lets you mix e
             contains_any: [".env", "credentials"]
         then:
           effect: deny
-          message: "Sensitive file blocked."
+          message: "Sensitive file denied."
           tags: [secrets]
 
-      # Observe mode: shadow-testing a new rule
+      # Observe mode: shadow-testing a new contract
       - id: experimental-query-limit
         type: pre
         mode: observe
@@ -630,7 +630,7 @@ Individual contracts can override the bundle's default mode. This lets you mix e
         path = envelope.args.get("path", "")
         for s in (".env", "credentials"):
             if s in path:
-                return Verdict.fail("Sensitive file blocked.")
+                return Verdict.fail("Sensitive file denied.")
         return Verdict.pass_()
 
     # In Python, per-contract mode override is done by running
@@ -689,7 +689,7 @@ Use `env.*` selectors to conditionally activate contracts based on environment v
             - tool.name: { in: [Bash, Write, Edit] }
         then:
           effect: deny
-          message: "Dry run mode — modifications blocked."
+          message: "Dry run mode — modifications denied."
           tags: [dry-run]
 
       # Block destructive commands in production
@@ -702,7 +702,7 @@ Use `env.*` selectors to conditionally activate contracts based on environment v
             - args.command: { matches: '\brm\s+(-rf?|--recursive)\b' }
         then:
           effect: deny
-          message: "Destructive commands blocked in {env.ENVIRONMENT}."
+          message: "Destructive commands denied in {env.ENVIRONMENT}."
           tags: [destructive, production]
     ```
 
@@ -725,39 +725,74 @@ Use `env.*` selectors to conditionally activate contracts based on environment v
 This means `env.DRY_RUN: { equals: true }` works when `DRY_RUN=true` is set -- you compare against the boolean `true`, not the string `"true"`.
 
 **Gotchas:**
-- Unset env vars evaluate to `false` (the rule does not fire). This is consistent with how missing fields behave everywhere in Edictum.
+- Unset env vars evaluate to `false` (the contract does not fire). This is consistent with how missing fields behave everywhere in Edictum.
 - Env vars are read at evaluation time, not load time. If an env var changes mid-process, the next tool call sees the new value.
 - All 15 operators work with `env.*` selectors. Use numeric operators (`gt`, `lt`, etc.) with coerced numeric env vars.
 - `{env.VAR_NAME}` works in message templates for dynamic denial messages.
 
 ---
 
-## Guard Merging
+## Bundle Composition (Multi-File)
 
-Use `Edictum.from_multiple()` to combine contracts from multiple guards into a single guard. This is the public API for merging -- no need to reach into private attributes.
+`Edictum.from_yaml()` accepts multiple paths, composing bundles left-to-right with deterministic merge semantics. This is the preferred way to combine contracts from multiple YAML files.
 
-**When to use:** You have separate YAML files for different concerns (base safety, dry-run rules, team-specific rules) and want to combine them at runtime based on context.
+**When to use:** You have separate YAML files for different concerns (base safety, team overrides, environment-specific contracts) and want to compose them into a single guard.
 
 ```python
 from edictum import Edictum
 
-base = Edictum.from_yaml("contracts/base.yaml")
-dry_run = Edictum.from_yaml("contracts/dry-run.yaml")
-team = Edictum.from_yaml("contracts/team-platform.yaml")
-
-# Single guard with all contracts
-guard = Edictum.from_multiple([base, dry_run, team])
+guard = Edictum.from_yaml(
+    "contracts/base.yaml",
+    "contracts/team-overrides.yaml",
+    "contracts/prod-overrides.yaml",
+)
 ```
 
-**Semantics:**
+**Merge semantics:**
 
-- Contracts are concatenated in order. The first guard's contracts evaluate first.
-- The first guard's audit config, mode, environment, and limits are used as the base.
-- Duplicate contract IDs are detected: first occurrence wins, duplicates are skipped with a warning logged.
-- The returned guard is a new instance. Input guards are not mutated.
-- Works with both YAML-loaded and Python-defined contracts.
+- Contracts with the same `id`: later layer replaces the entire contract
+- Contracts with unique IDs: concatenated into the final list
+- `defaults.mode`, `limits`, `observability`: later layer wins
+- `tools`, `metadata`: deep merge (later keys override)
 
-**Conditional loading with env vars:**
+Use `return_report=True` to see what was overridden:
+
+```python
+guard, report = Edictum.from_yaml(
+    "contracts/base.yaml",
+    "contracts/overrides.yaml",
+    return_report=True,
+)
+
+for o in report.overridden_contracts:
+    print(f"{o.contract_id}: overridden by {o.overridden_by}")
+```
+
+**Shadow-testing with `observe_alongside`:**
+
+A second bundle with `observe_alongside: true` evaluates as shadow contracts -- audit events are emitted but tool calls are never denied:
+
+```python
+guard = Edictum.from_yaml(
+    "contracts/current.yaml",      # enforced
+    "contracts/candidate.yaml",    # observe_alongside: true → shadow
+)
+```
+
+See [Bundle Composition](../yaml-reference.md#bundle-composition) for full reference.
+
+**Gotchas:**
+- Contract replacement is by `id`, not position. No partial merging of conditions within a contract.
+- Single-path `from_yaml("file.yaml")` is unchanged and backward compatible.
+- For composing Python-defined guards at runtime, use `Edictum.from_multiple()`.
+
+---
+
+## Guard Merging (Python)
+
+Use `Edictum.from_multiple()` to combine contracts from multiple instantiated guards into a single guard. This is for runtime merging of Python-defined contracts or conditionally loaded YAML guards.
+
+**When to use:** You need to combine guards at the Python level -- for example, conditionally adding guards based on runtime state, or mixing YAML-loaded and Python-defined contracts.
 
 ```python
 import os
@@ -770,6 +805,16 @@ if os.environ.get("DRY_RUN"):
 
 guard = Edictum.from_multiple(guards)
 ```
+
+!!! note "Prefer `from_yaml(*paths)` for YAML composition"
+    If you are combining multiple YAML files, use `from_yaml("base.yaml", "overrides.yaml")` instead of `from_multiple()`. Multi-path `from_yaml()` provides deterministic merge semantics, composition reports, and `observe_alongside` support. `from_multiple()` is for cases where you need runtime conditional loading or mixing Python-defined contracts.
+
+**Semantics:**
+
+- Contracts are concatenated in order. The first guard's contracts evaluate first.
+- The first guard's audit config, mode, environment, and limits are used as the base.
+- Duplicate contract IDs: first occurrence wins, duplicates skipped with a warning.
+- The returned guard is a new instance. Input guards are not mutated.
 
 **Gotchas:**
 - `from_multiple([])` raises `EdictumConfigError`. At least one guard is required.

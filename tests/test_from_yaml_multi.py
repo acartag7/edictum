@@ -28,7 +28,7 @@ contracts:
         contains_any: [".env", ".secret"]
     then:
       effect: deny
-      message: "Sensitive file blocked"
+      message: "Sensitive file denied"
       tags: [secrets]
 """
 
@@ -48,7 +48,7 @@ contracts:
         contains_any: [".pem"]
     then:
       effect: deny
-      message: "PEM file blocked"
+      message: "PEM file denied"
       tags: [override]
 """
 
@@ -68,7 +68,7 @@ contracts:
         contains: "rm -rf"
     then:
       effect: deny
-      message: "Dangerous command blocked"
+      message: "Dangerous command denied"
       tags: [safety]
 """
 
@@ -89,7 +89,7 @@ contracts:
         contains_any: [".key"]
     then:
       effect: deny
-      message: "Key file blocked (candidate)"
+      message: "Key file denied (candidate)"
       tags: [candidate]
 """
 
@@ -141,7 +141,7 @@ class TestSinglePathBackwardCompat:
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         sink = NullAuditSink()
         guard = Edictum.from_yaml(base, audit_sink=sink)
-        with pytest.raises(EdictumDenied, match="Sensitive file blocked"):
+        with pytest.raises(EdictumDenied, match="Sensitive file denied"):
             await guard.run("read_file", {"path": "/x/.env"}, lambda path: "data")
 
 
@@ -158,11 +158,11 @@ class TestTwoPaths:
         preconditions = guard.get_preconditions(env_pem)
         assert len(preconditions) == 1
 
-        # .env should no longer be blocked (overridden)
+        # .env should no longer be denied (overridden)
         result = guard.evaluate("read_file", {"path": "app.env"})
         assert result.verdict == "allow"
 
-        # .pem should be blocked
+        # .pem should be denied
         result = guard.evaluate("read_file", {"path": "cert.pem"})
         assert result.verdict == "deny"
 
@@ -189,7 +189,7 @@ class TestThreePaths:
         extra = _write_yaml(tmp_path, "extra.yaml", EXTRA_BUNDLE)
         guard = Edictum.from_yaml(base, override, extra)
 
-        # Override replaced block-sensitive-reads → .pem blocked, .env not
+        # Override replaced block-sensitive-reads → .pem denied, .env not
         result = guard.evaluate("read_file", {"path": "cert.pem"})
         assert result.verdict == "deny"
         result = guard.evaluate("read_file", {"path": "app.env"})
@@ -225,7 +225,7 @@ class TestObserveAlongside:
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard = Edictum.from_yaml(base, candidate)
 
-        # Original contract still works — .env blocked
+        # Original contract still works — .env denied
         result = guard.evaluate("read_file", {"path": "app.env"})
         assert result.verdict == "deny"
 
@@ -291,9 +291,7 @@ class TestModeOverride:
         sink = NullAuditSink()
         guard = Edictum.from_yaml(base, mode="observe", audit_sink=sink)
         # Should NOT raise in observe mode
-        result = await guard.run(
-            "read_file", {"path": "/x/.env"}, lambda path: "data"
-        )
+        result = await guard.run("read_file", {"path": "/x/.env"}, lambda path: "data")
         assert result == "data"
 
 
@@ -338,15 +336,15 @@ class TestEvaluateDryRunExcludesShadow:
         result = guard.evaluate("read_file", {"path": "app.env"})
         assert result.verdict == "deny"
 
-    def test_evaluate_does_not_report_shadow_rules(self, tmp_path):
+    def test_evaluate_does_not_report_shadow_contracts(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard = Edictum.from_yaml(base, candidate)
 
         result = guard.evaluate("read_file", {"path": "app.key"})
-        # Shadow contracts should not appear in rules_evaluated
-        rule_ids = [r.rule_id for r in result.rules]
-        assert not any(":candidate" in rid for rid in rule_ids)
+        # Shadow contracts should not appear in contracts_evaluated
+        contract_ids = [r.contract_id for r in result.contracts]
+        assert not any(":candidate" in cid for cid in contract_ids)
 
 
 class TestFromTemplateBackwardCompat:

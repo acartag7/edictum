@@ -149,7 +149,7 @@ class SemanticKernelAdapter:
             self._pending.pop(call_id, None)
             return self._deny(decision.reason)
 
-        # Handle per-rule observed denials
+        # Handle per-contract observed denials
         if decision.observed:
             for cr in decision.contracts_evaluated:
                 if cr.get("observed") and not cr.get("passed"):

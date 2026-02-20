@@ -33,7 +33,7 @@ class TestOpenAIAgentsAdapter:
     async def test_deny_returns_correct_format(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = OpenAIAgentsAdapter(guard)
@@ -44,7 +44,7 @@ class TestOpenAIAgentsAdapter:
         )
         assert result is not None
         assert result.startswith("DENIED:")
-        assert "blocked" in result
+        assert "denied" in result
 
     async def test_pending_state_management(self):
         guard = make_guard()
@@ -97,7 +97,7 @@ class TestOpenAIAgentsAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("would be blocked")
+            return Verdict.fail("would be denied")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", contracts=[always_deny], audit_sink=sink)
@@ -295,7 +295,7 @@ class TestAsGuardrailsRegression:
 
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked by policy")
+            return Verdict.fail("denied by policy")
 
         # Mock the agents SDK module
         mock_agents = ModuleType("agents")
@@ -347,7 +347,7 @@ class TestAsGuardrailsRegression:
 
             result = await input_gr.guardrail_function(mock_data)
             assert result.action == "reject"
-            assert "blocked by policy" in result.reason
+            assert "denied by policy" in result.reason
         finally:
             if orig_agents is not None:
                 sys.modules["agents"] = orig_agents

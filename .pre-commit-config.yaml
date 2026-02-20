@@ -5,3 +5,12 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: check-terminology
+        name: check-terminology
+        entry: python scripts/check-terminology.py
+        language: python
+        types_or: [python, markdown, yaml]
+        pass_filenames: true

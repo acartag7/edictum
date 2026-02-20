@@ -4,7 +4,7 @@
 
 Runtime contract enforcement for AI agent tool calls. Deterministic pipeline: preconditions, postconditions, session contracts, principal-aware enforcement. Six framework adapters (LangChain, CrewAI, Agno, Semantic Kernel, OpenAI Agents SDK, Claude Agent SDK). Zero runtime deps in core.
 
-Current version: 0.8.0 (PyPI: `edictum`)
+Current version: 0.8.1 (PyPI: `edictum`)
 
 ## Architecture: Open-Core with ee/ Directory
 
@@ -90,6 +90,13 @@ The tier split follows one rule: **evaluation engine = OSS, infrastructure = ent
 - v0.5.1: Adapter bug fixes (CrewAI, Agno, SK)
 - v0.5.2: Adapter bug fixes (LangChain, OpenAI)
 - v0.5.3: Claude SDK on_postcondition_warn callback, edictum test CLI
+- v0.5.4: Dry-run evaluation API (evaluate, evaluate_batch), edictum test --calls
+- v0.6.0: Postcondition enforcement effects (redact/deny), SideEffect classification
+- v0.6.1: YAML tools: section for side-effect classifications
+- v0.6.2: Renamed to_sdk_hooks() → to_hook_callables()
+- v0.7.0: env.* selector, Edictum.from_multiple() guard merging, Claude Code GitHub Actions
+- v0.8.0: Bundle composition (compose_bundles, from_yaml multi-file), dual-mode evaluation
+- v0.8.1: RuleResult → ContractResult rename, terminology enforcement
 - Docs overhaul: homepage, quickstart, concepts section, patterns, 7 guides
 - edictum-demo repo: github.com/acartag7/edictum-demo
 
@@ -116,6 +123,32 @@ edictum validate contracts.yaml  # validate YAML contracts
 - Testing: pytest + pytest-asyncio, maintain 97%+ coverage
 - Commits: conventional commits (feat/fix/docs/test/refactor/chore), no Co-Authored-By
 - PRs: small and focused, Linear ticket in PR description not title
+
+## Terminology Enforcement
+
+The binding glossary is `.docs-style-guide.md`. ALL code, comments, docstrings, CLI output, docs, release notes, and CHANGELOG entries MUST use these canonical terms:
+
+| Wrong | Correct |
+|-------|---------|
+| rule / rules (in prose) | contract / contracts |
+| blocked | denied |
+| engine (for runtime) | pipeline |
+| shadow mode | observe mode |
+| alert | finding |
+
+**Exception**: None. There are no exceptions. The class was renamed from `RuleResult` to `ContractResult` in v0.8.1 to eliminate the last holdout.
+
+Before writing ANY user-facing string, comment, docstring, or documentation, check it against the glossary.
+
+## Pre-Release Checklist
+
+Before tagging a release:
+
+1. `grep -rn` for banned terms (rule/rules in prose, blocked, engine, shadow mode, alert) in src/, docs/, CHANGELOG.md
+2. Verify CLI output strings match .docs-style-guide.md terminology
+3. Verify YAML examples in release notes use correct schema (`then:` block with `effect:` and `message:`, not `action:`)
+4. Verify release notes prose uses canonical terms
+5. Run: `pytest tests/ -v && ruff check src/ tests/ && python -m mkdocs build --strict`
 
 ## YAML Schema (locked)
 

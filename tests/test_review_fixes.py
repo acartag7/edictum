@@ -86,7 +86,7 @@ contracts:
             contains: ".env"
     then:
       effect: deny
-      message: "blocked"
+      message: "denied"
 """
         )
         with pytest.raises(EdictumConfigError, match="output.text selector"):
@@ -174,7 +174,7 @@ class TestFix3PolicyError:
         assert denied[0].policy_error is True
 
 
-# ── Fix 4: Per-rule observe mode in adapters ──
+# ── Fix 4: Per-contract observe mode in adapters ──
 
 
 class TestFix4PerRuleObserve:

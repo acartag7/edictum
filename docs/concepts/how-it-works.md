@@ -43,14 +43,14 @@ The pipeline checks the contract bundle. This contract matches:
     args.path: { contains: ".env" }
   then:
     effect: deny
-    message: "Blocked read of sensitive file: {args.path}"
+    message: "Read of sensitive file denied: {args.path}"
 ```
 
 The `args.path` value is `".env"`. The `contains` operator finds `".env"` in the string. The contract fires.
 
 **3. The call is denied.**
 
-The pipeline returns a `PreDecision` with `action: "deny"`. The tool function never executes. The agent receives the denial message: `"Blocked read of sensitive file: .env"`.
+The pipeline returns a `PreDecision` with `action: "deny"`. The tool function never executes. The agent receives the denial message: `"Read of sensitive file denied: .env"`.
 
 **4. An audit event is emitted.**
 
@@ -90,12 +90,19 @@ A precondition like `args.path: { contains: ".env" }` will always deny when the 
 
 This is the difference between a prompt instruction ("do not read .env files") and a contract. The prompt is a suggestion. The contract is enforcement.
 
+## Shadow Contracts (Dual-Mode Evaluation)
+
+When bundles are composed with [`observe_alongside: true`](../contracts/yaml-reference.md#observe-alongside), the pipeline evaluates shadow contracts alongside real contracts. Shadow contracts produce audit events but never affect allow/deny decisions.
+
+After all real checks pass, the pipeline evaluates shadow preconditions and session contracts. Each shadow result emits a separate audit event with `mode: "observe"` -- either `CALL_WOULD_DENY` or `CALL_ALLOWED`. This lets you compare the behavior of a candidate contract version against the currently enforced version. See [observe mode](observe-mode.md#dual-mode-evaluation-with-observe_alongside) for the full workflow.
+
 ## What Happens at Each Stage
 
 | Stage | When | Can Deny? | Output |
 |-------|------|-----------|--------|
 | Preconditions | Before tool executes | Yes | `CALL_DENIED` or pass |
 | Session limits | Before tool executes | Yes | `CALL_DENIED` if limit exceeded |
+| Shadow contracts | After real checks pass | Never | Audit events with `mode: "observe"` |
 | Tool execution | Only if all preconditions pass | -- | Tool's return value |
 | Postconditions | After tool executes | `warn`: findings only. `redact`/`deny`: enforced for READ/PURE tools | `CALL_EXECUTED` with warnings |
 | Audit | After every evaluation | -- | Structured event to all sinks |
@@ -105,4 +112,4 @@ This is the difference between a prompt instruction ("do not read .env files") a
 - [Contracts](contracts.md) -- the three contract types and how to write them
 - [Principals](principals.md) -- attaching identity context to tool calls
 - [Observe mode](observe-mode.md) -- shadow-testing contracts before enforcement
-- [YAML reference](../contracts/yaml-reference.md) -- full contract syntax
+- [YAML reference](../contracts/yaml-reference.md) -- full contract syntax and bundle composition

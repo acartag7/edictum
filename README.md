@@ -68,7 +68,7 @@ $ edictum check contracts.yaml --tool read_file --args '{"path": ".env"}'
   DENIED by block-sensitive-reads
    Message: Sensitive file '.env' denied.
    Tags: secrets, dlp
-   Rules evaluated: 1
+   Contracts evaluated: 1
 ```
 
 **Framework integration (one adapter, same contracts)**
@@ -87,8 +87,9 @@ wrapper = adapter.as_tool_wrapper()
 
 1. **Write contracts in YAML.** Preconditions deny dangerous calls before execution. Postconditions check tool output after. Session limits cap total calls and retries.
 2. **Attach to your agent framework.** One adapter line. Same contracts across all six frameworks.
-3. **Every tool call passes through the pipeline.** Preconditions, session limits, and principal context are evaluated. If any contract fails, the call is denied and never executes.
-4. **Full audit trail.** Every evaluation produces a structured event with automatic secret redaction.
+3. **Compose and layer bundles.** Split contracts across files by concern. `from_yaml()` accepts multiple paths with deterministic merge semantics. Shadow-test updates with `observe_alongside` before promoting.
+4. **Every tool call passes through the pipeline.** Preconditions, session limits, and principal context are evaluated. If any contract fails, the call is denied and never executes.
+5. **Full audit trail.** Every evaluation produces a structured event with automatic secret redaction.
 
 ## How It Compares
 

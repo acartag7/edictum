@@ -1,4 +1,4 @@
-"""YAML Contract Engine — parse, validate, and compile YAML contract bundles.
+"""YAML Contract Pipeline — parse, validate, and compile YAML contract bundles.
 
 Requires optional dependencies: ``pip install edictum[yaml]``
 """

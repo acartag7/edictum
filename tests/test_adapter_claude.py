@@ -38,7 +38,7 @@ class TestClaudeAgentSDKAdapter:
     async def test_deny_returns_sdk_format(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = ClaudeAgentSDKAdapter(guard)
@@ -48,7 +48,7 @@ class TestClaudeAgentSDKAdapter:
             tool_use_id="tu-1",
         )
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert result["hookSpecificOutput"]["permissionDecisionReason"] == "blocked"
+        assert result["hookSpecificOutput"]["permissionDecisionReason"] == "denied"
         assert result["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
 
     async def test_pending_state_management(self):
@@ -99,7 +99,7 @@ class TestClaudeAgentSDKAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("would be blocked")
+            return Verdict.fail("would be denied")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", contracts=[always_deny], audit_sink=sink)

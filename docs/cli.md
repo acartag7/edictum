@@ -23,20 +23,36 @@ command becomes available on your `PATH` via the entry point defined in `pyproje
 Parse one or more YAML contract bundle files, validate them against the Edictum JSON
 Schema, compile all regex patterns, check for unique contract IDs, and report any errors.
 
+When two or more valid files are provided, bundles are composed and the composed result is also validated. This lets you verify that your layered bundles compose correctly.
+
 **Usage**
 
 ```
 edictum validate FILES...
 ```
 
-Takes one or more file paths as positional arguments. Each file is validated independently.
+Takes one or more file paths as positional arguments. Each file is validated independently first, then composed if multiple files are valid.
 
-**Example**
+**Example -- single file**
 
 ```
 $ edictum validate contracts/production.yaml
 
   production.yaml — 12 contracts (2 post, 8 pre, 2 session)
+```
+
+**Example -- multi-file composition**
+
+```
+$ edictum validate contracts/base.yaml contracts/overrides.yaml
+
+  base.yaml — 8 contracts (1 post, 5 pre, 2 session)
+  overrides.yaml — 3 contracts (3 pre)
+
+Composed: 9 contracts (1 post, 6 pre, 2 session)
+
+Composition report:
+  ⇄ block-sensitive-reads — overridden by contracts/overrides.yaml (was in base.yaml)
 ```
 
 When validation fails:
@@ -82,7 +98,7 @@ $ edictum check contracts/production.yaml \
     --args '{"path": "/app/config.json"}'
 
 ALLOWED
-  Rules evaluated: 1 contract(s)
+  Contracts evaluated: 1
 ```
 
 **Example -- denied call with principal**
@@ -95,10 +111,10 @@ $ edictum check contracts/production.yaml \
     --principal-user alice \
     --principal-ticket INC-4421
 
-DENIED by rule block-sensitive-reads
-  Message: Sensitive file '/home/user/.env' blocked.
+DENIED by contract block-sensitive-reads
+  Message: Sensitive file '/home/user/.env' denied.
   Tags: secrets, dlp
-  Rules evaluated: 1
+  Contracts evaluated: 1
 ```
 
 **Example -- role-gated production deploy**
@@ -109,10 +125,10 @@ $ edictum check contracts/production.yaml \
     --args '{"env": "production", "service": "api"}' \
     --principal-role developer
 
-DENIED by rule prod-deploy-requires-senior
+DENIED by contract prod-deploy-requires-senior
   Message: Production deploys require senior role (sre/admin).
   Tags: change-control, production
-  Rules evaluated: 2
+  Contracts evaluated: 2
 ```
 
 **Example -- passing with ticket and senior role**
@@ -126,7 +142,7 @@ $ edictum check contracts/production.yaml \
     --principal-ticket INC-4421
 
 ALLOWED
-  Rules evaluated: 2 contract(s)
+  Contracts evaluated: 2
 ```
 
 The principal flags map directly to `Principal` fields:
@@ -145,16 +161,20 @@ Exit codes: `0` on allow, `1` on deny, `2` on invalid JSON.
 
 ### `edictum diff`
 
-Compare two YAML contract files and report which contract IDs were added, removed,
-or changed.
+Compare contract bundle files and report which contract IDs were added, removed,
+or changed. Supports two or more files.
+
+With exactly two files, a standard contract-by-contract diff is shown. With two or more files, a composition report shows overrides and shadow contracts.
 
 **Usage**
 
 ```
-edictum diff <old.yaml> <new.yaml>
+edictum diff FILES...
 ```
 
-**Example**
+Requires at least two file paths.
+
+**Example -- two-file diff**
 
 ```
 $ edictum diff contracts/v1.yaml contracts/v2.yaml
@@ -169,6 +189,16 @@ Changed:
   ~ no-secrets
 
 Summary: 1 added, 1 removed, 1 changed, 3 unchanged
+```
+
+**Example -- multi-file composition diff**
+
+```
+$ edictum diff contracts/base.yaml contracts/overrides.yaml contracts/candidate.yaml
+
+Composition report:
+  ⇄ block-sensitive-reads — overridden by contracts/overrides.yaml (was in base.yaml)
+  ⊕ block-sensitive-reads — shadow from contracts/candidate.yaml (enforced in contracts/overrides.yaml)
 ```
 
 Exit codes: `0` if identical, `1` if differences found.
@@ -204,9 +234,9 @@ Replayed 1247 events, 2 would change
 
 Changed verdicts:
   Bash: call_allowed -> denied
-    Rule: no-sensitive-reads
+    Contract: no-sensitive-reads
   Write: call_allowed -> denied
-    Rule: no-secrets
+    Contract: no-secrets
 ```
 
 Exit codes: `0` if no changes, `1` if changes detected.
@@ -363,11 +393,11 @@ Each call object supports:
 ```
 $ edictum test contracts/production.yaml --calls tests/calls.json
 
-  #  Tool        Verdict  Rules  Details
-  1  read_file   ALLOW    1      all rules passed
-  2  read_file   DENY     1      Sensitive file '/app/.env' blocked.
-  3  bash        ALLOW    0      all rules passed
-  4  read_file   WARN     1      PII detected.
+  #  Tool        Verdict  Contracts  Details
+  1  read_file   ALLOW    1          all contracts passed
+  2  read_file   DENY     1          Sensitive file '/app/.env' denied.
+  3  bash        ALLOW    0          all contracts passed
+  4  read_file   WARN     1          PII detected.
 ```
 
 **Example -- JSON output**
@@ -379,17 +409,17 @@ $ edictum test contracts/production.yaml --calls tests/calls.json --json
   {
     "verdict": "allow",
     "tool_name": "read_file",
-    "rules_evaluated": 1,
+    "contracts_evaluated": 1,
     "deny_reasons": [],
     "warn_reasons": [],
     "policy_error": false,
-    "rules": [...]
+    "contracts": [...]
   },
   ...
 ]
 ```
 
-The `--json` output includes the full `rules` array with `rule_id`, `rule_type`,
+The `--json` output includes the full `contracts` array with `contract_id`, `contract_type`,
 `passed`, `message`, `tags`, `observed`, and `policy_error` for each evaluated contract.
 
 ---

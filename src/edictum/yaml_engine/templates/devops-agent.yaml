@@ -17,7 +17,7 @@ contracts:
         contains_any: [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets, dlp]
 
   - id: block-destructive-bash
@@ -30,7 +30,7 @@ contracts:
         - args.command: { contains: '> /dev/' }
     then:
       effect: deny
-      message: "Destructive command blocked: '{args.command}'."
+      message: "Destructive command denied: '{args.command}'."
       tags: [destructive, safety]
 
   - id: prod-deploy-requires-senior

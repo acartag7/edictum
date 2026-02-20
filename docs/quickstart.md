@@ -29,7 +29,7 @@ contracts:
       args.path: { contains: ".env" }
     then:
       effect: deny
-      message: "Blocked read of sensitive file: {args.path}"
+      message: "Read of sensitive file denied: {args.path}"
 
   - id: block-destructive-commands
     type: pre
@@ -108,7 +108,7 @@ Expected output:
 
 ```
 OK: contents of readme.txt
-DENIED: Blocked read of sensitive file: .env
+DENIED: Read of sensitive file denied: .env
 DENIED: Destructive command denied: rm -rf /tmp
 ```
 

@@ -44,7 +44,7 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Bash blocked by guard A."
+      message: "Bash denied by guard A."
 """
 
 GUARD_B_YAML = """\
@@ -63,7 +63,7 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Write blocked by guard B."
+      message: "Write denied by guard B."
 """
 
 GUARD_C_YAML = """\
@@ -82,7 +82,7 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Delete blocked by guard C."
+      message: "Delete denied by guard C."
 """
 
 GUARD_DUP_YAML = """\
@@ -101,7 +101,7 @@ contracts:
         matches: '\\brm\\b'
     then:
       effect: deny
-      message: "Bash blocked by guard-dup (should be skipped)."
+      message: "Bash denied by guard-dup (should be skipped)."
 """
 
 GUARD_POST_YAML = """\
@@ -214,7 +214,7 @@ class TestFromMultiple:
         assert "Duplicate contract id 'block-bash'" in caplog.text
         # First wins: message should be from guard A
         result = merged.evaluate("Bash", {"command": "rm -rf /"})
-        assert result.deny_reasons[0] == "Bash blocked by guard A."
+        assert result.deny_reasons[0] == "Bash denied by guard A."
 
     def test_contract_ordering_preserved(self, tmp_path):
         guard_a = _make_guard_with_yaml(tmp_path, "a", GUARD_A_YAML)
@@ -251,7 +251,7 @@ class TestFromMultiple:
 
         merged = Edictum.from_multiple([guard_a, guard_b])
 
-        with pytest.raises(EdictumDenied, match="Bash blocked by guard A"):
+        with pytest.raises(EdictumDenied, match="Bash denied by guard A"):
             await merged.run("Bash", {"command": "ls"}, lambda **kw: "ok")
 
     def test_merge_postconditions(self, tmp_path):

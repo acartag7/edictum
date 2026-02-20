@@ -26,7 +26,7 @@ contracts:
         contains: ".secret"
     then:
       effect: deny
-      message: "Denied by rule-a"
+      message: "Denied by contract-a"
   - id: rule-b
     type: pre
     tool: bash
@@ -35,7 +35,7 @@ contracts:
         contains: "rm"
     then:
       effect: deny
-      message: "Denied by rule-b"
+      message: "Denied by contract-b"
 """
 
 OVERRIDE_BUNDLE = """\

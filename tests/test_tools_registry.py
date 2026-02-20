@@ -81,7 +81,7 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."
 """
         with pytest.raises(EdictumConfigError):
             Edictum.from_yaml(_write_yaml(yaml_content), audit_sink=_NullSink())
@@ -104,7 +104,7 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."
 """
         guard = Edictum.from_yaml(_write_yaml(yaml_content), audit_sink=_NullSink())
         assert guard is not None

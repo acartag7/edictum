@@ -33,7 +33,7 @@ class TestAgnoAdapter:
     async def test_deny_returns_correct_format(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = AgnoAdapter(guard)
@@ -44,7 +44,7 @@ class TestAgnoAdapter:
         result = await adapter._hook_async("TestTool", my_tool, {})
         assert isinstance(result, str)
         assert result.startswith("DENIED:")
-        assert "blocked" in result
+        assert "denied" in result
 
     async def test_pending_state_management(self):
         guard = make_guard()
@@ -89,7 +89,7 @@ class TestAgnoAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("would be blocked")
+            return Verdict.fail("would be denied")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", contracts=[always_deny], audit_sink=sink)

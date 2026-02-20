@@ -33,7 +33,7 @@ tool.execute {tool_name}
 For example, a call to the `Bash` tool produces a span named
 `tool.execute Bash`. The span begins when Edictum starts evaluating the
 envelope and ends after post-execution checks complete (or after denial, if
-the call is blocked).
+the call is denied).
 
 ### Span Attributes
 

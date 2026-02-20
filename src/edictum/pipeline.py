@@ -132,7 +132,7 @@ class GovernancePipeline:
             contracts_evaluated.append(contract_record)
 
             if not verdict.passed:
-                # Per-rule observe mode: record but don't deny (Fix 4)
+                # Per-contract observe mode: record but don't deny (Fix 4)
                 if contract_mode == "observe":
                     contract_record["observed"] = True
                     has_observed_deny = True
@@ -346,13 +346,15 @@ class GovernancePipeline:
                 logger.exception("Shadow precondition %s raised", getattr(contract, "__name__", "anonymous"))
                 verdict = Verdict.fail(f"Shadow precondition error: {exc}", policy_error=True)
 
-            results.append({
-                "name": getattr(contract, "__name__", "anonymous"),
-                "type": "precondition",
-                "passed": verdict.passed,
-                "message": verdict.message,
-                "source": getattr(contract, "_edictum_source", "yaml_precondition"),
-            })
+            results.append(
+                {
+                    "name": getattr(contract, "__name__", "anonymous"),
+                    "type": "precondition",
+                    "passed": verdict.passed,
+                    "message": verdict.message,
+                    "source": getattr(contract, "_edictum_source", "yaml_precondition"),
+                }
+            )
 
         # Shadow session contracts — evaluate against the real session
         for contract in self._guard.get_shadow_session_contracts():
@@ -364,12 +366,14 @@ class GovernancePipeline:
                 logger.exception("Shadow session contract %s raised", getattr(contract, "__name__", "anonymous"))
                 verdict = Verdict.fail(f"Shadow session contract error: {exc}", policy_error=True)
 
-            results.append({
-                "name": getattr(contract, "__name__", "anonymous"),
-                "type": "session_contract",
-                "passed": verdict.passed,
-                "message": verdict.message,
-                "source": getattr(contract, "_edictum_source", "yaml_session"),
-            })
+            results.append(
+                {
+                    "name": getattr(contract, "__name__", "anonymous"),
+                    "type": "session_contract",
+                    "passed": verdict.passed,
+                    "message": verdict.message,
+                    "source": getattr(contract, "_edictum_source", "yaml_session"),
+                }
+            )
 
         return results

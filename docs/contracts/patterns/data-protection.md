@@ -196,7 +196,7 @@ Block reads of files that commonly contain secrets, credentials, or private keys
               - "kubeconfig"
         then:
           effect: deny
-          message: "Reading sensitive file '{args.path}' is blocked. Skip and continue with non-sensitive files."
+          message: "Reading sensitive file '{args.path}' is denied. Skip and continue with non-sensitive files."
           tags: [secrets, dlp]
 
       - id: block-config-with-secrets
@@ -210,7 +210,7 @@ Block reads of files that commonly contain secrets, credentials, or private keys
             - args.path: { ends_with: ".netrc" }
         then:
           effect: deny
-          message: "Config file '{args.path}' may contain credentials. Access blocked."
+          message: "Config file '{args.path}' may contain credentials. Access denied."
           tags: [secrets, dlp]
     ```
 
@@ -226,7 +226,7 @@ Block reads of files that commonly contain secrets, credentials, or private keys
         for s in sensitive:
             if s in path:
                 return Verdict.fail(
-                    f"Reading sensitive file '{path}' is blocked. "
+                    f"Reading sensitive file '{path}' is denied. "
                     "Skip and continue with non-sensitive files."
                 )
         return Verdict.pass_()
@@ -238,14 +238,14 @@ Block reads of files that commonly contain secrets, credentials, or private keys
         for ext in secret_exts:
             if path.endswith(ext):
                 return Verdict.fail(
-                    f"Config file '{path}' may contain credentials. Access blocked."
+                    f"Config file '{path}' may contain credentials. Access denied."
                 )
         return Verdict.pass_()
     ```
 
 **Gotchas:**
 - `contains_any` is a substring match. A path like `/reports/environment.log` would match on `.env`. Use `ends_with` or `matches` with word boundaries for more precise matching.
-- This pattern only protects `read_file`. If your agent has a `bash` tool, it could read the same files with `cat`. Add corresponding rules for all file-reading tools.
+- This pattern only protects `read_file`. If your agent has a `bash` tool, it could read the same files with `cat`. Add corresponding contracts for all file-reading tools.
 
 ---
 

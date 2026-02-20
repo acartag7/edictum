@@ -122,7 +122,7 @@ def route_by_type(result, findings):
         if f.type == "pii_detected":
             text = redact_pii_patterns(text)
         elif f.type == "secret_detected":
-            text = "[BLOCKED] Secret detected in tool output"
+            text = "[DENIED] Secret detected in tool output"
             break  # full block on secrets
     return text
 

@@ -1,6 +1,6 @@
 # Contracts
 
-A contract is a rule that Edictum evaluates on every tool call. Contracts are written in YAML and compiled to deterministic checks -- the LLM cannot bypass them.
+A contract is a check that Edictum evaluates on every tool call. Contracts are written in YAML and compiled to deterministic checks -- the LLM cannot bypass them.
 
 There are three contract types: **preconditions** check before execution, **postconditions** check after, and **session contracts** track state across multiple calls.
 
@@ -16,7 +16,7 @@ Preconditions evaluate **before** the tool runs. If the condition matches, the c
     args.path: { contains: ".env" }
   then:
     effect: deny
-    message: "Blocked read of sensitive file: {args.path}"
+    message: "Read of sensitive file denied: {args.path}"
 ```
 
 This contract fires when `read_file` is called with a `path` argument containing `".env"`. The effect is always `deny` -- preconditions exist to stop dangerous calls.
@@ -128,7 +128,7 @@ defaults:
   mode: enforce
 ```
 
-Override per-contract when you want to shadow-test a new rule:
+Override per-contract when you want to shadow-test a new contract:
 
 ```yaml
 - id: experimental-api-check

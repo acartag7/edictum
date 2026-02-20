@@ -26,7 +26,7 @@ contracts:
       args.path: { contains: ".env" }
     then:
       effect: deny
-      message: "Blocked read of .env file"
+      message: "Denied read of .env file"
   - id: session-limit
     type: session
     limits:
@@ -52,7 +52,7 @@ contracts:
       args.path: { contains: ".secret" }
     then:
       effect: deny
-      message: "Blocked read of .secret file"
+      message: "Denied read of .secret file"
   - id: new-shadow-only
     type: pre
     tool: "*"
@@ -60,7 +60,7 @@ contracts:
       args.cmd: { contains: "rm -rf" }
     then:
       effect: deny
-      message: "Dangerous rm command blocked"
+      message: "Dangerous rm command denied"
   - id: session-limit
     type: session
     limits:
@@ -143,7 +143,7 @@ class TestShadowDoesNotBlockRealCalls:
         guard = Edictum.from_yaml(enforced_path, candidate_path, audit_sink=sink)
 
         # .env should still be denied by the enforced contract
-        with pytest.raises(EdictumDenied, match="Blocked read of .env file"):
+        with pytest.raises(EdictumDenied, match="Denied read of .env file"):
             await guard.run(
                 "read_file",
                 {"path": "/home/.env"},
@@ -190,7 +190,7 @@ class TestShadowWithoutEnforcedCounterpart:
             {"cmd": "rm -rf /"},
             lambda cmd: "done",
         )
-        assert result == "done"  # Not blocked — shadow only
+        assert result == "done"  # Not denied — shadow only
 
         shadow_events = [e for e in sink.events if e.mode == "observe"]
         shadow_deny = [e for e in shadow_events if e.action == AuditAction.CALL_WOULD_DENY]
@@ -244,7 +244,7 @@ class TestNormalContractsRegression:
         sink = _CaptureSink()
         guard = Edictum.from_yaml(enforced_path, audit_sink=sink)
 
-        with pytest.raises(EdictumDenied, match="Blocked read of .env file"):
+        with pytest.raises(EdictumDenied, match="Denied read of .env file"):
             await guard.run(
                 "read_file",
                 {"path": "/home/.env"},
