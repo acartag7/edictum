@@ -15,7 +15,8 @@ CLAUDE.local
 !.claude/skills/
 !.claude/agents/
 
-# Internal research notes
+# Internal research/planning notes
 docs/ADAPTER_INSIGHTS.md
 docs/adapter-research.md
+docs/planning/
 .DS_Store
