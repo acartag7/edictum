@@ -66,7 +66,9 @@ class TestMemoryBackend:
         # Counter store has the number
         assert backend._counters["key1"] == 10
 
-    async def test_ttl_accepted_but_ignored(self, backend):
-        """TTL is accepted but not enforced in MemoryBackend."""
-        await backend.set("key1", "value1", ttl=60)
-        assert await backend.get("key1") == "value1"
+    def test_set_does_not_accept_ttl(self, backend):
+        """set() signature must not include a ttl parameter."""
+        import inspect
+
+        sig = inspect.signature(backend.set)
+        assert "ttl" not in sig.parameters

@@ -11,13 +11,12 @@ class StorageBackend(Protocol):
     Requirements:
     - increment() MUST be atomic
     - get/set for simple key-value
-    - TTL support for automatic cleanup
 
     v0.0.1: No append() method (counters only, no list ops).
     """
 
     async def get(self, key: str) -> str | None: ...
-    async def set(self, key: str, value: str, ttl: int | None = None) -> None: ...
+    async def set(self, key: str, value: str) -> None: ...
     async def delete(self, key: str) -> None: ...
     async def increment(self, key: str, amount: float = 1) -> float: ...
 
@@ -41,7 +40,7 @@ class MemoryBackend:
             return str(int(v)) if v == int(v) else str(v)
         return None
 
-    async def set(self, key: str, value: str, ttl: int | None = None) -> None:
+    async def set(self, key: str, value: str) -> None:
         self._data[key] = value
 
     async def delete(self, key: str) -> None:
