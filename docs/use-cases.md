@@ -688,3 +688,133 @@ guard = Edictum.from_yaml("production.yaml", "new-contracts.yaml")
 # Production contracts enforce normally
 # New contracts shadow-log only
 ```
+
+---
+
+## MCP Servers
+
+MCP servers expose tools with known, stable names — `mcp__postgres__query`, `mcp__slack__send_message`, `mcp__github__create_issue`. This makes contract authoring straightforward: you know the exact tool names and argument shapes upfront.
+
+**The problem.** Your agent connects to Postgres, Slack, and GitHub MCP servers. It can query any table, message any channel, and create issues with arbitrary content. One prompt injection in a document and it's exfiltrating data through Slack or creating spam issues.
+
+**Complete contract bundle:**
+
+```yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: mcp-servers
+
+defaults:
+  mode: enforce
+
+tools:
+  mcp__postgres__query: { side_effect: read }
+  mcp__slack__send_message: { side_effect: write }
+  mcp__github__create_issue: { side_effect: write }
+  mcp__filesystem__read_file: { side_effect: read }
+
+contracts:
+  # --- Postgres MCP ---
+  - id: deny-unrestricted-queries
+    type: pre
+    tool: mcp__postgres__query
+    when:
+      args.sql:
+        matches: '(?i)SELECT\s+\*'
+    then:
+      effect: deny
+      message: "SELECT * denied. Specify columns explicitly."
+      tags: [data-protection, postgres]
+
+  - id: deny-destructive-sql
+    type: pre
+    tool: mcp__postgres__query
+    when:
+      args.sql:
+        matches: '(?i)\b(DROP|TRUNCATE|DELETE\s+FROM|ALTER)\b'
+    then:
+      effect: deny
+      message: "Destructive SQL denied: {args.sql}"
+      tags: [data-protection, postgres]
+
+  - id: redact-pii-from-query-results
+    type: post
+    tool: mcp__postgres__query
+    when:
+      output.text:
+        matches_any:
+          - '\b\d{3}-\d{2}-\d{4}\b'
+          - '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'
+    then:
+      effect: redact
+      message: "PII redacted from query results."
+      tags: [pii, postgres]
+
+  # --- Slack MCP ---
+  - id: slack-restrict-channels
+    type: pre
+    tool: mcp__slack__send_message
+    when:
+      args.channel:
+        not_in: ["#agent-updates", "#alerts"]
+    then:
+      effect: deny
+      message: "Agent can only post to #agent-updates and #alerts."
+      tags: [access-control, slack]
+
+  # --- GitHub MCP ---
+  - id: github-require-label
+    type: pre
+    tool: mcp__github__create_issue
+    when:
+      args.labels:
+        exists: false
+    then:
+      effect: deny
+      message: "Issues must include at least one label."
+      tags: [compliance, github]
+
+  # --- Filesystem MCP ---
+  - id: deny-sensitive-files
+    type: pre
+    tool: mcp__filesystem__read_file
+    when:
+      args.path:
+        contains_any: [".env", ".pem", "credentials", "id_rsa"]
+    then:
+      effect: deny
+      message: "Reading sensitive file denied: {args.path}"
+      tags: [secrets, filesystem]
+
+  # --- Session limits across all MCP tools ---
+  - id: mcp-session-limits
+    type: session
+    limits:
+      max_tool_calls: 100
+      max_calls_per_tool:
+        mcp__slack__send_message: 10
+        mcp__github__create_issue: 5
+    then:
+      effect: deny
+      message: "Session limit reached."
+
+```
+
+**Wiring it up:**
+
+```python
+from edictum import Edictum
+
+guard = Edictum.from_yaml("mcp-contracts.yaml")
+
+# Use guard.run() to wrap any MCP tool call
+result = await guard.run(
+    "mcp__postgres__query",
+    {"sql": "SELECT name, email FROM users WHERE id = 42"},
+    mcp_query_fn,
+)
+```
+
+**What this showcases: real tool names from real MCP servers.** You know the tool names (`mcp__postgres__query`, `mcp__slack__send_message`) because MCP servers declare them. Write contracts against exact names and argument shapes. Combine preconditions (deny destructive SQL, restrict Slack channels), postconditions (redact PII from query results), and session limits (cap Slack messages) in one bundle.
