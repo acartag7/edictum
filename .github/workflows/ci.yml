@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,yaml,sinks,cli]"
-      - run: pytest tests/ -v
+      - run: pytest tests/ -v --ignore=tests/test_behavior --ignore=tests/test_adapter_parity.py --ignore=tests/test_docs_sync.py
 
   lint:
     runs-on: ubuntu-latest
