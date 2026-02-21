@@ -48,6 +48,7 @@ Core provides protocols/interfaces. ee/ provides implementations.
 - edictum check + edictum test CLI
 - AuditEvent dataclass + StdoutAuditSink + FileAuditSink (.jsonl) + RedactionPolicy
 - OTel span instrumentation + GovernanceTelemetry
+- Finding classification (findings.py) with pii_detected, secret_detected, policy_violation types
 
 ## Enterprise (ee/) — not yet created
 
