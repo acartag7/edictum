@@ -140,6 +140,41 @@ The binding glossary is `.docs-style-guide.md`. ALL code, comments, docstrings, 
 
 Before writing ANY user-facing string, comment, docstring, or documentation, check it against the glossary.
 
+## API Design Checklist
+
+Before adding any new public API (function, method, parameter, class), verify ALL of these:
+
+- **Every accepted parameter has an observable effect.** If the parameter is in the signature, there must be a test proving it changes behavior. If unimplemented, raise `NotImplementedError` — never silently ignore.
+- **Collection parameters have documented merge semantics.** If a parameter accepts a set/list/dict, document and test whether it EXTENDS defaults or REPLACES them. Use `merged = defaults | custom` for union.
+- **Deny decisions propagate end-to-end.** If the pipeline returns deny, trace the path through every adapter. Never return a generic "allow" after processing a deny.
+- **Callbacks fire exactly once.** If a callback is invoked in an inner method AND an outer wrapper, one must be removed. Assert `callback.call_count == 1` in tests.
+- **All adapters handle the new feature.** Run `pytest tests/test_adapter_parity.py -v` after any adapter change.
+- **No ghost features.** If you add it to CLAUDE.md, architecture.md, or any doc page, the code must exist. Run `pytest tests/test_docs_sync.py -v`.
+
+## Behavior Test Requirement
+
+Every public API parameter MUST have a behavior test in `tests/test_behavior/`.
+
+A behavior test answers: "What observable effect does this parameter have?"
+
+- Tests the parameter's effect through the public API (not internal state)
+- Asserts a concrete difference between passing and not passing the parameter
+- Lives in `tests/test_behavior/test_{module}_behavior.py`
+- Keep test files focused: one file per module, under 200 lines
+
+## Pre-Merge Verification
+
+Every change MUST pass these checks before committing:
+
+```bash
+pytest tests/ -v                    # full test suite
+ruff check src/ tests/              # lint
+pytest tests/test_docs_sync.py -v   # docs-code sync
+python -m mkdocs build --strict     # docs build
+# If touching adapters:
+pytest tests/test_adapter_parity.py -v
+```
+
 ## Pre-Release Checklist
 
 Before tagging a release:

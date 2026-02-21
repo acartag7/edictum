@@ -33,8 +33,11 @@ Everything under `src/edictum/` is OSS core (MIT). This includes:
 3. **Read relevant source files** before proposing changes
 4. **Scope with user** — confirm approach before writing code
 5. **Implement** — small, focused changes
-6. **Test** — `pytest tests/ -v` then `ruff check src/ tests/`
-7. **Commit** — conventional commits, no Co-Authored-By
+6. **Behavior test** — every new/changed API parameter gets a test in `tests/test_behavior/test_{module}_behavior.py`
+7. **Docs-code sync** — `pytest tests/test_docs_sync.py -v`
+8. **Adapter parity** — if touching adapters: `pytest tests/test_adapter_parity.py -v`
+9. **Test** — `pytest tests/ -v` then `ruff check src/ tests/`
+10. **Commit** — conventional commits, no Co-Authored-By
 
 ## Conventions
 
@@ -50,3 +53,6 @@ Everything under `src/edictum/` is OSS core (MIT). This includes:
 - Implement Redis/DB StorageBackend — dropped feature
 - Implement PII detection backends in core — those go in ee/
 - Add Webhook/Splunk/Datadog sinks to core — those go in ee/
+- Accept a parameter without testing its observable effect — if it's accepted, it must DO something testable
+- Document a feature that doesn't exist in code — `pytest tests/test_docs_sync.py -v` catches this
+- Ship an adapter change without running parity checks — `pytest tests/test_adapter_parity.py -v`
