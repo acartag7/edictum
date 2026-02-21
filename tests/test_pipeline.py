@@ -62,7 +62,7 @@ class TestPreExecute:
 
     async def test_hook_deny(self, session):
         def deny_all(envelope):
-            return HookDecision.deny("blocked by hook")
+            return HookDecision.deny("denied by hook")
 
         hook = HookRegistration(phase="before", tool="*", callback=deny_all)
         guard = make_guard(hooks=[hook], backend=session._backend)
@@ -73,7 +73,7 @@ class TestPreExecute:
         decision = await pipeline.pre_execute(envelope, session)
         assert decision.action == "deny"
         assert decision.decision_source == "hook"
-        assert decision.reason == "blocked by hook"
+        assert decision.reason == "denied by hook"
         assert len(decision.hooks_evaluated) == 1
         assert decision.hooks_evaluated[0]["result"] == "deny"
 
@@ -218,7 +218,7 @@ class TestPreExecute:
     async def test_tool_specific_precondition(self, session):
         @precondition("Bash")
         def bash_only(envelope):
-            return Verdict.fail("bash blocked")
+            return Verdict.fail("bash denied")
 
         guard = make_guard(contracts=[bash_only], backend=session._backend)
         pipeline = GovernancePipeline(guard)

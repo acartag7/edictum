@@ -6,7 +6,7 @@ This guide walks through the full workflow of creating, validating, and deployin
 
 ## Step 1: Start With a Requirement
 
-Suppose your team has this rule:
+Suppose your team has this requirement:
 
 > Analysts should not be able to read secret files like `.env`, `.pem`, or credential files.
 
@@ -79,10 +79,10 @@ $ edictum check contracts.yaml \
     --args '{"path": ".env"}' \
     --principal-role analyst
 
-DENIED by rule block-secret-reads
+DENIED by contract block-secret-reads
   Message: Analysts cannot read '.env'. Ask an admin for help.
   Tags: secrets, dlp
-  Rules evaluated: 1
+  Contracts evaluated: 1
 ```
 
 Verify that allowed calls pass:
@@ -94,7 +94,7 @@ $ edictum check contracts.yaml \
     --principal-role analyst
 
 ALLOWED
-  Rules evaluated: 1 contract(s)
+  Contracts evaluated: 1 contract(s)
 ```
 
 ---
@@ -139,7 +139,7 @@ Check for:
 
 - **False positives** -- legitimate calls that would be denied.
 - **False negatives** -- calls that should be denied but are not.
-- **Missing principal fields** -- if `principal.role` is null, the leaf evaluates to `false` and the rule never fires.
+- **Missing principal fields** -- if `principal.role` is null, the leaf evaluates to `false` and the contract never fires.
 
 ---
 
@@ -174,7 +174,7 @@ args.path:
 
 ### Missing principal field
 
-If the principal does not have a `role` field set, selectors like `principal.role` resolve to null. A null selector causes the leaf to evaluate to `false`, so the rule never fires. The call is silently allowed.
+If the principal does not have a `role` field set, selectors like `principal.role` resolve to null. A null selector causes the leaf to evaluate to `false`, so the contract never fires. The call is silently allowed.
 
 Fix: ensure the principal is populated when creating the adapter:
 

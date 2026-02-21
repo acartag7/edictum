@@ -33,14 +33,15 @@ Tool outputs often contain personally identifiable information that should not p
 
 ---
 
-## [Planned] Contract Composition
+## [Shipped] Bundle Composition & Dual-Mode Evaluation (v0.8.0)
 
-As contract bundles grow, teams need to share common rules across YAML files without copy-paste.
+Teams can now compose multiple YAML bundles and shadow-test contract changes against live traffic.
 
-- **Contract imports** -- reference shared contract fragments from other YAML files
-- **Composition** -- build bundles from reusable pieces, override defaults per-bundle
-
-This stays in OSS core. The contract language and its ergonomics are part of the evaluation engine.
+- **`from_yaml(*paths)`** -- pass multiple YAML files; bundles are composed left-to-right with deterministic merge semantics
+- **`compose_bundles()`** -- low-level composition primitive with replace-by-ID for contracts, deep merge for tools/metadata, later-wins for defaults/limits/observability
+- **`observe_alongside: true`** -- dual-mode evaluation where a second bundle's contracts run as shadows, producing audit events without affecting real decisions
+- **`CompositionReport`** -- reports overridden and shadow contracts; available via `return_report=True` on `from_yaml()`
+- **CLI support** -- `edictum validate` and `edictum diff` support multi-file composition with override/shadow reports
 
 ---
 
@@ -49,17 +50,17 @@ This stays in OSS core. The contract language and its ergonomics are part of the
 Stdout and File (.jsonl) sinks ship today in OSS core for development and local audit. Production deployments need audit data flowing to existing infrastructure.
 
 - **Enterprise audit sinks**: Webhook, Splunk HEC, Datadog -- network destinations for compliance-grade audit trails
-- **Alert rules** -- notifications on abnormal patterns (denial spikes, PII detections, session exhaustion)
+- **Alert notifications** -- notifications on abnormal patterns (denial spikes, PII detections, session exhaustion)
 - **Deployment recipes**: end-to-end guides for OTel to Grafana, Datadog, and Splunk
 
 ---
 
 ## [Planned] Enterprise Contracts
 
-Single-call contracts cover most enforcement scenarios. Some problems require looking across multiple calls or letting non-engineers author rules.
+Single-call contracts cover most enforcement scenarios. Some problems require looking across multiple calls or letting non-engineers author contracts.
 
 - **Sequence-aware contracts** -- detect suspicious patterns across multiple tool calls, not just single calls (e.g., read credentials then call external API)
-- **NL → YAML authoring** -- compliance officers describe a rule in English, system generates the YAML contract
+- **NL → YAML authoring** -- compliance officers describe a contract in English, system generates the YAML contract
 
 ---
 

@@ -28,7 +28,7 @@ def evaluate_expression(
     Returns a _PolicyError instance if a type mismatch or evaluation
     error occurs (caller should treat as deny/warn + policy_error).
 
-    Missing fields always evaluate to False (rule doesn't fire).
+    Missing fields always evaluate to False (contract doesn't fire).
     """
     if "all" in expr:
         return _eval_all(expr["all"], envelope, output_text)
@@ -50,7 +50,7 @@ class _PolicyError:
         self.message = message
 
     def __bool__(self) -> bool:
-        return True  # Errors trigger the rule (fail-closed)
+        return True  # Errors trigger the contract (fail-closed)
 
 
 def _eval_all(

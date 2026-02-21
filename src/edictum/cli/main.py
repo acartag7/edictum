@@ -78,7 +78,7 @@ def _evaluate_preconditions(
 ) -> tuple[str, str | None, str | None, list[dict]]:
     """Evaluate compiled preconditions against an envelope.
 
-    Returns (verdict, rule_id, message, evaluated_records).
+    Returns (verdict, contract_id, message, evaluated_records).
     verdict is "denied" or "allowed".
     """
     evaluated: list[dict] = []
@@ -249,23 +249,23 @@ def check(
     envelope = _build_envelope(tool, parsed_args, environment, principal)
 
     # Evaluate
-    verdict, rule_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+    verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
 
     n_evaluated = len(evaluated)
 
     if verdict == "denied":
-        _console.print(f"[red bold]DENIED[/red bold] by rule [yellow]{escape(rule_id or '')}[/yellow]")
+        _console.print(f"[red bold]DENIED[/red bold] by contract [yellow]{escape(contract_id or '')}[/yellow]")
         _console.print(f"  Message: {escape(message or '')}")
         # Show tags if available
         deny_record = evaluated[-1] if evaluated else {}
         tags = deny_record.get("metadata", {}).get("tags", [])
         if tags:
             _console.print(f"  Tags: {', '.join(str(t) for t in tags)}")
-        _console.print(f"  Rules evaluated: {n_evaluated}")
+        _console.print(f"  Contracts evaluated: {n_evaluated}")
         sys.exit(1)
     else:
         _console.print("[green bold]ALLOWED[/green bold]")
-        _console.print(f"  Rules evaluated: {n_evaluated} contract(s)")
+        _console.print(f"  Contracts evaluated: {n_evaluated}")
         sys.exit(0)
 
 
@@ -432,7 +432,7 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
 
         # Build envelope and evaluate
         envelope = _build_envelope(tool_name, tool_args, environment, principal)
-        new_verdict, rule_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+        new_verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
 
         # Map to action strings for comparison
         new_action = "call_denied" if new_verdict == "denied" else "call_allowed"
@@ -449,8 +449,8 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
             "new_verdict": new_verdict,
             "changed": changed,
         }
-        if rule_id:
-            report_entry["denied_by"] = rule_id
+        if contract_id:
+            report_entry["denied_by"] = contract_id
             report_entry["message"] = message
         report_lines.append(report_entry)
 
@@ -471,7 +471,7 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
             if entry["changed"]:
                 _console.print(f"  {entry['tool_name']}: " f"{entry['original_action']} -> {entry['new_verdict']}")
                 if entry.get("denied_by"):
-                    _console.print(f"    Rule: {entry['denied_by']}")
+                    _console.print(f"    Contract: {entry['denied_by']}")
     else:
         _console.print("[green]No changes detected.[/green]")
 
@@ -552,7 +552,7 @@ def _run_cases(file: str, cases: str) -> None:
 
         # Build envelope and evaluate
         envelope = _build_envelope(tool, args, principal=principal)
-        verdict, rule_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+        verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
 
         # Map verdict to expected format
         actual = "deny" if verdict == "denied" else "allow"
@@ -560,13 +560,13 @@ def _run_cases(file: str, cases: str) -> None:
         # Check match_contract
         contract_match_ok = True
         if match_contract and actual == "deny":
-            contract_match_ok = rule_id == match_contract
+            contract_match_ok = contract_id == match_contract
 
         if actual == expect and contract_match_ok:
             passed += 1
             detail = f"{tool} {json.dumps(args)}"
             verdict_label = "DENIED" if actual == "deny" else "ALLOWED"
-            contract_info = f" ({rule_id})" if rule_id else ""
+            contract_info = f" ({contract_id})" if contract_id else ""
             _console.print(f"[green]  {escape(tc_id)}:[/green] {escape(detail)} -> {verdict_label}{contract_info}")
         else:
             failed += 1
@@ -576,7 +576,7 @@ def _run_cases(file: str, cases: str) -> None:
             if not contract_match_ok:
                 _console.print(
                     f"[red]  {escape(tc_id)}:[/red] {escape(detail)} -> "
-                    f"expected contract {escape(match_contract)}, got {escape(rule_id or 'none')}"
+                    f"expected contract {escape(match_contract)}, got {escape(contract_id or 'none')}"
                 )
             else:
                 _console.print(
@@ -626,11 +626,11 @@ def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
                 {
                     "verdict": r.verdict,
                     "tool_name": r.tool_name,
-                    "rules_evaluated": r.rules_evaluated,
+                    "contracts_evaluated": r.contracts_evaluated,
                     "deny_reasons": list(r.deny_reasons),
                     "warn_reasons": list(r.warn_reasons),
                     "policy_error": r.policy_error,
-                    "rules": [asdict(rule) for rule in r.rules],
+                    "contracts": [asdict(c) for c in r.contracts],
                 }
             )
         _console.print(json.dumps(output, indent=2))
@@ -641,7 +641,7 @@ def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
         table.add_column("#", style="dim", width=4)
         table.add_column("Tool")
         table.add_column("Verdict")
-        table.add_column("Rules", justify="right")
+        table.add_column("Contracts", justify="right")
         table.add_column("Details")
 
         for i, r in enumerate(results, 1):
@@ -653,9 +653,9 @@ def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
                 details = "; ".join(r.warn_reasons) if r.warn_reasons else ""
             else:
                 verdict_styled = "[green bold]ALLOW[/green bold]"
-                details = "all rules passed"
+                details = "all contracts passed"
 
-            table.add_row(str(i), r.tool_name, verdict_styled, str(r.rules_evaluated), escape(details))
+            table.add_row(str(i), r.tool_name, verdict_styled, str(r.contracts_evaluated), escape(details))
 
         _console.print(table)
 

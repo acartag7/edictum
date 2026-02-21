@@ -17,7 +17,7 @@ contracts:
         contains_any: [".env", ".secret"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets, dlp]
 
   - id: pii-in-output

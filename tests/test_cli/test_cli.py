@@ -49,7 +49,7 @@ contracts:
         contains_any: [".env", ".secret"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets]
 
   - id: bash-safety
@@ -60,7 +60,7 @@ contracts:
         matches: '\\brm\\s+-rf\\b'
     then:
       effect: deny
-      message: "Destructive command blocked."
+      message: "Destructive command denied."
       tags: [safety]
 
   - id: pii-check
@@ -214,7 +214,7 @@ contracts:
         contains_any: [".env", ".secret", ".pem"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets]
 
   - id: require-ticket

@@ -20,7 +20,7 @@ defaults:
   mode: enforce
 
 contracts:
-  - id: example-rule
+  - id: example-contract
     type: pre
     tool: read_file
     when:
@@ -28,7 +28,7 @@ contracts:
         contains: ".env"
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."
 ```
 
 | Field | Type | Required | Description |
@@ -39,6 +39,7 @@ contracts:
 | `metadata.description` | string | no | Human-readable description. |
 | `defaults.mode` | string | yes | `enforce` or `observe`. Applied to every contract that does not set its own `mode`. |
 | `tools` | object | no | Tool side-effect classifications. See [Tool Classifications](#tool-classifications). |
+| `observe_alongside` | boolean | no | When `true`, contracts in this bundle become shadow copies that evaluate in parallel without affecting real decisions. See [Bundle Composition](#bundle-composition). |
 | `contracts` | array | yes | Minimum one contract. Each item is a precondition, postcondition, or session contract. |
 
 The bundle is loaded with `Edictum.from_yaml()`:
@@ -49,7 +50,15 @@ from edictum import Edictum
 guard = Edictum.from_yaml("contracts/my-policy.yaml")
 ```
 
-A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact contract bundle that produced it.
+Multiple bundles can be composed by passing multiple paths. Later bundles override earlier ones:
+
+```python
+guard = Edictum.from_yaml("contracts/base.yaml", "contracts/overrides.yaml")
+```
+
+See [Bundle Composition](#bundle-composition) for full details.
+
+A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact contract bundle that produced it. When multiple bundles are composed, the combined hash is derived from all individual bundle hashes.
 
 ---
 
@@ -139,7 +148,7 @@ Preconditions evaluate **before** tool execution. If the expression matches, the
       contains_any: [".env", ".secret", "credentials", ".pem", "id_rsa"]
   then:
     effect: deny
-    message: "Sensitive file '{args.path}' blocked. Skip and continue."
+    message: "Sensitive file '{args.path}' denied. Skip and continue."
     tags: [secrets, dlp]
 ```
 
@@ -306,7 +315,7 @@ Selectors resolve fields from the `ToolEnvelope` and `Principal` at evaluation t
 | `env.<VAR>` | string, bool, int, or float | pre, post | `os.environ[VAR]` with type coercion |
 | `output.text` | string | **post only** | Stringified tool response |
 
-**Missing fields:** If a selector references a field that does not exist (missing key, null value, no principal, unset env var), the leaf evaluates to `false`. The rule does not fire. This is not an error.
+**Missing fields:** If a selector references a field that does not exist (missing key, null value, no principal, unset env var), the leaf evaluates to `false`. The contract does not fire. This is not an error.
 
 **Nested args:** Dotted paths like `args.config.timeout` resolve through nested dicts: `envelope.args["config"]["timeout"]`. If any intermediate key is missing or the value is not a dict, the leaf evaluates to `false`.
 
@@ -382,7 +391,7 @@ Using an invalid effect for a contract type is a validation error at load time.
 Messages support `{placeholder}` expansion from the envelope context:
 
 ```yaml
-message: "Blocked read of '{args.path}' by user {principal.user_id}."
+message: "Read of '{args.path}' denied for user {principal.user_id}."
 ```
 
 Available placeholders follow the same selector paths as the expression grammar: `{args.path}`, `{tool.name}`, `{environment}`, `{principal.user_id}`, `{principal.role}`, `{env.VAR_NAME}`, and so on.
@@ -400,11 +409,11 @@ Error behavior is hardcoded and not configurable. Edictum follows a fail-closed 
 | YAML parse error | `from_yaml()` raises `EdictumConfigError`. |
 | Invalid regex in `matches` / `matches_any` | Validation error at load time. |
 | Duplicate contract `id` within a bundle | Validation error at load time. |
-| YAML rule evaluation throws | Rule yields `deny` (pre/session) or `warn` (post) with `policy_error: true`. Other rules continue evaluating. |
+| YAML contract evaluation throws | Contract yields `deny` (pre/session) or `warn` (post) with `policy_error: true`. Other contracts continue evaluating. |
 | Python hook or precondition throws | Hook/contract yields `deny` with `policy_error: true`. Evaluation stops (first denial wins). |
 | Python postcondition throws | Contract yields `warn` with `policy_error: true`. Other postconditions continue. |
 | Selector references a missing field | Leaf evaluates to `false`. Not an error. |
-| Type mismatch (e.g., `gt` applied to a string) | Rule yields `deny` or `warn` with `policy_error: true`. |
+| Type mismatch (e.g., `gt` applied to a string) | Contract yields `deny` or `warn` with `policy_error: true`. |
 | Wrong `effect` for contract type | Validation error at load time. |
 | `output.text` used in a precondition | Validation error at load time. |
 
@@ -420,12 +429,12 @@ YAML contracts integrate with the audit system automatically. Every contract eva
 | `decision_name` | The contract's `id` field. |
 | `decision_source` | `yaml_precondition`, `yaml_postcondition`, or `yaml_session`. |
 | `contracts_evaluated[].tags` | From `then.tags` on each contract. |
-| `policy_error` | `true` if rule evaluation threw an error. |
+| `policy_error` | `true` if contract evaluation threw an error. |
 
 OpenTelemetry span attributes (when OTel SDK is installed):
 
 - `edictum.policy_version` -- the bundle hash.
-- `edictum.policy_error` -- set to `true` if any rule had an evaluation error.
+- `edictum.policy_error` -- set to `true` if any contract had an evaluation error.
 
 This means you can trace any audit record or OTel span back to the exact YAML file that produced it, and to the specific contract `id` that fired.
 
@@ -465,7 +474,7 @@ contracts:
         contains_any: [".env", ".secret", "credentials"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets]
 ```
 
@@ -484,6 +493,125 @@ When `observability.otel.enabled` is `true`, `Edictum.from_yaml()` calls `config
 Standard OpenTelemetry environment variables override YAML values: `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`.
 
 For detailed sink configuration and custom sinks, see [Audit and Observability](../audit/sinks.md).
+
+---
+
+## Bundle Composition {#bundle-composition}
+
+When contracts grow beyond a single file, `from_yaml()` accepts multiple paths. Bundles are composed left-to-right with deterministic merge semantics: later layers have higher priority.
+
+```python
+from edictum import Edictum
+
+guard = Edictum.from_yaml(
+    "contracts/base.yaml",
+    "contracts/team-overrides.yaml",
+    "contracts/prod-overrides.yaml",
+)
+```
+
+### Merge Rules
+
+| Element | Merge Rule |
+|---------|-----------|
+| Contracts (same ID) | Later layer **replaces** earlier layer entirely |
+| Contracts (unique ID) | Concatenated into final list |
+| `defaults.mode` | Later layer wins |
+| `defaults.environment` | Later layer wins |
+| `limits` | Later layer wins (entire limits block replaced) |
+| `tools` | Deep merge (tool configs from all layers combined) |
+| `metadata` | Deep merge (later keys override earlier) |
+| `observability` | Later layer wins |
+
+Contract replacement is by `id`, not by position. If `base.yaml` has `id: deny-rm-rf` and `overrides.yaml` also has `id: deny-rm-rf`, the override version completely replaces the base version. No partial merging of conditions within a contract.
+
+### Composition Report
+
+Pass `return_report=True` to see what happened during composition:
+
+```python
+guard, report = Edictum.from_yaml(
+    "contracts/base.yaml",
+    "contracts/overrides.yaml",
+    return_report=True,
+)
+
+for o in report.overridden_contracts:
+    print(f"{o.contract_id}: overridden by {o.overridden_by} (was in {o.original_source})")
+
+for s in report.shadow_contracts:
+    print(f"{s.contract_id}: shadow from {s.observed_source} (enforced in {s.enforced_source})")
+```
+
+### Dual-Mode Evaluation with `observe_alongside` {#observe-alongside}
+
+The `observe_alongside` flag enables running two versions of the same contract simultaneously -- one enforced, one observed. This is for shadow-testing contract updates against live traffic.
+
+When a bundle has `observe_alongside: true`, its contracts are not merged by ID replacement. Instead, they become **shadow copies** that evaluate in parallel without affecting real decisions:
+
+```yaml
+# candidate-update.yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+observe_alongside: true
+
+metadata:
+  name: candidate-contracts
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: block-sensitive-reads
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains_any: [".env", ".secret", "credentials", ".pem", "id_rsa", ".key"]
+    then:
+      effect: deny
+      message: "Denied: read of sensitive file {args.path}"
+      tags: [secrets, dlp]
+```
+
+Load both bundles:
+
+```python
+guard = Edictum.from_yaml(
+    "contracts/base.yaml",            # enforced
+    "contracts/candidate-update.yaml", # observe_alongside: true
+)
+```
+
+The result:
+
+- `block-sensitive-reads` from `base.yaml` makes real allow/deny decisions
+- `block-sensitive-reads:candidate` from `candidate-update.yaml` evaluates in parallel and emits separate audit events with `mode: "observe"`
+
+Shadow contracts produce `CALL_WOULD_DENY` or `CALL_ALLOWED` audit events but never block tool calls. This lets you compare the candidate's behavior against the enforced version before promoting it.
+
+**What `observe_alongside` affects:**
+
+- Shadow preconditions and session contracts are evaluated after real contracts
+- Shadow contract IDs are suffixed with `:candidate` (e.g., `block-sensitive-reads:candidate`)
+- Shadow audit events always have `mode: "observe"` regardless of the contract's declared mode
+- Shadow session contracts do not affect real session limits
+
+### Low-Level API: `compose_bundles()`
+
+For advanced use cases, the composition primitive is available directly:
+
+```python
+from edictum.yaml_engine import compose_bundles, load_bundle
+
+composed = compose_bundles(
+    (load_bundle("base.yaml")[0], "base.yaml"),
+    (load_bundle("overrides.yaml")[0], "overrides.yaml"),
+)
+
+# composed.bundle — the merged bundle dict
+# composed.report — CompositionReport with overrides and shadows
+```
 
 ---
 
@@ -524,7 +652,7 @@ contracts:
         contains_any: [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked. Skip and continue."
+      message: "Sensitive file '{args.path}' denied. Skip and continue."
       tags: [secrets, dlp]
 
   # --- Bash safety ---
@@ -539,7 +667,7 @@ contracts:
         - args.command: { contains: '> /dev/' }
     then:
       effect: deny
-      message: "Destructive command blocked: '{args.command}'. Use a safer alternative."
+      message: "Destructive command denied: '{args.command}'. Use a safer alternative."
       tags: [destructive, safety]
 
   # --- Production gate: role-based ---
@@ -582,7 +710,7 @@ contracts:
       message: "PII pattern detected in output. Redact before using."
       tags: [pii, compliance]
 
-  # --- Observe mode: shadow-test a new rule ---
+  # --- Observe mode: shadow-test a new contract ---
   - id: experimental-api-rate-check
     type: pre
     mode: observe

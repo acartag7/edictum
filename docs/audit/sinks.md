@@ -216,7 +216,7 @@ contracts:
         contains_any: [".env", ".secret", "credentials"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets]
 ```
 

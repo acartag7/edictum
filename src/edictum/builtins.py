@@ -14,14 +14,14 @@ def deny_sensitive_reads(
 ) -> Callable:
     """Built-in precondition: block reads of sensitive files/data.
 
-    Default blocked paths:
+    Default denied paths:
     - ~/.ssh/
     - /var/run/secrets/ (k8s)
     - /.env, /.aws/credentials
     - /.git-credentials
     - /id_rsa, /id_ed25519
 
-    Default blocked commands:
+    Default denied commands:
     - printenv, env (dump all env vars)
     """
     default_paths = [
@@ -45,7 +45,7 @@ def deny_sensitive_reads(
             for pattern in paths:
                 if pattern in envelope.file_path:
                     return Verdict.fail(
-                        f"Access to sensitive path blocked: {envelope.file_path}. "
+                        f"Access to sensitive path denied: {envelope.file_path}. "
                         "This file may contain secrets or credentials."
                     )
 
@@ -55,7 +55,7 @@ def deny_sensitive_reads(
             for blocked in commands:
                 if cmd == blocked or cmd.startswith(blocked + " "):
                     return Verdict.fail(
-                        f"Sensitive command blocked: {blocked}. "
+                        f"Sensitive command denied: {blocked}. "
                         "This command may expose secrets or environment variables."
                     )
             # Check if bash is reading a sensitive path

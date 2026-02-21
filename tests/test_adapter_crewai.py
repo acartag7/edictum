@@ -54,7 +54,7 @@ class TestCrewAIAdapter:
     async def test_deny_returns_correct_format(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         sink = NullAuditSink()
         guard = make_guard(contracts=[always_deny], audit_sink=sink)
@@ -64,7 +64,7 @@ class TestCrewAIAdapter:
         # Verify audit contains the reason
         deny_events = [e for e in sink.events if e.action == AuditAction.CALL_DENIED]
         assert len(deny_events) == 1
-        assert deny_events[0].reason == "blocked"
+        assert deny_events[0].reason == "denied"
 
     async def test_pending_state_management(self):
         guard = make_guard()
@@ -112,7 +112,7 @@ class TestCrewAIAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("would be blocked")
+            return Verdict.fail("would be denied")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", contracts=[always_deny], audit_sink=sink)

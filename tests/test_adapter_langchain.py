@@ -53,7 +53,7 @@ class TestLangChainAdapter:
     async def test_deny_returns_correct_format(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = LangChainAdapter(guard)
@@ -61,7 +61,7 @@ class TestLangChainAdapter:
         assert result is not None
         assert hasattr(result, "content")
         assert result.content.startswith("DENIED:")
-        assert "blocked" in result.content
+        assert "denied" in result.content
         assert result.tool_call_id == "tc-1"
 
     async def test_pending_state_management(self):
@@ -111,7 +111,7 @@ class TestLangChainAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("would be blocked")
+            return Verdict.fail("would be denied")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", contracts=[always_deny], audit_sink=sink)
@@ -224,7 +224,7 @@ class TestLangChainAdapter:
     async def test_tool_wrapper_denies_without_calling_handler(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = LangChainAdapter(guard)
@@ -286,7 +286,7 @@ class TestLangChainAdapter:
     async def test_async_tool_wrapper_denies_without_calling_handler(self):
         @precondition("*")
         def always_deny(envelope):
-            return Verdict.fail("blocked")
+            return Verdict.fail("denied")
 
         guard = make_guard(contracts=[always_deny])
         adapter = LangChainAdapter(guard)

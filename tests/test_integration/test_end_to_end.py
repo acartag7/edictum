@@ -53,7 +53,7 @@ contracts:
         contains_any: [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked. Skip and continue."
+      message: "Sensitive file '{args.path}' denied. Skip and continue."
       tags: [secrets, dlp]
 
   - id: block-destructive-bash
@@ -66,7 +66,7 @@ contracts:
         - args.command: { contains: '> /dev/' }
     then:
       effect: deny
-      message: "Destructive command blocked: '{args.command}'. Use a safer alternative."
+      message: "Destructive command denied: '{args.command}'. Use a safer alternative."
       tags: [destructive, safety]
 
   - id: prod-deploy-requires-senior
@@ -136,7 +136,7 @@ contracts:
       args.command: { contains: "rm -rf" }
     then:
       effect: deny
-      message: "Blocked by enforced rule."
+      message: "Denied by enforced rule."
       tags: [enforced]
 
   - id: observed-rule
@@ -169,7 +169,7 @@ contracts:
       args.command: { contains: "rm" }
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."
       tags: [active]
 
   - id: disabled-rule
@@ -634,7 +634,7 @@ class TestSessionLimitsIntegration:
 
 
 # ---------------------------------------------------------------------------
-# 5. Observe mode (per-rule and bundle-level)
+# 5. Observe mode (per-contract and bundle-level)
 # ---------------------------------------------------------------------------
 
 
@@ -724,7 +724,7 @@ class TestDisabledRulesIntegration:
         sink = CollectingAuditSink()
         guard = Edictum.from_yaml(str(path), audit_sink=sink)
 
-        with pytest.raises(EdictumDenied, match="Blocked"):
+        with pytest.raises(EdictumDenied, match="Denied"):
             await guard.run(
                 "bash",
                 {"command": "rm -rf /tmp"},
@@ -976,7 +976,7 @@ class TestPythonYAMLEquivalence:
             path = envelope.args.get("path", "")
             for pattern in [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]:
                 if pattern in path:
-                    return Verdict.fail(f"Sensitive file '{path}' blocked. Skip and continue.")
+                    return Verdict.fail(f"Sensitive file '{path}' denied. Skip and continue.")
             return Verdict.pass_()
 
         py_sink = CollectingAuditSink()

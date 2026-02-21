@@ -97,7 +97,7 @@ Strict equality comparison using Python's `==` operator.
     args.database: { equals: "admin" }
   then:
     effect: deny
-    message: "Direct queries to the admin database are blocked."
+    message: "Direct queries to the admin database are denied."
 ```
 
 ### `not_equals`
@@ -152,7 +152,7 @@ Tests whether the selector's value appears in a provided list.
     tool.name: { in: [drop_database, truncate_table, format_disk] }
   then:
     effect: deny
-    message: "Tool '{tool.name}' is permanently blocked."
+    message: "Tool '{tool.name}' is permanently denied."
 ```
 
 ### `not_in`
@@ -207,7 +207,7 @@ Passes when any element in the provided array is a substring of the selector's v
 - **Selector type:** string
 
 ```yaml
-# Block reads of multiple sensitive file patterns in one rule
+# Block reads of multiple sensitive file patterns in one contract
 - id: block-sensitive-reads
   type: pre
   tool: read_file
@@ -216,7 +216,7 @@ Passes when any element in the provided array is a substring of the selector's v
       contains_any: [".env", ".secret", "credentials", ".pem", "id_rsa", "kubeconfig"]
   then:
     effect: deny
-    message: "Sensitive file '{args.path}' is blocked."
+    message: "Sensitive file '{args.path}' is denied."
     tags: [secrets, dlp]
 ```
 
@@ -236,7 +236,7 @@ Passes when the selector's string value starts with the operator value.
     args.path: { starts_with: / }
   then:
     effect: deny
-    message: "Write to absolute path '{args.path}' blocked. Use relative paths."
+    message: "Write to absolute path '{args.path}' denied. Use relative paths."
     tags: [write-scope]
 ```
 
@@ -280,7 +280,7 @@ Patterns are compiled once at load time. An invalid regex causes a validation er
     args.command: { matches: '\brm\s+(-rf?|--recursive)\b' }
   then:
     effect: deny
-    message: "Recursive delete blocked: '{args.command}'."
+    message: "Recursive delete denied: '{args.command}'."
     tags: [destructive]
 ```
 
@@ -305,7 +305,7 @@ Passes when any regex pattern in the array matches the selector's value. Equival
 - **Selector type:** string
 
 ```yaml
-# Detect multiple PII patterns in a single rule
+# Detect multiple PII patterns in a single contract
 - id: pii-detection
   type: post
   tool: "*"
@@ -414,7 +414,7 @@ When an operator receives a value of the wrong type (for example, `contains` app
 - For preconditions and session contracts, this results in a deny.
 - For postconditions, this results in a warn.
 
-This behavior is intentional. If Edictum cannot evaluate a rule, it assumes the worst case and fires the rule rather than silently ignoring it.
+This behavior is intentional. If Edictum cannot evaluate a contract, it assumes the worst case and fires the contract rather than silently ignoring it.
 
 ## Missing Field Behavior
 
@@ -422,6 +422,6 @@ When a selector references a field that does not exist:
 
 - The `exists` operator with `false` returns `true` (the field is indeed absent).
 - The `exists` operator with `true` returns `false` (the field is not present).
-- All other operators return `false` (the rule does not fire).
+- All other operators return `false` (the contract does not fire).
 
-This means a rule like `args.path: { contains: ".env" }` will not fire if the tool call has no `path` argument. No error is raised.
+This means a contract like `args.path: { contains: ".env" }` will not fire if the tool call has no `path` argument. No error is raised.

@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
-class RuleResult:
-    """Result of evaluating a single contract rule."""
+class ContractResult:
+    """Result of evaluating a single contract."""
 
-    rule_id: str
-    rule_type: str  # "precondition" | "postcondition"
+    contract_id: str
+    contract_type: str  # "precondition" | "postcondition"
     passed: bool
     message: str | None = None
     tags: list[str] = field(default_factory=list)
@@ -25,8 +25,8 @@ class EvaluationResult:
 
     verdict: str  # "allow" | "deny" | "warn"
     tool_name: str
-    rules: list[RuleResult] = field(default_factory=list)
+    contracts: list[ContractResult] = field(default_factory=list)
     deny_reasons: list[str] = field(default_factory=list)
     warn_reasons: list[str] = field(default_factory=list)
-    rules_evaluated: int = 0
+    contracts_evaluated: int = 0
     policy_error: bool = False

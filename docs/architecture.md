@@ -35,7 +35,7 @@ In enforce mode, if any precondition fails, the tool call is denied. The tool ne
 
 ## Pre-Execution Detail
 
-`GovernancePipeline.pre_execute()` runs five checks in order. The first failure short-circuits -- remaining checks are skipped.
+`GovernancePipeline.pre_execute()` runs six checks in order. The first failure in steps 1-5 short-circuits -- remaining checks are skipped. Step 6 (shadow evaluation) always runs when the decision is "allow."
 
 ```
 ToolEnvelope --> pre_execute(envelope, session)
@@ -60,11 +60,17 @@ ToolEnvelope --> pre_execute(envelope, session)
                     |      First failure short-circuits.
                     |
                     +-- 5. Check execution limits
-                           max_tool_calls: total executions across all tools.
-                           max_calls_per_tool: per-tool execution cap.
-                           Counts only successful past executions, not attempts.
+                    |      max_tool_calls: total executions across all tools.
+                    |      max_calls_per_tool: per-tool execution cap.
+                    |      Counts only successful past executions, not attempts.
+                    |
+                    +-- 6. Evaluate shadow contracts
+                           Shadow preconditions and session contracts from
+                           observe_alongside composition. Never affect the
+                           real decision. Results emitted as audit events
+                           with mode: "observe".
 
-                    --> PreDecision(action="allow"|"deny", reason, decision_source, ...)
+                    --> PreDecision(action="allow"|"deny", shadow_results=[...], ...)
 ```
 
 If the `PreDecision.action` is `"allow"`, the adapter lets the tool execute.
@@ -101,28 +107,37 @@ For `warn`, the pipeline warns the agent and lets it decide how to proceed. For 
 
 ## YAML Compilation
 
-YAML contract bundles go through a three-stage compilation that produces the same runtime objects as hand-written Python contracts.
+YAML contract bundles go through a multi-stage pipeline that produces the same runtime objects as hand-written Python contracts. When multiple files are passed to `from_yaml()`, a composition step merges them before compilation.
 
 ```
-YAML file
+YAML file(s)
   |
-  +-- loader.py
+  +-- loader.py (per file)
   |     Parse YAML text
   |     Validate against JSON Schema (edictum-v1.schema.json)
   |     Compute SHA-256 hash (becomes policy_version in audit events)
   |     Return structured contract definitions
   |
+  +-- composer.py (when multiple files)
+  |     Merge bundles left-to-right with deterministic semantics
+  |     Same-ID contracts: later layer replaces earlier
+  |     Tools/metadata: deep merge; defaults/limits/observability: later wins
+  |     observe_alongside bundles: contracts become shadow copies
+  |     Return ComposedBundle with merged dict + CompositionReport
+  |
   +-- compiler.py
   |     Convert each definition into @precondition / @postcondition /
   |       @session_contract decorated callables
+  |     Stamp _edictum_shadow on shadow contracts (from observe_alongside)
   |     Compile regex match patterns
   |     Build OperationLimits from session limits section
   |     Extract tool classifications from optional tools: section
   |     Return list of contract objects + OperationLimits + tool registry
   |
   +-- Result: identical objects to Python-defined contracts
-        Registered in Edictum the same way
-        Executed by the same pipeline
+        Regular contracts registered in standard evaluation lists
+        Shadow contracts registered in separate lists (never block calls)
+        Both executed by the same pipeline
 ```
 
 There is no separate "YAML execution path." A precondition compiled from YAML and a precondition written as a Python function are indistinguishable to the pipeline. They produce the same `Verdict` objects, appear in the same `contracts_evaluated` audit records, and are subject to the same observe-mode behavior.
@@ -148,7 +163,7 @@ Adapters are thin translation layers between framework-specific hook APIs and th
 | `OpenAIAgentsAdapter` | OpenAI Agents | `as_guardrails()` -- input/output guardrails |
 | `ClaudeAgentSDKAdapter` | Claude Agent SDK | `to_hook_callables()` -- pre/post tool use hooks |
 
-Adapters never contain enforcement logic. They translate formats. If you need to add a new rule, add a contract or hook -- not adapter code.
+Adapters never contain enforcement logic. They translate formats. If you need to add a new contract, add it as a contract or hook -- not adapter code.
 
 ---
 
@@ -220,7 +235,7 @@ The next step is a central policy server where multiple agents pull contracts on
 
 ### The Boundary Principle
 
-The split between OSS core and enterprise follows one rule: **evaluation engine = OSS, infrastructure = enterprise.**
+The split between OSS core and enterprise follows one principle: **evaluation pipeline = OSS, infrastructure = enterprise.**
 
 - The pipeline that takes a tool call and returns allow/deny/warn is OSS
 - Anything that requires persistence beyond local files, networking, or coordination is enterprise
@@ -253,6 +268,7 @@ src/edictum/
     loader.py              Parse YAML, validate against JSON Schema, SHA-256 hash
     evaluator.py           Condition evaluation (match, principal checks, etc.)
     compiler.py            YAML contracts -> @precondition/@postcondition objects
+    composer.py            Bundle composition (compose_bundles, observe_alongside)
 
   otel.py                  configure_otel(), has_otel(), get_tracer() (OTel spans)
 

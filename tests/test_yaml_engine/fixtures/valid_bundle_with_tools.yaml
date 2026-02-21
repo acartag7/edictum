@@ -25,4 +25,4 @@ contracts:
         contains: ".env"
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."

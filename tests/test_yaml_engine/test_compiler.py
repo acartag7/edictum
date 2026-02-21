@@ -44,7 +44,7 @@ class TestCompilePreConditions:
         env = _envelope(args={"path": "/home/user/.env"})
         verdict = fn(env)
         assert not verdict.passed
-        assert "blocked" in verdict.message.lower() or ".env" in verdict.message
+        assert "denied" in verdict.message.lower() or ".env" in verdict.message
 
     def test_pre_contract_passes_non_matching(self):
         bundle = _load_and_compile("valid_bundle.yaml")
@@ -122,7 +122,7 @@ class TestDisabledContracts:
                     "enabled": False,
                     "tool": "read_file",
                     "when": {"args.path": {"contains": ".env"}},
-                    "then": {"effect": "deny", "message": "blocked"},
+                    "then": {"effect": "deny", "message": "denied"},
                 }
             ],
         }
@@ -142,7 +142,7 @@ class TestDisabledContracts:
                     "enabled": True,
                     "tool": "read_file",
                     "when": {"args.path": {"contains": ".env"}},
-                    "then": {"effect": "deny", "message": "blocked"},
+                    "then": {"effect": "deny", "message": "denied"},
                 }
             ],
         }
@@ -171,7 +171,7 @@ class TestModeOverride:
                     "mode": "observe",
                     "tool": "read_file",
                     "when": {"args.path": {"contains": ".env"}},
-                    "then": {"effect": "deny", "message": "blocked"},
+                    "then": {"effect": "deny", "message": "denied"},
                 }
             ],
         }
@@ -183,18 +183,18 @@ class TestModeOverride:
 class TestMessageTemplating:
     def test_simple_placeholder(self):
         env = _envelope(args={"path": "/etc/passwd"})
-        msg = _expand_message("File '{args.path}' blocked.", env)
-        assert msg == "File '/etc/passwd' blocked."
+        msg = _expand_message("File '{args.path}' denied.", env)
+        assert msg == "File '/etc/passwd' denied."
 
     def test_tool_name_placeholder(self):
         env = _envelope(tool_name="bash")
-        msg = _expand_message("Tool {tool.name} blocked.", env)
-        assert msg == "Tool bash blocked."
+        msg = _expand_message("Tool {tool.name} denied.", env)
+        assert msg == "Tool bash denied."
 
     def test_missing_placeholder_kept(self):
         env = _envelope(args={})
-        msg = _expand_message("File '{args.path}' blocked.", env)
-        assert msg == "File '{args.path}' blocked."
+        msg = _expand_message("File '{args.path}' denied.", env)
+        assert msg == "File '{args.path}' denied."
 
     def test_placeholder_capped_at_200(self):
         long_path = "x" * 300
@@ -234,7 +234,7 @@ class TestThenMetadata:
                     "when": {"args.path": {"contains": ".env"}},
                     "then": {
                         "effect": "deny",
-                        "message": "blocked",
+                        "message": "denied",
                         "tags": ["secrets"],
                         "metadata": {"severity": "high", "category": "dlp"},
                     },

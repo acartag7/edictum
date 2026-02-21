@@ -35,10 +35,10 @@ $ edictum check contracts.yaml \
     --args '{"path": ".env"}' \
     --principal-role analyst
 
-DENIED by rule block-secret-reads
+DENIED by contract block-secret-reads
   Message: Analysts cannot read '.env'. Ask an admin for help.
   Tags: secrets, dlp
-  Rules evaluated: 1
+  Contracts evaluated: 1
 ```
 
 Verify allowed calls:
@@ -50,7 +50,7 @@ $ edictum check contracts.yaml \
     --principal-role analyst
 
 ALLOWED
-  Rules evaluated: 1 contract(s)
+  Contracts evaluated: 1
 ```
 
 This is useful for quick spot-checks during development. For batch testing, use `edictum test`.
@@ -160,10 +160,10 @@ Run it:
 ```
 $ edictum test contracts.yaml --calls tests/calls.json
 
-  #  Tool        Verdict  Rules  Details
-  1  read_file   ALLOW    1      all rules passed
-  2  read_file   DENY     1      Sensitive file '/app/.env' blocked.
-  3  read_file   WARN     1      PII detected.
+  #  Tool        Verdict  Contracts  Details
+  1  read_file   ALLOW    1          all contracts passed
+  2  read_file   DENY     1          Sensitive file '/app/.env' denied.
+  3  read_file   WARN     1          PII detected.
 ```
 
 Key differences from `--cases`:
@@ -183,7 +183,7 @@ For programmatic testing, use `guard.evaluate()` for dry-run checks or `guard.ru
 
 ### Dry-run with `evaluate()`
 
-`evaluate()` checks a tool call against all matching contracts without executing the tool. It evaluates exhaustively (all matching rules, no short-circuit) and returns an `EvaluationResult`:
+`evaluate()` checks a tool call against all matching contracts without executing the tool. It evaluates exhaustively (all matching contracts, no short-circuit) and returns an `EvaluationResult`:
 
 ```python
 from edictum import Edictum, Principal
@@ -193,7 +193,7 @@ guard = Edictum.from_yaml("contracts.yaml")
 # Test a precondition denial
 result = guard.evaluate("read_file", {"path": ".env"})
 assert result.verdict == "deny"
-assert "block-dotenv" in result.rules[0].rule_id
+assert "block-dotenv" in result.contracts[0].contract_id
 
 # Test an allowed call
 result = guard.evaluate("read_file", {"path": "readme.txt"})
@@ -219,11 +219,11 @@ assert result.verdict == "allow"
 |-------|------|-------------|
 | `verdict` | `str` | `"allow"`, `"deny"`, or `"warn"` |
 | `tool_name` | `str` | The tool name evaluated |
-| `rules` | `list[RuleResult]` | Per-rule results with `rule_id`, `passed`, `message`, `tags`, `observed`, `policy_error` |
+| `contracts` | `list[ContractResult]` | Per-contract results with `contract_id`, `passed`, `message`, `tags`, `observed`, `policy_error` |
 | `deny_reasons` | `list[str]` | Messages from failed preconditions |
 | `warn_reasons` | `list[str]` | Messages from failed postconditions |
-| `rules_evaluated` | `int` | Total number of rules checked |
-| `policy_error` | `bool` | `True` if any rule had an evaluation error |
+| `contracts_evaluated` | `int` | Total number of contracts checked |
+| `policy_error` | `bool` | `True` if any contract had an evaluation error |
 
 For batch evaluation, use `evaluate_batch()`:
 
@@ -319,9 +319,9 @@ Replayed 340 events, 2 would change
 
 Changed verdicts:
   read_file: call_allowed -> denied
-    Rule: block-config-reads
+    Contract: block-config-reads
   bash: call_allowed -> denied
-    Rule: block-destructive-commands
+    Contract: block-destructive-commands
 ```
 
 Incorporate replay into your CI pipeline to catch unintended contract regressions:

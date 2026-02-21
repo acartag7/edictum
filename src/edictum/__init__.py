@@ -36,7 +36,7 @@ from edictum.envelope import (
     ToolRegistry,
     create_envelope,
 )
-from edictum.evaluation import EvaluationResult, RuleResult
+from edictum.evaluation import ContractResult, EvaluationResult
 from edictum.findings import Finding, PostCallResult
 from edictum.hooks import HookDecision, HookResult
 from edictum.limits import OperationLimits
@@ -88,7 +88,7 @@ __all__ = [
     "Finding",
     "PostCallResult",
     "EvaluationResult",
-    "RuleResult",
+    "ContractResult",
     "CompositionReport",
 ]
 
@@ -214,9 +214,7 @@ class Edictum:
             bundle_data = composed.bundle
             report = composed.report
             # Combined hash from all individual hashes
-            policy_version = hashlib.sha256(
-                ":".join(str(h) for _d, h in loaded).encode()
-            ).hexdigest()
+            policy_version = hashlib.sha256(":".join(str(h) for _d, h in loaded).encode()).hexdigest()
 
         compiled = compile_contracts(bundle_data)
 
@@ -472,7 +470,7 @@ class Edictum:
         """Dry-run evaluation of a tool call against all matching contracts.
 
         Unlike run(), this never executes the tool and evaluates all
-        matching rules exhaustively (no short-circuit on first deny).
+        matching contracts exhaustively (no short-circuit on first deny).
         Session contracts are skipped (no session state in dry-run).
         """
         env = environment or self.environment
@@ -484,41 +482,41 @@ class Edictum:
             registry=self.tool_registry,
         )
 
-        rules: list[RuleResult] = []
+        contracts: list[ContractResult] = []
         deny_reasons: list[str] = []
         warn_reasons: list[str] = []
 
         # Evaluate all matching preconditions (exhaustive, no short-circuit)
         for contract in self.get_preconditions(envelope):
-            rule_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
+            contract_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
             try:
                 verdict = contract(envelope)
             except Exception as exc:
-                rule = RuleResult(
-                    rule_id=rule_id,
-                    rule_type="precondition",
+                contract_result = ContractResult(
+                    contract_id=contract_id,
+                    contract_type="precondition",
                     passed=False,
                     message=f"Precondition error: {exc}",
                     policy_error=True,
                 )
-                rules.append(rule)
-                deny_reasons.append(rule.message)
+                contracts.append(contract_result)
+                deny_reasons.append(contract_result.message)
                 continue
 
             tags = verdict.metadata.get("tags", []) if verdict.metadata else []
             is_observed = getattr(contract, "_edictum_mode", None) == "observe" and not verdict.passed
             pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
 
-            rule = RuleResult(
-                rule_id=rule_id,
-                rule_type="precondition",
+            contract_result = ContractResult(
+                contract_id=contract_id,
+                contract_type="precondition",
                 passed=verdict.passed,
                 message=verdict.message,
                 tags=tags,
                 observed=is_observed,
                 policy_error=pe,
             )
-            rules.append(rule)
+            contracts.append(contract_result)
 
             if not verdict.passed and not is_observed:
                 deny_reasons.append(verdict.message or "")
@@ -526,19 +524,19 @@ class Edictum:
         # Evaluate postconditions only when output is provided
         if output is not None:
             for contract in self.get_postconditions(envelope):
-                rule_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
+                contract_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
                 try:
                     verdict = contract(envelope, output)
                 except Exception as exc:
-                    rule = RuleResult(
-                        rule_id=rule_id,
-                        rule_type="postcondition",
+                    contract_result = ContractResult(
+                        contract_id=contract_id,
+                        contract_type="postcondition",
                         passed=False,
                         message=f"Postcondition error: {exc}",
                         policy_error=True,
                     )
-                    rules.append(rule)
-                    warn_reasons.append(rule.message)
+                    contracts.append(contract_result)
+                    warn_reasons.append(contract_result.message)
                     continue
 
                 tags = verdict.metadata.get("tags", []) if verdict.metadata else []
@@ -546,9 +544,9 @@ class Edictum:
                 pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
                 effect = getattr(contract, "_edictum_effect", "warn")
 
-                rule = RuleResult(
-                    rule_id=rule_id,
-                    rule_type="postcondition",
+                contract_result = ContractResult(
+                    contract_id=contract_id,
+                    contract_type="postcondition",
                     passed=verdict.passed,
                     message=verdict.message,
                     tags=tags,
@@ -556,7 +554,7 @@ class Edictum:
                     effect=effect,
                     policy_error=pe,
                 )
-                rules.append(rule)
+                contracts.append(contract_result)
 
                 if not verdict.passed and not is_observed:
                     warn_reasons.append(verdict.message or "")
@@ -572,11 +570,11 @@ class Edictum:
         return EvaluationResult(
             verdict=verdict_str,
             tool_name=tool_name,
-            rules=rules,
+            contracts=contracts,
             deny_reasons=deny_reasons,
             warn_reasons=warn_reasons,
-            rules_evaluated=len(rules),
-            policy_error=any(r.policy_error for r in rules),
+            contracts_evaluated=len(contracts),
+            policy_error=any(r.policy_error for r in contracts),
         )
 
     def evaluate_batch(self, calls: list[dict[str, Any]]) -> list[EvaluationResult]:
@@ -652,7 +650,7 @@ class Edictum:
         # Pre-execute
         pre = await pipeline.pre_execute(envelope, session)
 
-        # Determine if this is a real deny or just per-rule observed denials
+        # Determine if this is a real deny or just per-contract observed denials
         real_deny = pre.action == "deny" and not pre.observed
 
         if real_deny:
@@ -672,7 +670,7 @@ class Edictum:
             span.set_attribute("governance.action", "would_deny")
             span.set_attribute("governance.would_deny_reason", pre.reason or "")
         else:
-            # Emit CALL_WOULD_DENY for any per-rule observed denials
+            # Emit CALL_WOULD_DENY for any per-contract observed denials
             for cr in pre.contracts_evaluated:
                 if cr.get("observed") and not cr.get("passed"):
                     observed_event = AuditEvent(

@@ -20,4 +20,4 @@ contracts:
         exists: true
     then:
       effect: deny
-      message: "Blocked."
+      message: "Denied."

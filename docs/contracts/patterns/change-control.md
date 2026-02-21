@@ -79,7 +79,7 @@ Require a ticket reference on every production deployment. This ensures traceabi
 
 **Gotchas:**
 - `exists: false` checks whether the field is absent or null. It does not validate that the ticket reference is a real ticket ID. Your application should validate the ticket against your project management API before attaching it to the principal.
-- Non-production environments are unaffected because the `all` combinator short-circuits: if `environment` is not `production`, the entire expression evaluates to `false` and the rule does not fire.
+- Non-production environments are unaffected because the `all` combinator short-circuits: if `environment` is not `production`, the entire expression evaluates to `false` and the contract does not fire.
 
 ---
 
@@ -154,7 +154,7 @@ Restrict high-impact tools to senior roles. This pattern is the simplest form of
     ```
 
 **Gotchas:**
-- If no principal is attached, `principal.role` is missing, the leaf evaluates to `false`, and the `all` block evaluates to `false`. The rule does not fire. Add a `principal.role: { exists: false }` rule to catch unauthenticated calls.
+- If no principal is attached, `principal.role` is missing, the leaf evaluates to `false`, and the `all` block evaluates to `false`. The contract does not fire. Add a `principal.role: { exists: false }` contract to catch unauthenticated calls.
 
 ---
 
@@ -223,7 +223,7 @@ Cap the scope of batch operations to prevent agents from making changes that are
     ```
 
 **Gotchas:**
-- The `gt` operator requires the selector value to be a number. If `args.batch_size` is a string (e.g., `"500"`), the operator triggers a `policy_error` and the rule fires (fail-closed). Ensure your tools pass numeric arguments.
+- The `gt` operator requires the selector value to be a number. If `args.batch_size` is a string (e.g., `"500"`), the operator triggers a `policy_error` and the contract fires (fail-closed). Ensure your tools pass numeric arguments.
 - Blast radius limits are a safety net, not a replacement for proper pagination in your tools.
 
 ---
@@ -365,4 +365,4 @@ Block dangerous SQL patterns and require bounded queries. This prevents agents f
 **Gotchas:**
 - Regex matching is case-sensitive by default. The patterns above match uppercase SQL keywords. If your agent generates lowercase SQL, add case-insensitive patterns or normalize the query before evaluation.
 - The `LIMIT` check uses `matches` to search anywhere in the query string. A subquery with `LIMIT` in a comment would satisfy the check. For production use, consider a Python precondition that parses the SQL properly.
-- These rules protect against accidental DDL, not intentional abuse. A determined agent could encode SQL to bypass string matching. Defense in depth with database-level permissions is essential.
+- These contracts protect against accidental DDL, not intentional abuse. A determined agent could encode SQL to bypass string matching. Defense in depth with database-level permissions is essential.

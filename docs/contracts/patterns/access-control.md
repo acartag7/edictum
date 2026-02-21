@@ -69,8 +69,8 @@ The most common pattern. Use `principal.role` with `in` or `not_in` to restrict 
     ```
 
 **Gotchas:**
-- If no principal is attached to the call, `principal.role` is missing. Missing fields cause the leaf to evaluate to `false`, so the rule does **not** fire. This means unauthenticated calls slip through. Add a separate `principal.role: { exists: false }` contract to catch missing principals.
-- The `not_in` operator checks whether the value is absent from the list. `not_in: [admin, sre]` blocks everyone except admin and sre -- including missing roles (which evaluate to `false`, not firing the rule). Pair with an `exists` check for defense in depth.
+- If no principal is attached to the call, `principal.role` is missing. Missing fields cause the leaf to evaluate to `false`, so the contract does **not** fire. This means unauthenticated calls slip through. Add a separate `principal.role: { exists: false }` contract to catch missing principals.
+- The `not_in` operator checks whether the value is absent from the list. `not_in: [admin, sre]` denies everyone except admin and sre -- including missing roles (which evaluate to `false`, not firing the contract). Pair with an `exists` check for defense in depth.
 
 ---
 
@@ -114,7 +114,7 @@ Restrict tools based on the deployment environment. The `environment` selector r
             - args.query: { matches: '\\b(INSERT|UPDATE|DELETE)\\b' }
         then:
           effect: deny
-          message: "Write queries are blocked in staging. Use read-only queries."
+          message: "Write queries are denied in staging. Use read-only queries."
           tags: [access-control, staging]
     ```
 
@@ -138,12 +138,12 @@ Restrict tools based on the deployment environment. The `environment` selector r
             return Verdict.pass_()
         query = envelope.args.get("query", "")
         if re.search(r'\b(INSERT|UPDATE|DELETE)\b', query):
-            return Verdict.fail("Write queries are blocked in staging. Use read-only queries.")
+            return Verdict.fail("Write queries are denied in staging. Use read-only queries.")
         return Verdict.pass_()
     ```
 
 **Gotchas:**
-- The `environment` value is set at `Edictum` construction time, not per-call. If your application uses a single `Edictum` instance across environments, environment-based rules will always see the same value.
+- The `environment` value is set at `Edictum` construction time, not per-call. If your application uses a single `Edictum` instance across environments, environment-based contracts will always see the same value.
 - Regex patterns in `matches` use single-quoted YAML strings. Double-quoted strings interpret `\b` as a backspace character instead of a regex word boundary.
 
 ---
@@ -219,7 +219,7 @@ Use `principal.claims.<key>` to access custom attributes beyond the built-in fie
 
 **Gotchas:**
 - Claims are set by your application when constructing the `Principal` object. Edictum does not validate claims against an external identity provider.
-- If a claim key is missing, the leaf evaluates to `false` and the rule does not fire. Use `principal.claims.<key>: { exists: false }` to explicitly require a claim be present.
+- If a claim key is missing, the leaf evaluates to `false` and the contract does not fire. Use `principal.claims.<key>: { exists: false }` to explicitly require a claim be present.
 
 ---
 
@@ -252,7 +252,7 @@ Block actions that would change a user's own role or permissions. This prevents 
             - args.command: { contains: "grant" }
         then:
           effect: deny
-          message: "Commands that modify roles or permissions are blocked."
+          message: "Commands that modify roles or permissions are denied."
           tags: [access-control, escalation]
 
       - id: block-admin-config-writes
@@ -263,7 +263,7 @@ Block actions that would change a user's own role or permissions. This prevents 
             contains_any: ["rbac", "permissions", "roles.yaml", "access-control"]
         then:
           effect: deny
-          message: "Writing to access control configuration files is blocked."
+          message: "Writing to access control configuration files is denied."
           tags: [access-control, escalation]
     ```
 
@@ -277,7 +277,7 @@ Block actions that would change a user's own role or permissions. This prevents 
         cmd = envelope.args.get("command", "")
         for keyword in ("role", "permission", "grant"):
             if keyword in cmd:
-                return Verdict.fail("Commands that modify roles or permissions are blocked.")
+                return Verdict.fail("Commands that modify roles or permissions are denied.")
         return Verdict.pass_()
 
     @precondition("write_file")
@@ -285,7 +285,7 @@ Block actions that would change a user's own role or permissions. This prevents 
         path = envelope.args.get("path", "")
         for keyword in ("rbac", "permissions", "roles.yaml", "access-control"):
             if keyword in path:
-                return Verdict.fail("Writing to access control configuration files is blocked.")
+                return Verdict.fail("Writing to access control configuration files is denied.")
         return Verdict.pass_()
     ```
 

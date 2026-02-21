@@ -1,4 +1,4 @@
-"""Compiler — convert parsed YAML rules into contract callables and OperationLimits."""
+"""Compiler — convert parsed YAML contracts into contract callables and OperationLimits."""
 
 from __future__ import annotations
 
@@ -123,7 +123,7 @@ def _compile_pre(contract: dict, mode: str) -> Any:
         try:
             result = evaluate_expression(when_expr, envelope)
         except Exception as exc:
-            # Fail-closed: evaluation error triggers the rule
+            # Fail-closed: evaluation error triggers the contract
             msg = _expand_message(message_template, envelope)
             return Verdict.fail(
                 msg,

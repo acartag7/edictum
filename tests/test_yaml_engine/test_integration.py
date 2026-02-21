@@ -83,7 +83,7 @@ class TestEndToEndDeny:
                 {"path": "/home/.env"},
                 lambda path: f"contents of {path}",
             )
-        assert ".env" in str(exc_info.value) or "blocked" in str(exc_info.value).lower()
+        assert ".env" in str(exc_info.value) or "denied" in str(exc_info.value).lower()
 
     async def test_yaml_precondition_allows(self):
         sink = NullAuditSink()
@@ -161,7 +161,7 @@ contracts:
         - tool.name: { in: [Bash, Write] }
     then:
       effect: deny
-      message: "Dry run mode — modifications blocked"
+      message: "Dry run mode — modifications denied"
 """
 
 
@@ -209,7 +209,7 @@ class TestEnvSelectorIntegration:
         guard = Edictum.from_yaml(bundle_path)
         result = guard.evaluate("Write", {"path": "/tmp/file", "content": "data"})
         assert result.verdict == "deny"
-        assert any("Dry run mode" in r.message for r in result.rules if r.message)
+        assert any("Dry run mode" in r.message for r in result.contracts if r.message)
 
 
 ENV_MESSAGE_TEMPLATE_YAML = """\
@@ -227,7 +227,7 @@ contracts:
       env.BLOCK_REASON: { exists: true }
     then:
       effect: deny
-      message: "Blocked: {env.BLOCK_REASON}"
+      message: "Denied: {env.BLOCK_REASON}"
 """
 
 ENV_POSTCONDITION_YAML = """\
@@ -314,7 +314,7 @@ class TestYamlVsPythonEquivalence:
         def block_sensitive_reads(envelope):
             path = envelope.args.get("path", "")
             if any(s in path for s in [".env", ".secret"]):
-                return Verdict.fail(f"Sensitive file '{path}' blocked.")
+                return Verdict.fail(f"Sensitive file '{path}' denied.")
             return Verdict.pass_()
 
         python_sink = NullAuditSink()

@@ -45,7 +45,7 @@ Available template names:
 
 The file-agent template protects against the two most common file-handling risks: reading secrets and running destructive shell commands. It also enforces a write scope that prevents agents from writing to arbitrary absolute paths.
 
-### Rules
+### Contracts
 
 | Contract ID | Type | Tool | Description |
 |---|---|---|---|
@@ -75,7 +75,7 @@ contracts:
         contains_any: [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets, dlp]
 
   - id: block-destructive-bash
@@ -88,7 +88,7 @@ contracts:
         - args.command: { contains: '> /dev/' }
     then:
       effect: deny
-      message: "Destructive command blocked: '{args.command}'."
+      message: "Destructive command denied: '{args.command}'."
       tags: [destructive, safety]
 
   - id: block-write-outside-target
@@ -99,17 +99,17 @@ contracts:
         starts_with: /
     then:
       effect: deny
-      message: "Write to absolute path '{args.path}' blocked. Use relative paths."
+      message: "Write to absolute path '{args.path}' denied. Use relative paths."
       tags: [write-scope]
 ```
 
-### Rule Details
+### Contract Details
 
 **block-sensitive-reads** -- This precondition targets the `read_file` tool and checks whether `args.path` contains any of six sensitive file patterns. The `contains_any` operator is a substring match, so `args.path: "/home/user/.env.local"` would match on `.env`. This catches common secret files: environment configs (`.env`), credential stores, Kubernetes configs, SSH keys, and TLS certificates.
 
-**block-destructive-bash** -- This precondition targets the `bash` tool and uses an `any` combinator to match three categories of destructive commands. The `matches` operator uses regex word boundaries (`\b`) to avoid false positives -- `rm -rf` is blocked but `perform` is not. The `contains` check for `> /dev/` catches attempts to write to device files.
+**block-destructive-bash** -- This precondition targets the `bash` tool and uses an `any` combinator to match three categories of destructive commands. The `matches` operator uses regex word boundaries (`\b`) to avoid false positives -- `rm -rf` is denied but `perform` is not. The `contains` check for `> /dev/` catches attempts to write to device files.
 
-**block-write-outside-target** -- This precondition targets `write_file` and uses `starts_with: /` to block any absolute path. The intent is to force agents to operate within a relative working directory, preventing writes to system paths like `/etc/` or `/usr/`. If your agent needs to write to specific absolute paths, replace this rule with a more targeted allowlist.
+**block-write-outside-target** -- This precondition targets `write_file` and uses `starts_with: /` to block any absolute path. The intent is to force agents to operate within a relative working directory, preventing writes to system paths like `/etc/` or `/usr/`. If your agent needs to write to specific absolute paths, replace this contract with a more targeted allowlist.
 
 ---
 
@@ -117,7 +117,7 @@ contracts:
 
 The research-agent template is designed for agents that gather information from APIs, databases, and the web. It provides secret file protection, PII detection in output, and session-level rate limiting to prevent runaway agents.
 
-### Rules
+### Contracts
 
 | Contract ID | Type | Tool | Description |
 |---|---|---|---|
@@ -147,7 +147,7 @@ contracts:
         contains_any: [".env", ".secret", "credentials"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets]
 
   - id: pii-in-output
@@ -173,13 +173,13 @@ contracts:
       tags: [rate-limit]
 ```
 
-### Rule Details
+### Contract Details
 
 **block-sensitive-reads** -- A targeted version of the file-agent's secret protection. It checks for three common patterns (`.env`, `.secret`, `credentials`) rather than the full six-pattern set. Research agents typically don't interact with SSH keys or TLS certificates, so the pattern list is narrower.
 
 **pii-in-output** -- This postcondition runs against all tools (wildcard `*`) and uses `matches_any` with a regex pattern for US Social Security Numbers (`\d{3}-\d{2}-\d{4}`). Because this is a postcondition, it cannot block the tool call -- it emits a warning so the agent (or a human reviewer) knows to redact the output before using it downstream. To detect additional PII patterns like IBAN numbers or credit card numbers, add more regex patterns to the `matches_any` array.
 
-**session-limits** -- The session contract sets two counters. `max_tool_calls: 50` caps successful executions, preventing an agent from doing unbounded work. `max_attempts: 100` caps total contract evaluations, including denied calls. The attempt limit is set higher than the tool call limit because some denied calls are expected (the agent may probe a few blocked paths before finding an allowed one). If attempts hit the ceiling, the agent is likely stuck in a denial loop.
+**session-limits** -- The session contract sets two counters. `max_tool_calls: 50` caps successful executions, preventing an agent from doing unbounded work. `max_attempts: 100` caps total contract evaluations, including denied calls. The attempt limit is set higher than the tool call limit because some denied calls are expected (the agent may probe a few denied paths before finding an allowed one). If attempts hit the ceiling, the agent is likely stuck in a denial loop.
 
 ---
 
@@ -187,7 +187,7 @@ contracts:
 
 The devops-agent template is the most comprehensive built-in contract bundle. It combines secret protection, destructive command blocking, role-based access control for production deploys, ticket-required change management, PII detection, and session limits.
 
-### Rules
+### Contracts
 
 | Contract ID | Type | Tool | Description |
 |---|---|---|---|
@@ -220,7 +220,7 @@ contracts:
         contains_any: [".env", ".secret", "kubeconfig", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Sensitive file '{args.path}' blocked."
+      message: "Sensitive file '{args.path}' denied."
       tags: [secrets, dlp]
 
   - id: block-destructive-bash
@@ -233,7 +233,7 @@ contracts:
         - args.command: { contains: '> /dev/' }
     then:
       effect: deny
-      message: "Destructive command blocked: '{args.command}'."
+      message: "Destructive command denied: '{args.command}'."
       tags: [destructive, safety]
 
   - id: prod-deploy-requires-senior
@@ -283,13 +283,13 @@ contracts:
       tags: [rate-limit]
 ```
 
-### Rule Details
+### Contract Details
 
 **block-sensitive-reads** -- Identical to the file-agent version. Catches the full six-pattern set of sensitive files.
 
 **block-destructive-bash** -- Identical to the file-agent version. Uses regex word boundaries to precisely match destructive commands without false positives.
 
-**prod-deploy-requires-senior** -- This precondition uses an `all` combinator with two conditions: the environment must be `production` AND the principal's role must not be in the `[senior_engineer, sre, admin]` list. Both conditions must be true for the deny to fire. This means the rule only blocks production deploys by non-senior roles -- staging and development deploys by any role are unaffected. If no principal is attached to the call, `principal.role` evaluates as missing, which means the `not_in` check evaluates to `false`, and the `all` block short-circuits to `false` -- the rule does not fire. To catch missing principals, pair this with a separate `principal.role: { exists: false }` check.
+**prod-deploy-requires-senior** -- This precondition uses an `all` combinator with two conditions: the environment must be `production` AND the principal's role must not be in the `[senior_engineer, sre, admin]` list. Both conditions must be true for the deny to fire. This means the contract only denies production deploys by non-senior roles -- staging and development deploys by any role are unaffected. If no principal is attached to the call, `principal.role` evaluates as missing, which means the `not_in` check evaluates to `false`, and the `all` block short-circuits to `false` -- the contract does not fire. To catch missing principals, pair this with a separate `principal.role: { exists: false }` check.
 
 **prod-requires-ticket** -- This precondition also uses `all` to combine two conditions: production environment and missing ticket reference. The `exists: false` operator checks whether `principal.ticket_ref` is absent or null. This enforces change management: every production deploy must be traceable to a ticket. Non-production environments are unaffected.
 
@@ -319,6 +319,6 @@ Common customizations:
 - **Add PII patterns.** Extend `pii-in-output` with IBAN, credit card, or country-specific ID number regex patterns in the `matches_any` array.
 - **Adjust session limits.** Increase or decrease `max_tool_calls` and `max_attempts` based on your agent's expected workload.
 - **Add per-tool limits.** Add `max_calls_per_tool` to the session contract to cap specific high-impact tools like `deploy_service` or `send_notification`.
-- **Add observe-mode rules.** Add new preconditions with `mode: observe` to shadow-test rules before enforcing them. Observed denials are logged as `CALL_WOULD_DENY` audit events without denying the tool call.
+- **Add observe-mode contracts.** Add new preconditions with `mode: observe` to shadow-test contracts before enforcing them. Observed denials are logged as `CALL_WOULD_DENY` audit events without denying the tool call.
 - **Target additional tools.** Add preconditions for tools specific to your stack (e.g., `run_migration`, `delete_pod`, `send_email`).
 - **Expand sensitive file patterns.** Add entries to `contains_any` arrays to cover patterns specific to your infrastructure (e.g., `terraform.tfvars`, `.npmrc`, `.pypirc`).

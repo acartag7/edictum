@@ -6,7 +6,7 @@ Compliance patterns address regulatory and organizational requirements: classify
 
 ## Regulatory Tags
 
-Use the `tags` field on contract actions to classify rules by regulatory or organizational concern. Tags appear in every audit event and can be filtered, aggregated, and reported on downstream.
+Use the `tags` field on contract actions to classify contracts by regulatory or organizational concern. Tags appear in every audit event and can be filtered, aggregated, and reported on downstream.
 
 **When to use:** You need to demonstrate compliance with specific regulations or internal policies, and your audit system needs to categorize events by concern.
 
@@ -124,7 +124,7 @@ Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped
             contains_any: [".env", "credentials", ".pem"]
         then:
           effect: deny
-          message: "Sensitive file blocked."
+          message: "Sensitive file denied."
           tags: [secrets, dlp]
           metadata:
             severity: high
@@ -158,7 +158,7 @@ Every YAML bundle gets a SHA256 hash computed at load time. This hash is stamped
 
 ## Dual-Mode Deployment
 
-Roll out new rules safely by starting in `observe` mode and switching to `enforce` after verifying the rule behaves as expected. Observed denials are logged as `CALL_WOULD_DENY` audit events without blocking the agent.
+Roll out new contracts safely by starting in `observe` mode and switching to `enforce` after verifying the contract behaves as expected. Observed denials are logged as `CALL_WOULD_DENY` audit events without denying tool calls.
 
 **When to use:** You are adding a new contract to an existing production bundle and want to validate it against real traffic before enforcing it.
 
@@ -175,7 +175,7 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
       mode: enforce
 
     contracts:
-      # Existing enforced rule
+      # Existing enforced contract
       - id: block-sensitive-reads
         type: pre
         tool: read_file
@@ -184,10 +184,10 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
             contains_any: [".env", "credentials", ".pem"]
         then:
           effect: deny
-          message: "Sensitive file blocked."
+          message: "Sensitive file denied."
           tags: [secrets, dlp]
 
-      # New rule in observe mode -- shadow testing
+      # New contract in observe mode -- shadow testing
       - id: experimental-cost-gate
         type: pre
         mode: observe
@@ -211,7 +211,7 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
         path = envelope.args.get("path", "")
         for s in (".env", "credentials", ".pem"):
             if s in path:
-                return Verdict.fail("Sensitive file blocked.")
+                return Verdict.fail("Sensitive file denied.")
         return Verdict.pass_()
 
     # Enforced guard (blocks tool calls)
@@ -229,12 +229,12 @@ Roll out new rules safely by starting in `observe` mode and switching to `enforc
 1. Set `defaults.mode: enforce` for the bundle.
 2. On the new contract, add `mode: observe` to override the bundle default.
 3. When the observe-mode contract matches, it emits a `CALL_WOULD_DENY` audit event. The tool call proceeds normally.
-4. Review `CALL_WOULD_DENY` events in your audit logs. If the rule fires correctly with no false positives, change the contract to `mode: enforce` (or remove the override to inherit the bundle default).
+4. Review `CALL_WOULD_DENY` events in your audit logs. If the contract fires correctly with no false positives, change it to `mode: enforce` (or remove the override to inherit the bundle default).
 
 **Gotchas:**
 - Observe mode applies to preconditions and session contracts. Postconditions always warn regardless of mode, so observe mode has no visible effect on them.
 - A `CALL_WOULD_DENY` event contains the same information as a real deny event (contract ID, message, tags, metadata). The only difference is the event type.
-- Do not leave rules in observe mode indefinitely. Unreviewed observe-mode rules accumulate audit noise without providing protection.
+- Do not leave contracts in observe mode indefinitely. Unreviewed observe-mode contracts accumulate audit noise without providing protection.
 
 ---
 
@@ -253,7 +253,7 @@ Tags enable downstream systems to filter, route, and aggregate audit events by c
 | `change-control` | Events related to production changes |
 | `rate-limit` | Session limit events |
 | `cost` | Events related to resource cost |
-| `experimental` | Shadow-mode / observe-mode rules |
+| `experimental` | Shadow-mode / observe-mode contracts |
 
 **Example: filtering audit events in Python:**
 

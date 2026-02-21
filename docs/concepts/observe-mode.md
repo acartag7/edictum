@@ -11,7 +11,7 @@ This gives you real data on what your contracts would do before you enforce them
         |
 2. Review CALL_WOULD_DENY audit events
         |
-3. Tune contracts (fix false positives, tighten loose rules)
+3. Tune contracts (fix false positives, tighten loose contracts)
         |
 4. Switch to enforce mode
 ```
@@ -37,7 +37,7 @@ defaults:
 
 Every contract in the bundle runs in observe mode. No tool calls are denied.
 
-### Per-contract: shadow-test one rule
+### Per-contract: shadow-test one contract
 
 Leave the bundle default as `enforce` and set `mode: observe` on specific contracts:
 
@@ -53,7 +53,7 @@ contracts:
       args.path: { contains: ".env" }
     then:
       effect: deny
-      message: "Blocked read of sensitive file: {args.path}"
+      message: "Denied: read of sensitive file {args.path}"
 
   - id: experimental-api-check
     type: pre
@@ -104,9 +104,90 @@ Audit events from observe mode include the same fields as enforce-mode events: t
 
 Filter your audit sink for `CALL_WOULD_DENY` to see the shadow denial report. Group by `decision_name` (the contract `id`) to see which contracts fire most often.
 
+## Dual-Mode Evaluation with `observe_alongside`
+
+Observe mode applies to individual contracts or to an entire bundle. But sometimes you need to run **two versions of the same contract simultaneously** -- the current enforced version and a candidate version that only observes. This is dual-mode evaluation.
+
+### The Use Case
+
+You have contracts running in production. A new version is ready but you want to compare its behavior against the current version before promoting it. You need both versions evaluating the same tool calls, with the current version making real decisions and the candidate only logging.
+
+### How It Works
+
+Create a second YAML file with `observe_alongside: true` at the top level:
+
+```yaml
+# candidate.yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+observe_alongside: true
+
+metadata:
+  name: candidate-contracts
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: block-sensitive-reads
+    type: pre
+    tool: read_file
+    when:
+      args.path:
+        contains_any: [".env", ".secret", "credentials", ".pem", ".key"]
+    then:
+      effect: deny
+      message: "Denied: read of sensitive file {args.path}"
+```
+
+Load both bundles:
+
+```python
+guard = Edictum.from_yaml("contracts/base.yaml", "contracts/candidate.yaml")
+```
+
+The pipeline evaluates both versions on every tool call:
+
+1. **Enforced contracts** from `base.yaml` make real allow/deny decisions
+2. **Shadow contracts** from `candidate.yaml` evaluate in parallel, producing separate audit events with `mode: "observe"`
+
+Shadow contract IDs are suffixed with `:candidate` (e.g., `block-sensitive-reads:candidate`). Shadow contracts never block tool calls -- they only produce audit events.
+
+### Shadow Audit Events
+
+Shadow contracts emit the same audit events as regular observe mode:
+
+- `CALL_WOULD_DENY` -- the shadow contract would have denied this call
+- `CALL_ALLOWED` -- the shadow contract allowed this call
+
+Filter your audit sink for `mode: "observe"` and `decision_name` ending in `:candidate` to see the shadow evaluation results.
+
+### When to Use
+
+**Contract update rollouts.** Deploy the candidate as a shadow. Compare its audit trail with the enforced version. If the candidate would have denied calls that should be allowed (false positives), tune it before promoting.
+
+**A/B testing contracts.** Run a stricter version of a contract in observe mode to measure the impact of tightening a contract.
+
+### Composition Report
+
+Use `return_report=True` to see which contracts were shadowed:
+
+```python
+guard, report = Edictum.from_yaml(
+    "contracts/base.yaml",
+    "contracts/candidate.yaml",
+    return_report=True,
+)
+
+for s in report.shadow_contracts:
+    print(f"{s.contract_id}: shadow from {s.observed_source}")
+```
+
+See [Bundle Composition](../contracts/yaml-reference.md#bundle-composition) for full composition reference.
+
 ## Next Steps
 
 - [Contracts](contracts.md) -- writing preconditions, postconditions, and session contracts
 - [How it works](how-it-works.md) -- the full pipeline walkthrough
 - [Quickstart](../quickstart.md) -- try observe mode in the bonus step
-- [YAML reference](../contracts/yaml-reference.md) -- `mode` field and `defaults` block
+- [YAML reference](../contracts/yaml-reference.md) -- `mode` field, `defaults` block, and `observe_alongside`

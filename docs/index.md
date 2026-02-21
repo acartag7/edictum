@@ -31,7 +31,7 @@ try:
     result = await guard.run("read_file", {"path": ".env"}, read_file)
 except EdictumDenied as e:
     print(e.reason)
-    # => "Blocked read of sensitive file: .env"
+    # => "Read of sensitive file denied: .env"
 ```
 
 **The contract that makes it happen** -- `contracts.yaml`:
@@ -54,7 +54,7 @@ contracts:
         - args.path: { matches: ".*id_rsa$" }
     then:
       effect: deny
-      message: "Blocked read of sensitive file: {args.path}"
+      message: "Read of sensitive file denied: {args.path}"
 ```
 
 Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way past a contract.
@@ -65,9 +65,11 @@ Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way pa
 
 2. **Attach to your agent framework.** One adapter line. Same contracts across all six supported frameworks -- LangChain, OpenAI Agents, CrewAI, Agno, Semantic Kernel, and Claude SDK.
 
-3. **Every tool call passes through the pipeline.** Agent decides to call a tool. Edictum evaluates preconditions, session limits, and principal context. If any contract fails, the call is denied and never executes.
+3. **Compose and layer bundles.** Split contracts across files by concern. `from_yaml()` accepts multiple paths with deterministic merge semantics. Shadow-test contract updates with [`observe_alongside`](contracts/yaml-reference.md#observe-alongside) before promoting them.
 
-4. **Full audit trail.** Every evaluation -- allowed, denied, or observed -- produces a structured audit event with automatic secret redaction. Route to stdout, OpenTelemetry, or your existing observability stack.
+4. **Every tool call passes through the pipeline.** Agent decides to call a tool. Edictum evaluates preconditions, session limits, and principal context. If any contract fails, the call is denied and never executes.
+
+5. **Full audit trail.** Every evaluation -- allowed, denied, or observed -- produces a structured audit event with automatic secret redaction. Route to stdout, OpenTelemetry, or your existing observability stack.
 
 ## Install
 

@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.8.1
+
+### Changed
+- Renamed `RuleResult` → `ContractResult` (`rule_id` → `contract_id`, `rule_type` → `contract_type`, `rules` → `contracts`, `rules_evaluated` → `contracts_evaluated`)
+- CLI output now uses "contract" instead of "rule" in all user-facing strings
+
+### Fixed
+- Fixed terminology violations in comments, docstrings, and CLI output per .docs-style-guide.md
+- Fixed GitHub release notes for v0.5.4, v0.7.0, and v0.8.0 (terminology and YAML schema corrections)
+
+### Added
+- Added terminology enforcement guardrails and pre-release checklist to CLAUDE.md
+
+## 0.8.0
+
+### Added
+- `compose_bundles()` — multi-file YAML composition with deterministic left-to-right merge
+- `from_yaml()` now accepts multiple file paths with automatic composition
+- `observe_alongside: true` — dual-mode evaluation (shadow contracts run without affecting decisions)
+- `CompositionReport` with override and shadow tracking
+- `edictum validate` and `edictum diff` support multi-file arguments
+- CLI composition report output for overrides and shadow contracts
+
+## 0.7.0
+
+### Added
+- `env.*` selector — contracts can reference environment variables with automatic type coercion
+- `Edictum.from_multiple()` — merge contracts from multiple guard instances
+- Claude Code GitHub Actions workflow
+
+## 0.6.2
+
+### Changed
+- Renamed `to_sdk_hooks()` → `to_hook_callables()` on Claude Agent SDK adapter
+
+## 0.6.1
+
+### Added
+- YAML `tools:` section for declaring tool side-effect classifications
+- `from_yaml(tools=)` parameter for programmatic tool classification
+
+## 0.6.0
+
+### Added
+- Postcondition enforcement effects: `redact` and `deny` (in addition to existing `warn`)
+- `SideEffect` classification (PURE, READ, WRITE, IRREVERSIBLE) controls which effects apply
+- Postcondition regex-based pattern redaction
+- Output suppression for `deny` effect on READ/PURE tools
+
+## 0.5.4
+
+### Added
+- `guard.evaluate()` and `evaluate_batch()` — dry-run evaluation API
+- `edictum test --calls` mode for JSON tool call evaluation
+
 ## 0.5.3
 
 ### Added
