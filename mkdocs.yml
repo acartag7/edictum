@@ -54,6 +54,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Use Cases: use-cases.md
   - Concepts:
     - How It Works: concepts/how-it-works.md
     - Contracts: concepts/contracts.md

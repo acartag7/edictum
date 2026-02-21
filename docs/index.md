@@ -4,9 +4,11 @@ Edictum enforces contracts on AI agent tool calls. Before your agent reads a fil
 
 ## The Problem
 
-AI agents call tools with real-world side effects. An agent with `run_command` can delete files. An agent with `send_email` can impersonate your organization. The standard defense is prompt engineering: "Do not read .env files."
+AI agents call tools with real-world side effects. An agent with `run_command` can delete files. An agent with `send_email` can impersonate your organization. An agent with `query_database` can exfiltrate every row in your customer table.
 
-Prompts are suggestions the LLM can ignore. A long conversation, a creative jailbreak, or a model update can bypass any instruction embedded in a system prompt. There is no hard boundary between "the agent decides to act" and "the action executes."
+The standard defense is prompt engineering: "Do not read .env files." But prompts are suggestions the LLM can ignore. A long conversation, a creative jailbreak, or a model update can bypass any instruction embedded in a system prompt.
+
+There is no hard boundary between "the agent decides to act" and "the action executes." Until you add one.
 
 ## The Solution
 
@@ -31,7 +33,7 @@ try:
     result = await guard.run("read_file", {"path": ".env"}, read_file)
 except EdictumDenied as e:
     print(e.reason)
-    # => "Read of sensitive file denied: .env"
+    # => "Sensitive file '.env' denied."
 ```
 
 **The contract that makes it happen** -- `contracts.yaml`:
@@ -48,20 +50,35 @@ contracts:
     type: pre
     tool: read_file
     when:
-      any:
-        - args.path: { contains: ".env" }
-        - args.path: { contains: ".pem" }
-        - args.path: { matches: ".*id_rsa$" }
+      args.path:
+        contains_any: [".env", ".secret", "credentials", ".pem", "id_rsa"]
     then:
       effect: deny
-      message: "Read of sensitive file denied: {args.path}"
+      message: "Sensitive file '{args.path}' denied."
 ```
+
+**Postconditions catch what preconditions can't** -- scan tool output after execution:
+
+```yaml
+contracts:
+  - id: redact-ssn-in-output
+    type: post
+    tool: query_database
+    when:
+      output.text:
+        matches: '\b\d{3}-\d{2}-\d{4}\b'
+    then:
+      effect: redact
+      message: "SSN pattern detected and redacted from query result."
+```
+
+With `effect: redact`, the matching content is stripped from the tool's return value before the agent sees it. With `effect: deny`, the entire output is suppressed.
 
 Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way past a contract.
 
 ## How It Works
 
-1. **Write contracts in YAML.** Preconditions deny dangerous calls before execution. Postconditions check tool output after execution. Session limits cap total calls and retries.
+1. **Write contracts in YAML.** Preconditions deny dangerous calls before execution. Postconditions check tool output after -- warn, redact, or deny. Session contracts cap total calls and retries.
 
 2. **Attach to your agent framework.** One adapter line. Same contracts across all six supported frameworks -- LangChain, OpenAI Agents, CrewAI, Agno, Semantic Kernel, and Claude SDK.
 
@@ -69,7 +86,30 @@ Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way pa
 
 4. **Every tool call passes through the pipeline.** Agent decides to call a tool. Edictum evaluates preconditions, session limits, and principal context. If any contract fails, the call is denied and never executes.
 
-5. **Full audit trail.** Every evaluation -- allowed, denied, or observed -- produces a structured audit event with automatic secret redaction. Route to stdout, OpenTelemetry, or your existing observability stack.
+5. **Full audit trail.** Every evaluation -- allowed, denied, or observed -- produces a structured audit event with automatic secret redaction. Route to stdout, file, OpenTelemetry, or your existing observability stack.
+
+## Pick Your Path
+
+- **I want to try it now** -- [Quickstart](quickstart.md). Install, write a contract, deny a dangerous call in five minutes.
+- **I want to see real scenarios** -- [Use Cases](use-cases.md). Six domains with complete YAML bundles and wiring code.
+- **I want to understand the system** -- [How It Works](concepts/how-it-works.md). The pipeline, adapters, and what happens on every tool call.
+- **I have a specific framework** -- [Adapters](adapters/overview.md). Integration guides for LangChain, OpenAI, CrewAI, Agno, Semantic Kernel, and Claude SDK.
+
+## What You Can Do
+
+- Preconditions deny dangerous calls before execution
+- Postconditions scan output -- warn, redact PII, or deny entirely
+- Session contracts cap total calls, per-tool calls, and retries
+- Role-gate tools with `principal` claims and `env.*` context
+- `edictum validate` catches schema errors at load time
+- `edictum test` runs YAML test cases with expected verdicts
+- `guard.evaluate()` dry-runs contracts without executing the tool
+- Observe mode logs what would be denied so you can tune before enforcing
+- `observe_alongside` shadow-tests new contracts next to production
+- `edictum diff` and `edictum replay` detect contract drift
+- Multi-file composition with deterministic merge
+- Secrets auto-redacted in audit events and denial messages
+- OpenTelemetry spans and policy version hash on every event
 
 ## Install
 
@@ -77,7 +117,7 @@ Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way pa
 pip install edictum[yaml]
 ```
 
-Requires Python 3.11+. Current version: **v0.8.0**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
+Requires Python 3.11+. Current version: **v0.8.1**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
 
 ## Framework Support
 
@@ -96,17 +136,16 @@ See the [adapter overview](adapters/overview.md) for setup guides and known limi
 
 ## What's Coming
 
-Edictum is production-usable today as an in-process library. The roadmap extends it to fleet-scale enforcement:
-
-- **PII detection** -- Pluggable detectors for postcondition contracts (regex built-in, Presidio ML/NER for enterprise)
-- **Production audit sinks** -- File, Webhook, Splunk HEC, and Datadog sinks for compliance-grade audit trails
-- **Central policy server** -- Agents pull contracts on startup, with versioning, hot-reload, and a dashboard for denial-rate visibility and contract drift
+- **PII detection** -- Pluggable detectors for postcondition contracts (regex built-in, Presidio for enterprise)
+- **Production audit sinks** -- Webhook, Splunk HEC, and Datadog
+- **Central policy server** -- Agents pull contracts on startup with versioning, hot-reload, and dashboard
 
 See the [roadmap](roadmap.md) for the full plan.
 
 ## Next Steps
 
 - [Quickstart](quickstart.md) -- Install, write a contract, and deny your first dangerous call
+- [Use Cases](use-cases.md) -- Six domains with complete YAML bundles
 - [How It Works](concepts/how-it-works.md) -- The pipeline, adapters, and what happens on every tool call
 - [Contracts](concepts/contracts.md) -- Preconditions, postconditions, session limits, and observe mode
 - [YAML Reference](contracts/yaml-reference.md) -- Full schema for `edictum/v1` contract bundles

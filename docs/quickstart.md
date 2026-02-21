@@ -10,6 +10,30 @@ pip install edictum[yaml]
 
 Requires Python 3.11+.
 
+## Fastest Path: Use a Template
+
+If you want contracts running in under a minute, use a built-in template:
+
+```python
+from edictum import Edictum
+
+guard = Edictum.from_template("file-agent")
+# Secret file reads and destructive commands are now denied.
+# No YAML needed.
+```
+
+Three templates ship with Edictum:
+
+| Template | What it protects against |
+|----------|------------------------|
+| `file-agent` | Secret file reads, destructive bash commands, writes outside working directory |
+| `research-agent` | Secret files, PII in output, session runaway (50 call cap) |
+| `devops-agent` | All of the above + role-gated production deploys + ticket requirements |
+
+See [Templates](contracts/templates.md) for full YAML and customization.
+
+Ready to write your own? Continue below.
+
 ## 2. Write a Contract
 
 Save this as `contracts.yaml`:
@@ -207,6 +231,35 @@ defaults:
 In observe mode, calls that would be denied are logged as `CALL_WOULD_DENY` audit events but allowed to proceed. Review the audit trail, tune your contracts, then switch back to `enforce` when ready.
 
 See [observe mode](concepts/observe-mode.md) for the full workflow.
+
+## 6. Dry-Run Evaluation
+
+Test a tool call against your contracts without executing anything — useful for CI pipelines and contract development:
+
+```python
+result = await guard.evaluate("read_file", {"path": ".env"})
+print(result.verdict)      # Verdict.DENY
+print(result.reason)       # "Read of sensitive file denied: .env"
+print(result.contract_id)  # "block-dotenv"
+```
+
+Batch evaluation for testing multiple scenarios at once:
+
+```python
+calls = [
+    ("read_file", {"path": ".env"}),
+    ("read_file", {"path": "readme.txt"}),
+    ("run_command", {"command": "rm -rf /"}),
+]
+results = await guard.evaluate_batch(calls)
+for r in results:
+    print(f"{r.tool_name}: {r.verdict.name}")
+# read_file: DENY
+# read_file: ALLOW
+# run_command: DENY
+```
+
+See [Testing Contracts](guides/testing-contracts.md) for YAML test cases and CI integration.
 
 ## Next Steps
 

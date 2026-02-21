@@ -214,21 +214,27 @@ The `output.text` selector is only available in postconditions (after the tool h
     message: "..."
 ```
 
-### Setting effect: deny on postconditions
+### Postcondition effects
 
-Postconditions can only use `effect: warn`. The tool already executed -- denying after the fact does not undo the action. Setting `effect: deny` on a postcondition is a validation error:
+Since v0.6.0, postconditions support three effects:
+
+| Effect | What happens |
+|--------|-------------|
+| `warn` | Emit a finding. Output passes through unchanged. Handle with `on_postcondition_warn` callback. |
+| `redact` | Replace regex-matched patterns in the output with `[REDACTED]`. |
+| `deny` | Replace the entire tool output with `[OUTPUT SUPPRESSED]`. |
 
 ```yaml
-# Wrong -- postconditions cannot deny
-- id: bad-post
+# Redact SSNs from output
+- id: redact-ssn
   type: post
   tool: "*"
   when:
     output.text:
-      contains: "SSN"
+      matches: '\b\d{3}-\d{2}-\d{4}\b'
   then:
-    effect: deny   # validation error
-    message: "..."
+    effect: redact
+    message: "SSN pattern redacted from output."
 ```
 
-Use `effect: warn` and handle it with an `on_postcondition_warn` callback instead.
+The effect you choose depends on the severity: `warn` for logging, `redact` for targeted cleanup, `deny` for full suppression when any match means the output is unsafe.
