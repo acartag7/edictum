@@ -127,7 +127,7 @@ hooks = adapter.to_hook_callables()
 
 ### Semantic Kernel
 
-- `context.terminate = True` on deny stops all auto-invocations in the current turn, not just the denied tool. See [Semantic Kernel adapter docs](../adapters/semantic-kernel.md).
+- By default, `context.terminate = True` on deny stops all auto-invocations in the current turn, not just the denied tool. Set `terminate_on_deny=False` to allow remaining tool calls to proceed. See [Semantic Kernel adapter docs](../adapters/semantic-kernel.md).
 
 ### Claude SDK
 
