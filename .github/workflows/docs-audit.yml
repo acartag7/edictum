@@ -26,8 +26,12 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: true
+          claude_args: '--allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(find:*),Bash(grep:*),Read,Glob,Grep"'
           prompt: |
             You are a docs-code sync auditor for the Edictum Python library. Your job is to find mismatches between documentation and actual source code in this PR.
+
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
 
             ## Setup
 
@@ -75,24 +79,26 @@ jobs:
                - "alert" when meaning finding
             2. **Adapter docs parity**: If an adapter's source changed, verify its docs page reflects the change. If a new feature was added to one adapter, check if the adapter comparison guide (guides/adapter-comparison.md) needs updating.
 
-            ## Output Format
+            ## Posting Results
 
-            If you find issues, comment on the PR with this format:
+            You MUST post your findings as a PR comment using `gh pr comment`. Do not just output text — use the tool.
 
-            ### Docs-Code Sync Audit
+            If you find issues:
+
+            ```bash
+            gh pr comment ${{ github.event.pull_request.number }} --body "### Docs-Code Sync Audit
 
             **Issues found: N**
 
-            For each issue:
-            - **[MISMATCH]** or **[MISSING]** or **[STALE]** or **[TERMINOLOGY]** prefix
-            - File path and line number
-            - What the docs say vs what the code does
-            - Suggested fix
+            [list each issue with MISMATCH/MISSING/STALE/TERMINOLOGY prefix, file path, line number, what docs say vs what code does, and suggested fix]"
+            ```
 
-            If no issues found, comment:
+            If no issues found:
 
-            ### Docs-Code Sync Audit
-            No docs-code mismatches found.
+            ```bash
+            gh pr comment ${{ github.event.pull_request.number }} --body "### Docs-Code Sync Audit
+            No docs-code mismatches found."
+            ```
 
             ## Important
 
@@ -100,6 +106,7 @@ jobs:
             - Check the ACTUAL source code, not your assumptions about what it does.
             - Read the full function signatures, not just the first few parameters.
             - Be specific: include file paths and line numbers for both the docs and the code.
+            - You MUST use `gh pr comment` to post results. Only post GitHub comments — don't submit review text as messages.
         env:
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
