@@ -20,15 +20,15 @@ The foundation is production-usable today as an in-process library (v0.6.0).
 
 ---
 
-## [Shipped] PII Detection (v0.6.0)
+## [Planned] PII Detection
 
-Tool outputs often contain personally identifiable information that should not propagate back to the LLM or appear in logs. v0.6.0 adds pluggable PII detection as a first-class pipeline feature.
+Tool outputs often contain personally identifiable information that should not propagate back to the LLM or appear in logs. Basic PII finding classification already exists in `findings.py` (`classify_finding` returns `pii_detected` for contracts matching PII-related terms), but the full pluggable detection system is not yet implemented.
 
-- **PIIDetector protocol** in core (MIT-licensed) -- a pluggable detection interface that any implementation can satisfy
-- **RegexPIIDetector** in core -- 8 built-in regex patterns (SSN, email, phone, IBAN, credit card, patient ID, date of birth, name) for immediate use without enterprise dependencies
-- **Enterprise detectors** (separate `edictum-ee` package, shipped under `ee/`):
-    - `PresidioPIIDetector` -- ML/NER-based detection via Microsoft Presidio
-    - `CompositePIIDetector` -- combine multiple detectors with configurable thresholds
+- **What exists today:** `classify_finding()` in findings.py classifies postcondition failures as `pii_detected` based on contract ID and message heuristics. Postcondition contracts can match PII patterns via YAML `matches:` operator and use `effect: redact` to strip them.
+- **What's planned:**
+    - `PIIDetector` protocol in core -- a pluggable detection interface decoupled from postcondition contracts
+    - `RegexPIIDetector` in core -- built-in regex patterns (SSN, email, phone, etc.) for immediate use without enterprise dependencies
+    - Enterprise detectors in `ee/`: `PresidioPIIDetector` (ML/NER via Presidio), `CompositePIIDetector` (multiple detectors with configurable thresholds)
     - YAML `pii_detection` shorthand for declaring PII checks directly in contract bundles
 
 ---
