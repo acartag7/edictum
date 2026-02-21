@@ -229,6 +229,7 @@ class Edictum:
                 endpoint=otel_config.get("endpoint", "http://localhost:4317"),
                 protocol=otel_config.get("protocol", "grpc"),
                 resource_attributes=otel_config.get("resource_attributes"),
+                insecure=otel_config.get("insecure", True),
             )
 
         # Auto-configure audit sink from observability block if not explicitly provided

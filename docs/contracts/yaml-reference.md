@@ -484,6 +484,7 @@ contracts:
 | `observability.otel.endpoint` | string | `"http://localhost:4317"` | OTLP collector endpoint. |
 | `observability.otel.protocol` | string | `"grpc"` | Transport protocol: `"grpc"` or `"http"`. |
 | `observability.otel.service_name` | string | `"edictum-agent"` | OTel service name resource attribute. |
+| `observability.otel.insecure` | bool | `true` | Use plaintext for gRPC. Set to `false` for TLS-enabled collectors. |
 | `observability.otel.resource_attributes` | object | -- | Additional OTel resource attributes (string values). |
 | `observability.stdout` | bool | `true` | Emit audit events to stdout via `StdoutAuditSink`. |
 | `observability.file` | string or null | `null` | Path to a JSON lines audit file. When set, a `FileAuditSink` is created automatically. |

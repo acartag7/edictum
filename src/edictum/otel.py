@@ -47,6 +47,7 @@ def configure_otel(
     resource_attributes: dict[str, str] | None = None,
     edictum_version: str | None = None,
     force: bool = False,
+    insecure: bool = True,
 ) -> None:
     """Configure OpenTelemetry for Edictum.
 
@@ -62,6 +63,11 @@ def configure_otel(
     HTTP exporter.  When the HTTP exporter is selected and *endpoint*
     is still the default (``http://localhost:4317``), the endpoint is
     automatically adjusted to ``http://localhost:4318/v1/traces``.
+
+    *insecure* controls TLS for the gRPC exporter. ``True`` (default)
+    sends spans over plaintext; set to ``False`` for TLS-enabled
+    collectors. Has no effect on the HTTP exporter (use ``https://``
+    in *endpoint* instead).
 
     Standard OTel env vars take precedence over arguments:
     - OTEL_SERVICE_NAME overrides *service_name*
@@ -107,7 +113,7 @@ def configure_otel(
     provider = TracerProvider(resource=resource)
 
     if use_grpc:
-        exporter = OTLPSpanExporter(endpoint=actual_endpoint, insecure=True)
+        exporter = OTLPSpanExporter(endpoint=actual_endpoint, insecure=insecure)
     else:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as HTTPExporter
 
