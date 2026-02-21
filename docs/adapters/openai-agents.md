@@ -39,10 +39,12 @@ tool name and arguments from the guardrail data context. Returns
 `ToolGuardrailFunctionOutput.reject_content(reason)` to block it.
 
 **Output guardrail (post-execution)**: Fires after tool execution. Runs
-postconditions and records the execution in the session. The output guardrail
-always returns `ToolGuardrailFunctionOutput.allow()` -- post-execution
-evaluation produces audit events and warnings but does not block the response.
-The SDK does not support transforming the tool result from an output guardrail.
+postconditions and records the execution in the session. Postconditions with
+`effect: deny` on pure/read tools return
+`ToolGuardrailFunctionOutput.reject_content(reason)` to deny the output.
+All other postcondition results return `ToolGuardrailFunctionOutput.allow()`.
+The SDK does not support transforming the tool result from an output guardrail,
+so `effect: redact` requires the wrapper integration path.
 
 ## PII Redaction Callback
 
