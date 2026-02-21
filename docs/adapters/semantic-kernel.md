@@ -35,9 +35,10 @@ The adapter registers a filter using
 2. Evaluates preconditions.
 3. **On allow**: calls `await next(context)` to let Semantic Kernel execute the
    function, then evaluates postconditions against `context.function_result`.
-4. **On deny**: sets `context.function_result` to the denial string and sets
-   `context.terminate = True`. The function is never executed, and the kernel
-   stops further auto-invocations in the current turn.
+4. **On deny**: sets `context.function_result` to the denial string. The function
+   is never executed. By default (`terminate_on_deny=True`), the kernel also stops
+   further auto-invocations in the current turn. With `terminate_on_deny=False`,
+   remaining tool calls continue through contract enforcement normally.
 
 ## PII Redaction Callback
 
