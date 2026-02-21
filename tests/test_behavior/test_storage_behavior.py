@@ -8,46 +8,24 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 from edictum.storage import MemoryBackend
 
 
 class TestMemoryBackendParameterEffects:
     """Every parameter accepted by MemoryBackend must have an observable effect."""
 
-    async def test_ttl_parameter_is_not_silently_ignored(self):
-        """If MemoryBackend.set() accepts ttl, it must either enforce it or reject it.
+    def test_set_does_not_accept_ttl(self):
+        """MemoryBackend.set() must not have a ttl parameter.
 
-        Silently accepting and ignoring ttl is a correctness bug:
-        users think time-windowed session limits work when they don't.
+        TTL is a dead parameter — no callers use it, Redis/DB backends are
+        dropped features, and the Edictum Server (ee/) will handle session
+        coordination differently.
         """
         backend = MemoryBackend()
         sig = inspect.signature(backend.set)
-
-        if "ttl" not in sig.parameters:
-            pytest.skip("ttl parameter not in MemoryBackend.set() signature")
-
-        # If ttl is accepted, it must DO something:
-        # Option A: enforce TTL (key expires) — ideal
-        # Option B: raise NotImplementedError — acceptable
-        # Option C: silently ignore — BUG (this test catches it)
-        try:
-            await backend.set("key", "value", ttl=60)
-        except (NotImplementedError, TypeError):
-            # Option B: explicitly rejected — acceptable
-            return
-
-        # If we get here, ttl was accepted without error.
-        # The value must show evidence of TTL awareness.
-        result = await backend.get("key")
-        if result is not None:
-            pytest.fail(
-                "MemoryBackend.set() accepts ttl parameter but does not enforce it "
-                "and does not raise NotImplementedError. This silently breaks "
-                "time-windowed session contracts. Either implement TTL expiry, "
-                "raise NotImplementedError, or remove ttl from the signature."
-            )
+        assert "ttl" not in sig.parameters, (
+            "MemoryBackend.set() should not accept a ttl parameter. " "TTL support was removed as a dead parameter."
+        )
 
     async def test_increment_amount_parameter_has_effect(self):
         """increment(amount=N) must increase by N, not by 1."""

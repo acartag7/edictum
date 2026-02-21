@@ -66,12 +66,9 @@ class TestMemoryBackend:
         # Counter store has the number
         assert backend._counters["key1"] == 10
 
-    async def test_ttl_raises_not_implemented(self, backend):
-        """MemoryBackend rejects TTL with NotImplementedError."""
-        with pytest.raises(NotImplementedError, match="does not support TTL"):
-            await backend.set("key1", "value1", ttl=60)
+    def test_set_does_not_accept_ttl(self, backend):
+        """set() signature must not include a ttl parameter."""
+        import inspect
 
-    async def test_set_without_ttl_still_works(self, backend):
-        """set() without ttl continues to work normally."""
-        await backend.set("key1", "value1")
-        assert await backend.get("key1") == "value1"
+        sig = inspect.signature(backend.set)
+        assert "ttl" not in sig.parameters
