@@ -8,8 +8,6 @@ allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 
 This skill wraps the `fix-bug` procedure for agents running in git worktrees.
 
-**Important**: The full audit findings are at `docs/planning/audit-findings.md` in the repo. Read that file first to understand the issue you're fixing.
-
 ## Step 1: Create branch
 
 ```bash
