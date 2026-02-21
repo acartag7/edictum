@@ -47,14 +47,14 @@ wrapper = adapter.as_tool_wrapper()
 | Framework | Can Redact Before LLM | Deny Mechanism |
 |-----------|----------------------|----------------|
 | LangChain | Yes | Return "DENIED: reason" as ToolMessage |
-| CrewAI | Yes (callback return replaces result) | before_hook returns False |
+| CrewAI | No (side-effect only) | before_hook returns "DENIED: reason" |
 | Agno | Yes (hook wraps execution) | Hook returns denial string |
 | Semantic Kernel | Yes (filter modifies FunctionResult) | Filter sets terminate + error |
 | Claude SDK | No (side-effect only) | Returns deny dict to SDK |
 | OpenAI Agents | Deny only (`reject_content`) | `reject_content(reason)` |
 
 For regulated environments requiring PII interception (not just detection), use
-LangChain, CrewAI, Agno, or Semantic Kernel.
+LangChain, Agno, or Semantic Kernel.
 
 ## Common Constructor
 

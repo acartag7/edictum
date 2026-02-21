@@ -68,8 +68,11 @@ def _adapter_configs():
     from edictum.adapters.langchain import LangChainAdapter
     from edictum.adapters.openai_agents import OpenAIAgentsAdapter
 
+    def _crewai_deny(r):
+        return isinstance(r, str) and "DENIED" in r
+
     return [
-        ("CrewAI", CrewAIAdapter, _crewai_pre, _crewai_post, lambda r: r is None, lambda r: r is False),
+        ("CrewAI", CrewAIAdapter, _crewai_pre, _crewai_post, lambda r: r is None, _crewai_deny),
         ("OpenAI", OpenAIAgentsAdapter, _openai_pre, _openai_post, lambda r: r is None, lambda r: r is not None),
         ("LangChain", LangChainAdapter, _langchain_pre, _langchain_post, lambda r: r is None, lambda r: r is not None),
     ]
