@@ -20,7 +20,7 @@ The foundation is production-usable today as an in-process library (v0.6.0).
 
 ---
 
-## [In Progress] PII Detection (v0.6.0)
+## [Shipped] PII Detection (v0.6.0)
 
 Tool outputs often contain personally identifiable information that should not propagate back to the LLM or appear in logs. v0.6.0 adds pluggable PII detection as a first-class pipeline feature.
 

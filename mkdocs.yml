@@ -1,6 +1,6 @@
 site_name: Edictum
 site_description: Runtime contracts for AI agents
-site_url: https://acartag7.github.io/edictum/
+site_url: https://docs.edictum.dev/
 repo_url: https://github.com/acartag7/edictum
 repo_name: acartag7/edictum
 
@@ -54,6 +54,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
+  - Use Cases: use-cases.md
   - Concepts:
     - How It Works: concepts/how-it-works.md
     - Contracts: concepts/contracts.md

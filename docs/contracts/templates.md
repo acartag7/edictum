@@ -2,6 +2,28 @@
 
 Edictum ships three built-in contract templates for common agent patterns. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point for your own contracts.
 
+## Which Template?
+
+**Quick decision tree:**
+
+- Need to protect files and bash commands? → `file-agent`
+- Need output scanning and session limits? → `research-agent`
+- Need role gates, ticket requirements, and all of the above? → `devops-agent`
+
+**Comparison:**
+
+| Capability | `file-agent` | `research-agent` | `devops-agent` |
+|-----------|:---:|:---:|:---:|
+| Secret file protection | Yes | Yes (3 patterns) | Yes |
+| Destructive bash blocking | Yes | -- | Yes |
+| Write scope enforcement | Yes | -- | -- |
+| PII detection in output | -- | Yes | Yes |
+| Session limits | -- | 50 calls / 100 attempts | 20 calls / 50 attempts |
+| Role-gated deploys | -- | -- | Yes |
+| Ticket requirements | -- | -- | Yes |
+
+All templates can be customized after loading. See [Customizing Templates](#customizing-templates) below.
+
 ---
 
 ## Loading a Template
