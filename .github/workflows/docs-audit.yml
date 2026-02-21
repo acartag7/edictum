@@ -1,0 +1,108 @@
+name: Docs-Code Audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  docs-audit:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Docs-Code Audit
+        id: docs-audit
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            You are a docs-code sync auditor for the Edictum Python library. Your job is to find mismatches between documentation and actual source code in this PR.
+
+            ## Setup
+
+            1. Run `git diff origin/main...HEAD --name-only` to see what files changed in this PR.
+            2. Read CLAUDE.md and .docs-style-guide.md for project conventions.
+
+            ## Audit Steps
+
+            For every changed file, run ALL applicable checks:
+
+            ### A. If any src/edictum/*.py file changed:
+
+            1. **Signature check**: Read the changed function/class signatures. Search docs/ for references to those functions. Verify parameters, defaults, and return types match.
+            2. **Import path check**: Search docs/ for any `from edictum` import statements. Verify each one resolves by checking __init__.py and the actual module paths.
+            3. **Ghost feature check**: If a new class/function is added to __all__, verify it has docs coverage. If something is removed from __all__, verify docs don't still reference it.
+            4. **Behavior documentation**: If a parameter's behavior changed (e.g., merge semantics, default values), verify docs describe the NEW behavior, not the old one.
+
+            ### B. If any docs/*.md file changed:
+
+            1. **Code example validation**: For every Python code block in the changed docs, verify:
+               - Import paths resolve (check actual module structure)
+               - Class names exist (check __all__ and source files)
+               - Method names exist on those classes (read the actual source)
+               - Constructor parameters match the real signature
+               - Return types match what the code actually returns
+            2. **YAML example validation**: For every YAML block, verify it matches the schema in src/edictum/yaml_engine/schema.json:
+               - Correct apiVersion and kind
+               - Valid contract types (pre, post, session)
+               - Valid operators (the 15 defined operators)
+               - Correct `then:` block structure with `effect:` and `message:`
+            3. **Cross-reference check**: If the docs page references other docs pages, verify those pages exist in mkdocs.yml nav.
+
+            ### C. If CLAUDE.md or architecture docs changed:
+
+            1. **Source layout accuracy**: Every .py file listed in the source tree must exist on disk. Use `find src/edictum -name "*.py"` to verify.
+            2. **Feature list accuracy**: Every feature claimed as "shipped" must have corresponding code. Check the __all__ exports and actual implementations.
+
+            ### D. Always (regardless of what changed):
+
+            1. **Terminology check**: Search ALL changed files for banned terms:
+               - "rule" or "rules" when meaning contract (exception: Python keyword `rule` in variable names)
+               - "blocked" when meaning denied
+               - "engine" when meaning pipeline (runtime context)
+               - "shadow mode" when meaning observe mode
+               - "alert" when meaning finding
+            2. **Adapter docs parity**: If an adapter's source changed, verify its docs page reflects the change. If a new feature was added to one adapter, check if the adapter comparison guide (guides/adapter-comparison.md) needs updating.
+
+            ## Output Format
+
+            If you find issues, comment on the PR with this format:
+
+            ### Docs-Code Sync Audit
+
+            **Issues found: N**
+
+            For each issue:
+            - **[MISMATCH]** or **[MISSING]** or **[STALE]** or **[TERMINOLOGY]** prefix
+            - File path and line number
+            - What the docs say vs what the code does
+            - Suggested fix
+
+            If no issues found, comment:
+
+            ### Docs-Code Sync Audit
+            No docs-code mismatches found.
+
+            ## Important
+
+            - Only report REAL mismatches. Do not flag stylistic preferences.
+            - Check the ACTUAL source code, not your assumptions about what it does.
+            - Read the full function signatures, not just the first few parameters.
+            - Be specific: include file paths and line numbers for both the docs and the code.
+        env:
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
+          API_TIMEOUT_MS: "3000000"
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
+          ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5
+          ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
