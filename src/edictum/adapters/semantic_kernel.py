@@ -36,6 +36,7 @@ class SemanticKernelAdapter:
         guard: Edictum,
         session_id: str | None = None,
         principal: Principal | None = None,
+        terminate_on_deny: bool = True,
     ):
         self._guard = guard
         self._pipeline = GovernancePipeline(guard)
@@ -44,6 +45,7 @@ class SemanticKernelAdapter:
         self._call_index = 0
         self._pending: dict[str, tuple[Any, Any]] = {}
         self._principal = principal
+        self._terminate_on_deny = terminate_on_deny
 
     @property
     def session_id(self) -> str:
@@ -94,7 +96,8 @@ class SemanticKernelAdapter:
             if isinstance(pre_result, str):
                 # Denied — set result and don't call next
                 context.function_result = _wrap_result(context, pre_result)
-                context.terminate = True
+                if adapter._terminate_on_deny:
+                    context.terminate = True
                 return
 
             # Allowed — call next to execute
