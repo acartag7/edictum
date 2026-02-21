@@ -71,6 +71,7 @@
             "endpoint": { "type": "string" },
             "protocol": { "type": "string", "enum": ["grpc", "http"] },
             "service_name": { "type": "string" },
+            "insecure": { "type": "boolean", "default": true },
             "resource_attributes": {
               "type": "object",
               "additionalProperties": { "type": "string" }
