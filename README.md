@@ -90,7 +90,7 @@ Or write your own contracts in YAML:
 guard = Edictum.from_yaml("contracts.yaml")
 ```
 
-See the [quickstart guide](https://acartag7.github.io/edictum/quickstart/) to write your first contract and deny a dangerous call in five minutes.
+See the [quickstart guide](https://docs.edictum.dev/quickstart/) to write your first contract and deny a dangerous call in five minutes.
 
 ## What You Can Do
 
@@ -142,7 +142,7 @@ See the [quickstart guide](https://acartag7.github.io/edictum/quickstart/) to wr
 | CrewAI | `register()` | Partial | High |
 | Claude Agent SDK | `to_hook_callables()` | Logged only | Low |
 
-See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for setup, known limitations, and recommendations.
+See [Adapter Docs](https://docs.edictum.dev/adapters/overview/) for setup, known limitations, and recommendations.
 
 ## Use Cases
 
@@ -155,7 +155,7 @@ See [Adapter Docs](https://acartag7.github.io/edictum/adapters/overview/) for se
 | Education | Student data protection, session limits per assignment |
 | Legal | Privileged document access, audit trail for compliance |
 
-See [Use Cases](https://acartag7.github.io/edictum/use-cases/) for complete YAML bundles and wiring code.
+See [Use Cases](https://docs.edictum.dev/use-cases/) for complete YAML bundles and wiring code.
 
 ## Install
 
@@ -180,8 +180,8 @@ guard = Edictum.from_template("devops-agent")     # role gates, ticket requireme
 ## Demos & Examples
 
 - **[edictum-demo](https://github.com/acartag7/edictum-demo)** -- Full scenario demos, adversarial tests, benchmarks, and Grafana observability
-- **[Contract Patterns](https://acartag7.github.io/edictum/contracts/patterns/)** -- Real-world contract recipes by concern
-- **[Framework Adapters](https://acartag7.github.io/edictum/adapters/overview/)** -- Integration guides for six frameworks
+- **[Contract Patterns](https://docs.edictum.dev/contracts/patterns/)** -- Real-world contract recipes by concern
+- **[Framework Adapters](https://docs.edictum.dev/adapters/overview/)** -- Integration guides for six frameworks
 
 ## Research
 
@@ -191,7 +191,7 @@ Edictum was evaluated across six regulated domains in the GAP benchmark.
 
 ## Links
 
-- [Documentation](https://acartag7.github.io/edictum/)
+- [Documentation](https://docs.edictum.dev/)
 - [GitHub](https://github.com/acartag7/edictum)
 - [PyPI](https://pypi.org/project/edictum/)
 - [Changelog](CHANGELOG.md)
