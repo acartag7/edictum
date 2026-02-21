@@ -42,6 +42,8 @@ class MemoryBackend:
         return None
 
     async def set(self, key: str, value: str, ttl: int | None = None) -> None:
+        if ttl is not None:
+            raise NotImplementedError("MemoryBackend does not support TTL")
         self._data[key] = value
 
     async def delete(self, key: str) -> None:
