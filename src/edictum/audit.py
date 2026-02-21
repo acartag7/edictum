@@ -126,7 +126,7 @@ class RedactionPolicy:
         custom_patterns: list[tuple[str, str]] | None = None,
         detect_secret_values: bool = True,
     ):
-        base_keys = sensitive_keys or self.DEFAULT_SENSITIVE_KEYS
+        base_keys = self.DEFAULT_SENSITIVE_KEYS | sensitive_keys if sensitive_keys else self.DEFAULT_SENSITIVE_KEYS
         self._keys = {k.lower() for k in base_keys}
         self._patterns = (custom_patterns or []) + self.BASH_REDACTION_PATTERNS
         self._detect_values = detect_secret_values

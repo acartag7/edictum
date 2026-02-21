@@ -298,7 +298,7 @@ dropping events due to oversized payloads.
 from edictum.audit import RedactionPolicy
 
 policy = RedactionPolicy(
-    sensitive_keys={"my_custom_key", "internal_token"},  # merged with defaults via substring matching
+    sensitive_keys={"my_custom_key", "internal_token"},  # merged with defaults (union)
     custom_patterns=[
         (r"(MY_PREFIX_)\S+", r"\1[REDACTED]"),           # custom regex substitutions
     ],

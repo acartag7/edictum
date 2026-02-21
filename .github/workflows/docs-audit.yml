@@ -25,7 +25,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          direct_prompt: |
+          prompt: |
             You are a docs-code sync auditor for the Edictum Python library. Your job is to find mismatches between documentation and actual source code in this PR.
 
             ## Setup
