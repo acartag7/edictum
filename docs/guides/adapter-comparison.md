@@ -10,7 +10,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 |-----------|-------------------|----------------------|----------------|-----------------|
 | LangChain | `as_tool_wrapper()` | Yes | Return "DENIED: reason" as ToolMessage | $0.025 |
 | OpenAI Agents | `as_guardrails()` | Deny only (`reject_content`) | `reject_content(reason)` | $0.018 |
-| CrewAI | `register()` | Yes (callback return replaces result) | before_hook returns False | $0.040 |
+| CrewAI | `register()` | No (side-effect only) | before_hook returns "DENIED: reason" | $0.040 |
 | Agno | `as_tool_hook()` | Yes (hook wraps execution) | Hook returns denial string | N/A |
 | Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets cancel + error | $0.008 |
 | Claude SDK | `to_hook_callables()` | No (side-effect only) | Returns deny dict to SDK | N/A |
@@ -21,7 +21,7 @@ Cost column reflects benchmarks from [edictum-demo](https://github.com/acartag7/
 
 ## Which Adapter Should I Use?
 
-- **Need full PII interception?** -- Use LangChain, CrewAI, Agno, or Semantic Kernel. These adapters can replace the tool result before the LLM sees it.
+- **Need full PII interception?** -- Use LangChain, Agno, or Semantic Kernel. These adapters can replace the tool result before the LLM sees it.
 - **Cheapest per-task cost?** -- Semantic Kernel ($0.008 per task in benchmarks).
 - **Simplest integration?** -- Claude SDK or Agno. Both require minimal wiring.
 - **Using CrewAI?** -- CrewAI adapter is the only option. Note that CrewAI hooks are global (applied to every tool across all agents in the crew).
@@ -119,6 +119,7 @@ hooks = adapter.to_hook_callables()
 ### CrewAI
 
 - Hooks are global -- they apply to every tool across all agents in the crew. There is no per-agent hook scoping. See [CrewAI adapter docs](../adapters/crewai.md).
+- Side-effect only -- `on_postcondition_warn` callbacks fire for side effects (logging, alerting) but cannot replace the tool result. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers but cannot modify what CrewAI passes to the model.
 
 ### Agno
 

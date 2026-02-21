@@ -32,15 +32,17 @@ def _make_deny_guard(**extra):
 class TestPreconditionDenyEnforcement:
     """Precondition deny must propagate through every adapter."""
 
-    async def test_crewai_deny_returns_false(self):
-        """CrewAI _before_hook must return False on deny."""
+    async def test_crewai_deny_returns_reason_string(self):
+        """CrewAI _before_hook must return a 'DENIED: ...' string on deny."""
         from edictum.adapters.crewai import CrewAIAdapter
 
         guard = _make_deny_guard()
         adapter = CrewAIAdapter(guard)
         ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
         result = await adapter._before_hook(ctx)
-        assert result is False, "CrewAI must return False on deny (not None, which means allow)"
+        assert (
+            isinstance(result, str) and "DENIED" in result
+        ), f"CrewAI must return 'DENIED: ...' string on deny (not {type(result).__name__})"
 
     async def test_openai_deny_returns_denied_string(self):
         """OpenAI _pre must return a DENIED: string on deny."""

@@ -60,7 +60,7 @@ class TestCrewAIAdapter:
         guard = make_guard(contracts=[always_deny], audit_sink=sink)
         adapter = CrewAIAdapter(guard)
         result = await adapter._before_hook(_make_before_context())
-        assert result is False
+        assert isinstance(result, str) and "DENIED" in result
         # Verify audit contains the reason
         deny_events = [e for e in sink.events if e.action == AuditAction.CALL_DENIED]
         assert len(deny_events) == 1

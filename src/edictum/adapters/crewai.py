@@ -130,28 +130,17 @@ class CrewAIAdapter:
         def after_hook(context):
             original_name = context.tool_name
             context.tool_name = adapter._normalize_tool_name(original_name)
-            post_result = _run_async(adapter._after_hook(context))
+            _run_async(adapter._after_hook(context))
             context.tool_name = original_name
-
-            # CrewAI's after hook can return a string to replace the tool result
-            if post_result is not None and not post_result.postconditions_passed:
-                on_warn = getattr(adapter, "_on_postcondition_warn", None)
-                if on_warn:
-                    try:
-                        redacted = on_warn(getattr(context, "tool_result", None), post_result.findings)
-                        if isinstance(redacted, str):
-                            return redacted
-                    except Exception:
-                        logger.exception("on_postcondition_warn callback raised in after_hook")
             return None  # keep original result
 
         register_before_tool_call_hook(before_hook)
         register_after_tool_call_hook(after_hook)
 
-    async def _before_hook(self, context: Any) -> bool | None:
+    async def _before_hook(self, context: Any) -> str | None:
         """Handle a before-tool-call event from CrewAI.
 
-        Returns None to allow, False to deny.
+        Returns None to allow, 'DENIED: {reason}' string to deny.
         """
         tool_name: str = context.tool_name
         tool_input: dict = context.tool_input
@@ -343,6 +332,6 @@ class CrewAIAdapter:
         return True
 
     @staticmethod
-    def _deny(reason: str) -> bool:
-        """Return CrewAI's deny signal (False)."""
-        return False
+    def _deny(reason: str) -> str:
+        """Return denial reason string."""
+        return f"DENIED: {reason}"

@@ -26,26 +26,11 @@ The `register()` method calls CrewAI's `register_before_tool_call_hook` and
 hooks. After this call, every tool invocation in the CrewAI runtime passes
 through Edictum contract enforcement.
 
-## PII Redaction Callback
+## Postcondition Callback
 
-Use `on_postcondition_warn` to react when postconditions flag issues. If the
-callback returns a string, it replaces the tool result before the LLM sees it.
-If it returns `None`, the original result is kept. This works because CrewAI's
-`register_after_tool_call_hook` uses the hook's return value as a replacement
-result -- the adapter passes your callback's return value through directly:
-
-```python
-import re
-
-def redact_pii(result, findings):
-    text = str(result)
-    text = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN REDACTED]", text)
-    return text  # returned string replaces the tool result
-
-adapter.register(on_postcondition_warn=redact_pii)
-```
-
-For side-effect-only usage (logging, alerting), return `None` from the callback:
+Use `on_postcondition_warn` to react when postconditions flag issues. The
+callback is invoked for side effects only (logging, alerting) -- it cannot
+replace the tool result:
 
 ```python
 import logging
@@ -55,10 +40,13 @@ logger = logging.getLogger("edictum")
 def log_pii_detected(result, findings):
     for f in findings:
         logger.warning("Postcondition violation: %s", f.message)
-    # return None -> original result is kept
 
 adapter.register(on_postcondition_warn=log_pii_detected)
 ```
+
+The callback receives `(result, findings)` where `result` is the tool output
+and `findings` is a list of `Finding` objects describing the postcondition
+violations.
 
 ## Known Limitations
 

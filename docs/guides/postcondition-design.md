@@ -158,15 +158,15 @@ Whether the `on_postcondition_warn` callback can replace the tool result depends
 | LangChain | Wrap-around | Yes | Yes |
 | Agno | Wrap-around | Yes | Yes |
 | Semantic Kernel | Filter | Yes | Yes |
-| CrewAI | Hook | Yes (callback return replaces result) | Yes |
+| CrewAI | Hook | Side-effect only | Side-effect only |
 | Claude SDK | Native hook | Side-effect only | Side-effect only |
 | OpenAI Agents | Native guardrail | Side-effect only | Side-effect only |
 
-For **wrap-around** adapters (LangChain, Agno, Semantic Kernel, CrewAI), both `on_postcondition_warn` callbacks and built-in `redact`/`deny` effects work fully. The LLM sees the modified result.
+For **wrap-around** adapters (LangChain, Agno, Semantic Kernel), both `on_postcondition_warn` callbacks and built-in `redact`/`deny` effects work fully. The LLM sees the modified result.
 
-For **native hook** adapters (Claude SDK, OpenAI Agents), the SDK controls the result flow and the hook cannot substitute it. Built-in `redact`/`deny` effects set the `PostCallResult.result` field (available to wrapper consumers and callbacks) but cannot intercept the result before the SDK passes it to the model. A warning is logged at adapter construction time when postconditions declare `redact` or `deny` effects with these adapters.
+For **native hook** adapters (CrewAI, Claude SDK, OpenAI Agents), the framework controls the result flow and the hook cannot substitute it. Built-in `redact`/`deny` effects set the `PostCallResult.result` field (available to wrapper consumers and callbacks) but cannot intercept the result before the framework passes it to the model. A warning is logged at adapter construction time when postconditions declare `redact` or `deny` effects with these adapters.
 
-If your environment requires PII interception (not just detection), use LangChain, CrewAI, Agno, or Semantic Kernel.
+If your environment requires PII interception (not just detection), use LangChain, Agno, or Semantic Kernel.
 
 ---
 
