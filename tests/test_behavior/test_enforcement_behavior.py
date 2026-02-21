@@ -100,6 +100,88 @@ class TestPostconditionDenyEnforcement:
             post_result.postconditions_passed is False
         ), "Postcondition with effect=deny must report postconditions_passed=False"
 
+    async def test_postcondition_deny_output_guardrail_rejects(self):
+        """Output guardrail must return reject (not allow) when postcondition has effect=deny."""
+        import sys
+        from types import ModuleType
+
+        @postcondition("TestTool")
+        def deny_output(envelope, result):
+            return Verdict.fail("output contains violation")
+
+        deny_output._edictum_effect = "deny"
+
+        guard = Edictum(
+            environment="test",
+            tools={"TestTool": {"side_effect": "pure"}},
+            contracts=[deny_output],
+            audit_sink=NullAuditSink(),
+            backend=MemoryBackend(),
+        )
+
+        # Mock the agents SDK
+        mock_agents = ModuleType("agents")
+        mock_tool_guardrails = ModuleType("agents.tool_guardrails")
+
+        class MockToolInputGuardrail:
+            def __init__(self, guardrail_function, name=None):
+                self.guardrail_function = guardrail_function
+                self.name = name
+
+        class MockToolOutputGuardrail:
+            def __init__(self, guardrail_function, name=None):
+                self.guardrail_function = guardrail_function
+                self.name = name
+
+        class MockToolGuardrailFunctionOutput:
+            @staticmethod
+            def reject_content(reason):
+                return SimpleNamespace(action="reject", reason=reason)
+
+            @staticmethod
+            def allow():
+                return SimpleNamespace(action="allow")
+
+        mock_agents.ToolGuardrailFunctionOutput = MockToolGuardrailFunctionOutput
+        mock_tool_guardrails.ToolInputGuardrail = MockToolInputGuardrail
+        mock_tool_guardrails.ToolInputGuardrailData = object
+        mock_tool_guardrails.ToolOutputGuardrail = MockToolOutputGuardrail
+        mock_tool_guardrails.ToolOutputGuardrailData = object
+
+        orig_agents = sys.modules.get("agents")
+        orig_tg = sys.modules.get("agents.tool_guardrails")
+        sys.modules["agents"] = mock_agents
+        sys.modules["agents.tool_guardrails"] = mock_tool_guardrails
+
+        try:
+            from edictum.adapters.openai_agents import OpenAIAgentsAdapter
+
+            adapter = OpenAIAgentsAdapter(guard)
+            _, output_gr = adapter.as_guardrails()
+
+            # Pre-execute to create pending state
+            await adapter._pre("TestTool", {}, "call-1")
+
+            # Call output guardrail with mock data
+            mock_data = SimpleNamespace(
+                context=SimpleNamespace(tool_call_id="call-1"),
+                output="violation data",
+            )
+            result = await output_gr.guardrail_function(mock_data)
+
+            assert result.action == "reject", (
+                "Output guardrail must reject when postcondition has effect=deny, " f"but got action={result.action!r}"
+            )
+        finally:
+            if orig_agents is not None:
+                sys.modules["agents"] = orig_agents
+            else:
+                sys.modules.pop("agents", None)
+            if orig_tg is not None:
+                sys.modules["agents.tool_guardrails"] = orig_tg
+            else:
+                sys.modules.pop("agents.tool_guardrails", None)
+
 
 class TestObserveModeEnforcement:
     """Observe mode must convert deny to allow, not silently skip contracts."""

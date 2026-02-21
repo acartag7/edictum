@@ -51,7 +51,7 @@ wrapper = adapter.as_tool_wrapper()
 | Agno | Yes (hook wraps execution) | Hook returns denial string |
 | Semantic Kernel | Yes (filter modifies FunctionResult) | Filter sets terminate + error |
 | Claude SDK | No (side-effect only) | Returns deny dict to SDK |
-| OpenAI Agents | No (side-effect only) | `reject_content(reason)` |
+| OpenAI Agents | Deny only (`reject_content`) | `reject_content(reason)` |
 
 For regulated environments requiring PII interception (not just detection), use
 LangChain, CrewAI, Agno, or Semantic Kernel.

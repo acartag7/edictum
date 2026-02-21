@@ -66,6 +66,7 @@ class PostCallResult:
     result: Any  # the original tool result
     postconditions_passed: bool = True  # did all postconditions pass?
     findings: list[Finding] = field(default_factory=list)
+    output_suppressed: bool = False  # True when a postcondition with effect=deny fired
 
 
 def classify_finding(contract_id: str, verdict_message: str) -> str:

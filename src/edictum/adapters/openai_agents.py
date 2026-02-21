@@ -36,8 +36,8 @@ class OpenAIAgentsAdapter:
     single-threaded per agent run.
 
     Note: Native guardrails (as_guardrails) cannot substitute tool results.
-    Postcondition effects (redact/deny) require the wrapper integration path
-    for full enforcement. Native hooks can only warn.
+    Postcondition effect=redact requires the wrapper integration path.
+    Postcondition effect=deny is enforced natively via reject_content.
     """
 
     def __init__(
@@ -82,11 +82,11 @@ class OpenAIAgentsAdapter:
         """
         self._on_postcondition_warn = on_postcondition_warn
 
-        has_effects = any(getattr(p, "_edictum_effect", "warn") != "warn" for p in self._guard._postconditions)
-        if has_effects:
+        has_redact = any(getattr(p, "_edictum_effect", "warn") == "redact" for p in self._guard._postconditions)
+        if has_redact:
             logger.warning(
-                "Postcondition effects (redact/deny) require the wrapper integration path "
-                "for full enforcement. Native hooks (as_guardrails) can only warn."
+                "Postcondition effect=redact requires the wrapper integration path "
+                "for full enforcement. Native guardrails cannot substitute tool results."
             )
 
         from agents import ToolGuardrailFunctionOutput
@@ -130,6 +130,9 @@ class OpenAIAgentsAdapter:
                     adapter._on_postcondition_warn(post_result.result, post_result.findings)
                 except Exception:
                     logger.exception("on_postcondition_warn callback raised")
+
+            if post_result and post_result.output_suppressed:
+                return ToolGuardrailFunctionOutput.reject_content(str(post_result.result))
 
             return ToolGuardrailFunctionOutput.allow()
 
@@ -275,6 +278,7 @@ class OpenAIAgentsAdapter:
             result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
+            output_suppressed=post_decision.output_suppressed,
         )
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:

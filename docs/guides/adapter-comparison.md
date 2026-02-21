@@ -9,7 +9,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 | Framework | Integration Method | Can Redact Before LLM | Deny Mechanism | Cost (same task) |
 |-----------|-------------------|----------------------|----------------|-----------------|
 | LangChain | `as_tool_wrapper()` | Yes | Return "DENIED: reason" as ToolMessage | $0.025 |
-| OpenAI Agents | `as_guardrails()` | No (side-effect only) | `reject_content(reason)` | $0.018 |
+| OpenAI Agents | `as_guardrails()` | Deny only (`reject_content`) | `reject_content(reason)` | $0.018 |
 | CrewAI | `register()` | Yes (callback return replaces result) | before_hook returns False | $0.040 |
 | Agno | `as_tool_hook()` | Yes (hook wraps execution) | Hook returns denial string | N/A |
 | Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets cancel + error | $0.008 |
@@ -134,4 +134,4 @@ hooks = adapter.to_hook_callables()
 
 ### OpenAI Agents (postcondition enforcement)
 
-- The output guardrail can only `.allow()` or `.reject_content()` -- it cannot substitute the tool result. Postcondition `redact`/`deny` effects set `PostCallResult.result` for wrapper consumers and invoke `on_postcondition_warn` callbacks, but the original result still reaches the model via the SDK. A warning is logged at adapter construction when postconditions declare these effects.
+- The output guardrail can `.allow()` or `.reject_content()` but cannot substitute the tool result. Postcondition `effect: deny` on pure/read tools returns `.reject_content()`, fully enforcing the denial. Postcondition `effect: redact` requires the wrapper integration path since the guardrail cannot transform the result. A warning is logged at adapter construction when postconditions declare `effect: redact`.
