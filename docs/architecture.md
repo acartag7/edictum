@@ -239,7 +239,6 @@ The split between OSS core and enterprise follows one principle: **evaluation pi
 
 - The pipeline that takes a tool call and returns allow/deny/warn is OSS
 - Anything that requires persistence beyond local files, networking, or coordination is enterprise
-- PIIDetector protocol is OSS -- users can write their own detector. Implementations (regex, Presidio) are enterprise
 - Stdout + File (.jsonl) sinks ship in OSS for dev and local audit. Network destinations (Webhook, Splunk, Datadog) are enterprise
 - OTel instrumentation (emitting spans) is OSS. Dashboards and alerting are enterprise
 - Session (MemoryBackend) is OSS for single-process. Multi-process coordination via Edictum Server is enterprise
