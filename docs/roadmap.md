@@ -83,9 +83,19 @@ Single-call contracts cover most enforcement scenarios. Some problems require lo
 
 ---
 
-## [Planned] Enterprise Control Plane
+## [In Progress] Server SDK & Enterprise Control Plane
 
 Single-agent, in-process enforcement covers most use cases today. For organizations running fleets of agents, the next step is centralized contract management.
+
+**Shipped: Server SDK client** (`pip install edictum[server]`):
+
+- **`EdictumServerClient`** -- async HTTP client with Bearer auth, agent ID headers, and exponential backoff retry
+- **`ServerApprovalBackend`** -- implements `ApprovalBackend` protocol via server approval queue (POST to create, poll GET until resolved)
+- **`ServerAuditSink`** -- implements `AuditSink` protocol with batched event ingestion to server
+- **`ServerBackend`** -- implements `StorageBackend` protocol for distributed session state
+- **`ServerContractSource`** -- SSE client for receiving contract bundle updates with auto-reconnect
+
+**Planned: Server-side components:**
 
 - **Central Policy Server** -- agents pull contracts on startup, with versioning and hot-reload
 - **Governance Dashboard** -- visualize contract evaluations, denial rates, and contract drift across agents

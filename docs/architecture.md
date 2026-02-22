@@ -251,7 +251,7 @@ Audit events record `policy_error: true` when contract loading fails, ensuring t
 
 Edictum is currently an in-process library -- contracts are loaded and enforced within the same process as the agent. This covers single-agent deployments and most production use cases today.
 
-The next step is a central policy server where multiple agents pull contracts on startup, with versioning and hot-reload. This enables multi-agent coordination: one set of contracts governing an entire fleet of agents, with a governance dashboard showing denial rates and contract drift across the organization. See the [roadmap](roadmap.md) for details.
+The **server SDK** (`pip install edictum[server]`) provides the client-side connectivity for agents to talk to the edictum-server control plane. It implements the core protocols (`ApprovalBackend`, `AuditSink`, `StorageBackend`) over HTTP, letting agents use server-managed approvals, centralized audit ingestion, distributed session state, and SSE-pushed contract updates. The server itself is a separate deployment. See the [roadmap](roadmap.md) for details.
 
 ### The Boundary Principle
 
@@ -261,7 +261,7 @@ The split between OSS core and enterprise follows one principle: **evaluation pi
 - Anything that requires persistence beyond local files, networking, or coordination is enterprise
 - Stdout + File (.jsonl) sinks ship in OSS for dev and local audit. Network destinations (Webhook, Splunk, Datadog) are enterprise
 - OTel instrumentation (emitting spans) is OSS. Dashboards and alerting are enterprise
-- Session (MemoryBackend) is OSS for single-process. Multi-process coordination via Edictum Server is enterprise
+- Session (MemoryBackend) is OSS for single-process. Server SDK client (`edictum[server]`) connects to the Edictum Server for multi-process coordination
 
 ---
 
@@ -301,6 +301,13 @@ src/edictum/
     semantic_kernel.py     Semantic Kernel filter pattern
     openai_agents.py       OpenAI Agents guardrails
     claude_agent_sdk.py    Anthropic Claude Agent SDK hooks
+
+  server/                  pip install edictum[server]
+    client.py              EdictumServerClient (async HTTP, auth, retries)
+    approval_backend.py    ServerApprovalBackend (ApprovalBackend via HTTP)
+    audit_sink.py          ServerAuditSink (batched event ingestion)
+    backend.py             ServerBackend (StorageBackend via HTTP)
+    contract_source.py     ServerContractSource (SSE contract bundle updates)
 ```
 
 </details>
