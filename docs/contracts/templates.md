@@ -2,6 +2,17 @@
 
 Edictum ships three built-in contract templates for common agent patterns. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point for your own contracts.
 
+## When to use this
+
+You need templates when you want governance contracts without writing YAML from scratch.
+
+- **Bootstrapping a new agent.** You are building an agent and want sensible safety defaults immediately. Call `Edictum.from_template("file-agent")` to get secret file protection and destructive command blocking in one line. The template goes through the same `load_bundle()` validation and SHA256 hashing path as custom YAML, so audit events carry a `policy_version` from day one.
+- **Standardizing governance across a team.** Multiple developers are building agents with different frameworks. Templates provide a shared baseline: everyone starts from `devops-agent` (which includes role-based production gates, ticket requirements, PII detection, and session limits) and customizes from there. Copy the template YAML into your project and load with `Edictum.from_yaml()`.
+- **Evaluating Edictum before writing custom contracts.** You want to see what Edictum does before investing in YAML authoring. Load a template, wire it into your adapter, and run your agent. The template contracts demonstrate all three contract types (`pre`, `post`, `session`), multiple operators (`contains_any`, `matches`, `not_in`, `exists`), and message interpolation with `{args.path}` placeholders.
+- **Composing templates with custom overrides.** Start from a template and layer project-specific contracts on top using multi-path `from_yaml()`. The template provides the base, your YAML adds or overrides contracts by ID.
+
+Agent developers getting started with Edictum and platform engineers establishing team-wide baselines benefit most from templates. The three built-in templates (`file-agent`, `research-agent`, `devops-agent`) live in `src/edictum/yaml_engine/templates/`.
+
 ## Which Template?
 
 **Quick decision tree:**

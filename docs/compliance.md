@@ -4,6 +4,16 @@ Edictum enforces runtime contracts on AI agent tool calls. This page maps
 Edictum capabilities to specific requirements in the EU AI Act and SOC 2 Trust
 Services Criteria, with concrete configuration guidance for each control.
 
+## When to use this
+
+**An auditor asks how your AI agent decisions are logged.** Every pipeline evaluation -- allowed, denied, or observed -- produces an `AuditEvent` with 30+ fields including tool name, arguments, principal identity, which contract fired, session counters, and the `policy_version` hash linking the decision to the exact YAML contract file. Point the auditor to the audit trail and this compliance mapping.
+
+**You are preparing for SOC 2 certification and need to map Edictum to Trust Services Criteria.** This page maps principals to CC6.1 (logical access), contracts to CC6.3 (authorization), audit events to CC6.6 (system operations), and `edictum diff` / `edictum replay` to CC6.8 (change management). Use it as a starting point for your controls matrix.
+
+**Your legal team asks about EU AI Act compliance for a high-risk system.** This page maps preconditions to Article 9 (risk management), observe mode to Article 14 (human oversight), and the audit trail to documentation requirements. The evidence artifacts section provides the specific fields and CLI commands that produce auditable output.
+
+This page is for compliance and security teams evaluating Edictum's audit capabilities. For observability configuration, see [observability](guides/observability.md). For the pipeline that produces audit events, see [how it works](concepts/how-it-works.md).
+
 ---
 
 ## EU AI Act

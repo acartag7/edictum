@@ -3,6 +3,16 @@
 When a postcondition contract detects an issue in tool output (PII, secrets, contract violations),
 Edictum produces structured **findings** that your application can act on.
 
+## When to use this
+
+**Your agent reads data that may contain PII and you need structured output to act on.** When a postcondition detects SSN or IBAN patterns, the pipeline produces `Finding` objects with `type="pii_detected"`, the `contract_id` that triggered it, and the `field` that matched. Your `on_postcondition_warn` callback receives these findings and can redact, replace, or log the result.
+
+**You are building dashboards or compliance reports grouped by finding type.** The `classify_finding()` function in `findings.py` categorizes postcondition results into `pii_detected`, `secret_detected`, `limit_exceeded`, or `policy_violation` based on the contract ID and message content. Filter your audit sink by finding type to track trends over time.
+
+**You need different remediation strategies per finding category.** Route `pii_detected` findings to a redaction callback, `secret_detected` findings to a full-block callback, and `policy_violation` findings to a logging-only callback. The `PostCallResult` returned by the adapter contains the `findings` list and the `postconditions_passed` flag. For adapters that support result transformation (LangChain, Agno, Semantic Kernel), the callback return value replaces the tool result.
+
+Findings are the structured output from postconditions. For the contract types that produce findings, see [contracts](concepts/contracts.md). For postcondition effect behavior (`warn`/`redact`/`deny`), see [YAML reference](contracts/yaml-reference.md#postcondition-effects).
+
 ## The Pattern: Detect -> Remediate
 
 Postconditions detect issues in tool output. What happens next depends on the declared `effect`:

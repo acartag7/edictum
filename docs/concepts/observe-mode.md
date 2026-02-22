@@ -85,15 +85,17 @@ The critical difference: in observe mode, the tool always executes. The audit tr
 
 Postconditions always produce findings (warnings), never denials. In observe mode, postcondition findings are logged as `would_warn` instead of `postcondition_warning`. The `on_postcondition_warn` callback fires in both modes.
 
-## When to Use Observe Mode
+## When to use this
 
-**Rolling out new contracts.** Write a new precondition, deploy it in observe mode, and watch the `CALL_WOULD_DENY` events for a few days. If the false positive rate is acceptable, switch to enforce.
+**Rolling out new contracts.** Write a new precondition, deploy it in observe mode, and watch the `CALL_WOULD_DENY` events for a few days. If the false positive rate is acceptable, switch to enforce. Set `mode: observe` on the bundle's `defaults:` block or on individual contracts.
 
-**Testing in production.** Your staging environment may not exercise the same tool call patterns as production. Observe mode lets you validate contracts against real agent behavior.
+**Testing in production.** Your staging environment may not exercise the same tool call patterns as production. Observe mode lets you validate contracts against real agent behavior without denying any calls. The pipeline's `pre_execute()` still evaluates every contract -- it just emits audit events instead of denying.
 
 **Compliance shadow runs.** Compliance teams can define contracts for upcoming regulatory requirements, deploy them in observe mode, and measure the impact before the deadline. The audit trail serves as evidence of preparedness.
 
 **Gradual rollout.** Start with all contracts in observe mode. Promote them to enforce one at a time as you gain confidence, starting with the most critical contracts (secret protection, destructive command prevention).
+
+Developers use observe mode during local testing to understand contract behavior. Platform teams use it in production for safe rollouts. For comparing two contract versions side-by-side, see [dual-mode evaluation](#dual-mode-evaluation-with-observe_alongside) below. For the contract types that support observe mode, see [contracts](contracts.md).
 
 ## Reviewing Observe-Mode Events
 

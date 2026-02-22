@@ -2,6 +2,17 @@
 
 This is the complete reference for `edictum/v1` contract bundles. A contract bundle is a single YAML file that declares all the contracts for an Edictum instance.
 
+## When to use this
+
+You need this reference when you are writing, debugging, or maintaining YAML contract bundles.
+
+- **Writing your first contract bundle.** You have an agent with tool calls and need to define governance contracts in YAML. Start with the [Document Structure](#document-structure) to understand the required top-level fields (`apiVersion`, `kind`, `metadata`, `defaults`, `contracts`), then pick a [Contract Type](#contract-types) (`pre`, `post`, or `session`) that matches your enforcement need.
+- **Debugging a schema validation error.** `Edictum.from_yaml()` raises `EdictumConfigError` when the YAML fails JSON Schema validation, has duplicate contract IDs, contains invalid regex, or uses `output.text` in a precondition. The [Error Handling](#error-handling) section lists every failure mode and its behavior. The loader validates regexes at load time via `re.compile()` and rejects `output.text` selectors in `type: pre` contracts.
+- **Choosing between `from_yaml()`, `from_yaml_string()`, and `from_template()`.** Use `from_yaml()` with file paths for static bundles, `from_yaml_string()` when YAML is generated programmatically or fetched from an API, and `from_template()` for the three built-in templates (`file-agent`, `research-agent`, `devops-agent`). All three go through the same validation and SHA256 bundle hashing path.
+- **Composing contracts across multiple files.** Teams that split contracts by concern (base safety, team overrides, environment-specific) use multi-path `from_yaml()` with deterministic [merge semantics](#bundle-composition). Pass `return_report=True` to get a `CompositionReport` showing which contracts were overridden. Use `observe_alongside: true` to shadow-test candidate bundles against live traffic.
+
+Platform engineers defining governance standards and agent developers wiring contracts into their applications will reference this page most often. For operator-level examples, see the [Operator Reference](operators.md). For ready-made contract recipes, see [Contract Patterns](patterns/index.md).
+
 ---
 
 ## Document Structure {#document-structure}

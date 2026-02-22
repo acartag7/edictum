@@ -4,6 +4,22 @@ This guide walks through the full workflow of creating, validating, and deployin
 
 ---
 
+## When to use this
+
+You have a restriction that needs to become a YAML contract, and you are not sure how to structure it.
+
+- **Translating an informal rule into YAML.** A teammate says "analysts should not access .env files." You need to express that as a contract with the right selector (`args.path`), operator (`contains_any`), and principal condition (`principal.role: equals: analyst`). This guide walks through that exact translation using `Edictum.from_yaml()` and `edictum check`.
+
+- **Iterating on a contract that is too strict or too loose.** Your `block-secret-reads` contract is denying legitimate config file reads, or it is missing paths that should be denied. You need to adjust the `when` clause operators -- switching between `contains`, `contains_any`, `starts_with`, and `matches` -- and re-validate with `edictum check` until the contract fires on the right calls.
+
+- **Starting a new contract bundle from scratch.** You have no existing YAML and need to create a `ContractBundle` with `apiVersion`, `kind`, `metadata`, `defaults`, and `contracts` sections. This guide covers the full structure, including `mode: observe` for safe rollout and the observe-to-enforce transition.
+
+- **Avoiding common YAML pitfalls.** You are debugging a contract that never fires. The issue might be a missing principal field (null selectors evaluate to `false`), wrong regex escaping (double-quoted `"\b"` is backspace, not a word boundary), or using `output.text` in a precondition (only available in postconditions).
+
+This is the starting point for contract authors. For testing contracts once they are written, see [Testing contracts](testing-contracts.md). For postcondition-specific design (choosing between `warn`, `redact`, and `deny` effects), see [Postcondition design](postcondition-design.md).
+
+---
+
 ## Step 1: Start With a Requirement
 
 Suppose your team has this requirement:

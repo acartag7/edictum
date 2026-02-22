@@ -2,6 +2,17 @@
 
 This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive contract bundles, per-contract mode overrides, environment-based conditions, and guard merging.
 
+## When to use this
+
+You need these advanced patterns when the basic single-condition, single-operator recipes on other pattern pages are not enough for your governance requirements.
+
+- **Building multi-condition gates with nested logic.** Your access contract requires AND, OR, and NOT logic combined -- for example, "production deploys require (admin or sre role) AND a ticket reference." Use nested `all`/`any`/`not` combinators in the `when` expression. The evaluator handles arbitrary nesting depth, but keep trees under three levels for readability.
+- **Combining multiple regex patterns in one contract.** You want one postcondition to catch SSNs, emails, credit cards, AWS keys, and JWTs. Use `matches_any` with an array of patterns. All patterns are compiled once at `load_bundle()` time. `matches_any` short-circuits on the first match, so order patterns from most common to least common.
+- **Using environment variables to toggle contracts at runtime.** The `env.*` selector reads from `os.environ` at evaluation time with automatic type coercion (`"true"` becomes `True`, numeric strings become `int`/`float`). Use it to activate contracts based on flags like `DRY_RUN=true` or `ENVIRONMENT=production` without code changes.
+- **Composing contracts across multiple YAML files or Python guards.** Use multi-path `from_yaml()` for deterministic YAML composition with merge semantics, `observe_alongside: true` for shadow-testing candidate bundles, and `Edictum.from_multiple()` for runtime merging of Python-defined guards. The `CompositionReport` tracks which contracts were overridden during composition.
+
+These patterns combine features documented individually on other pages. For foundational operator usage, see the [Operator Reference](../operators.md). For single-concern recipes, see [Access Control](access-control.md), [Data Protection](data-protection.md), [Change Control](change-control.md), and [Rate Limiting](rate-limiting.md).
+
 ---
 
 ## Nested All/Any/Not Logic

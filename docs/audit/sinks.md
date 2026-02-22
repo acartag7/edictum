@@ -4,6 +4,22 @@ Every contract evaluation in Edictum produces an `AuditEvent`. Audit sinks consu
 these events and route them to local storage, while OpenTelemetry integration
 enables routing enforcement spans to any observability backend.
 
+## When to use this
+
+You need to capture, store, or route the `AuditEvent` records that the pipeline emits for every contract evaluation.
+
+- **Local debugging during development.** You are building contracts and want to see every allow/deny decision as it happens. `StdoutAuditSink` (the default when no `audit_sink` is provided) prints each event as a single JSON line to stdout -- no setup required, works with `Edictum.from_yaml()` out of the box.
+
+- **Production audit trail for compliance.** Your organization requires a persistent record of every tool call decision -- who called what, which contract fired, whether it was allowed or denied. `FileAuditSink("/var/log/edictum/events.jsonl")` appends each `AuditEvent` as a JSON line, creating a tamper-evident log suitable for offline analysis and compliance evidence.
+
+- **Redacting secrets from audit records.** Audit events contain `tool_args` which may include API keys, passwords, or JWTs. `RedactionPolicy` automatically scrubs sensitive keys (matches 18+ common key names plus substring detection), detects secret value patterns (OpenAI keys, AWS keys, GitHub tokens, Slack tokens, JWTs), redacts inline secrets in bash commands, and caps payloads at 32 KB. Pass custom `sensitive_keys` or `custom_patterns` to extend the defaults.
+
+- **Routing events to a custom destination.** You want to send events to Kafka, a webhook, or an internal service. Implement the `AuditSink` protocol (a single `async def emit(self, event: AuditEvent)` method) and pass it to `Edictum(audit_sink=...)`. The protocol is `@runtime_checkable` -- Edictum validates your sink at construction time.
+
+For production observability with span-level metrics and dashboards, see [Telemetry reference](telemetry.md) and the [Observability guide](../guides/observability.md).
+
+---
+
 ## The AuditSink Protocol
 
 Any class that implements the `AuditSink` protocol can receive audit events. The

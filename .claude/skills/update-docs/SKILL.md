@@ -47,16 +47,21 @@ For each affected page:
 1. Read the current doc
 2. Skip if already correct
 3. Update code examples, descriptions, YAML examples
-4. **Verify terminology** against .docs-style-guide.md:
+4. **Verify "When to use this" section** exists (see .docs-style-guide.md page structure pattern step 3):
+   - Every page MUST have a `## When to use this` section after the opening/example and before the main content
+   - If missing, add one with: 2-4 concrete scenarios (real situations, not abstract descriptions), user personas who benefit, and how this feature relates to other Edictum features
+   - If new code adds a feature, update the scenarios to cover the new capability
+   - Read the ACTUAL SOURCE CODE for the feature before writing scenarios — reference real method names, real classes, real behavior
+5. **Verify terminology** against .docs-style-guide.md:
    - "contracts" not "policies" or "rules"
-   - "denied" not "blocked"
-   - "enforces" not "governs"
-   - "pipeline" not "engine"
-   - "tool call" not "function call"
-   - "adapter" not "integration" or "plugin"
-   - "observe mode" not "shadow mode"
-   - "finding" / "findings" not "alert"
-5. **Verify tier boundaries** against CLAUDE.md:
+   - Use `denied` (see .docs-style-guide.md for banned alternatives)
+   - Use `enforces` (not "governs")
+   - Use `pipeline` (not "engine")
+   - Use `tool call` (not "function call")
+   - Use `adapter` (not "integration" or "plugin")
+   - Use `observe mode` (see .docs-style-guide.md for banned alternatives)
+   - Use `finding` / `findings` (not "alert")
+6. **Verify tier boundaries** against CLAUDE.md:
    - FileAuditSink is core (not ee/)
    - StdoutAuditSink is core
    - Webhook/Splunk/Datadog sinks are ee/

@@ -4,6 +4,18 @@ A contract is a check that Edictum evaluates on every tool call. Contracts are w
 
 There are three contract types: **preconditions** check before execution, **postconditions** check after, and **session contracts** track state across multiple calls.
 
+## When to use this
+
+**Your agent must never access certain files or endpoints.** A precondition (`type: pre`) checks arguments before the tool runs. If `args.path` contains `.env`, the call is denied and the tool never executes. Use preconditions for hard boundaries on dangerous inputs.
+
+**You need to scan tool output for sensitive data.** A postcondition (`type: post`) inspects the tool's response after execution. It can produce findings with `effect: warn`, replace matched patterns with `[REDACTED]` using `effect: redact`, or suppress the entire output with `effect: deny` -- but only for READ/PURE tools. Use postconditions when the risk is in what the tool returns, not what it receives.
+
+**Your agent runs in long sessions and you need to cap total tool usage.** A session contract (`type: session`) tracks cumulative state -- total calls, total attempts, per-tool limits. When a limit is hit, the call is denied. Use session contracts to stop runaway agents and enforce budget constraints.
+
+**You need all three types together.** A fintech agent that cannot access credentials (precondition), must redact SSNs from query results (postcondition), and is limited to 50 database calls per session (session contract). Load all three in one contract bundle via `Edictum.from_yaml("contracts.yaml")`.
+
+For the full YAML syntax, see [YAML reference](../contracts/yaml-reference.md). For the evaluation order between contract types, see [how it works](how-it-works.md).
+
 ## Preconditions
 
 Preconditions evaluate **before** the tool runs. If the condition matches, the call is denied and the tool never executes.

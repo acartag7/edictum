@@ -5,6 +5,13 @@ integration methods depending on your setup: `as_tool_wrapper()` for `ToolNode`,
 `as_middleware()` for `create_react_agent`, and `as_async_tool_wrapper()` for
 async contexts.
 
+## When to use this
+
+- **You have a LangChain agent and need to enforce contracts on tool calls.** You are already using `ToolNode` or `create_react_agent` from LangGraph and want preconditions (deny dangerous inputs), postconditions (detect issues in output), and session limits without changing your agent architecture.
+- **You need to redact tool output before the LLM sees it.** LangChain's `wrap_tool_call` pattern gives the adapter full control over the returned `ToolMessage`. The `on_postcondition_warn` callback can transform the result — for example, stripping PII — before it reaches the model. This makes `as_tool_wrapper()` and `as_async_tool_wrapper()` suitable for regulated environments.
+- **You are running LangChain in an async web framework.** Use `as_async_tool_wrapper()` in FastAPI or Starlette to avoid sync-to-async bridging overhead. Use `as_tool_wrapper()` for standard sync contexts — it handles nested event loops automatically via `ThreadPoolExecutor`.
+- **You want to validate contracts before enforcing them.** Deploy with `mode="observe"` to emit `CALL_WOULD_DENY` audit events without blocking any tool calls, then switch to `mode="enforce"` once you've confirmed the contracts match your intent.
+
 ## Installation
 
 ```bash

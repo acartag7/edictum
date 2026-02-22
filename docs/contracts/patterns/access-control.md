@@ -2,6 +2,17 @@
 
 Access control contracts determine **who** can use **which tools** in **which environments**. They are preconditions -- they evaluate before the tool runs, and denial is free because nothing has happened yet.
 
+## When to use this
+
+You need access control patterns when the identity of the caller or the deployment environment determines whether a tool call should proceed.
+
+- **Restricting dangerous tools to specific roles.** Your agent has tools like `deploy_service` or `run_command` that should only be available to certain principals. Use `principal.role` with `not_in` to create a role allowlist. The `principal.*` selectors (`user_id`, `role`, `org_id`, `service_id`, `ticket_ref`) resolve from the `Principal` object attached to the `ToolEnvelope`.
+- **Enforcing different contracts per environment.** Production needs stricter controls than staging or development. Combine the `environment` selector with `principal.role` checks using `all` to create environment-scoped gates. The `environment` value is set when constructing the `Edictum` instance or via the `env.*` selector for runtime flags.
+- **Gating tools on custom attributes beyond roles.** Your authorization model uses department, clearance level, or capability entitlements. Use `principal.claims.<key>` selectors to access arbitrary key-value pairs from the `Principal.claims` dictionary. Claims support any value type (strings, numbers, booleans) and work with all 15 operators.
+- **Preventing privilege escalation.** Your agent has access to user management or configuration tools. Use `contains_any` on `args.command` or `args.path` to deny commands that modify roles, permissions, or access control files.
+
+These patterns are preconditions (`type: pre`) -- they evaluate before tool execution and produce `deny` decisions. For post-execution data scanning, see [Data Protection](data-protection.md). For session-level caps, see [Rate Limiting](rate-limiting.md).
+
 ---
 
 ## Role-Based Access

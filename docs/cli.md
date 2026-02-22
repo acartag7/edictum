@@ -3,6 +3,18 @@
 Edictum ships a command-line interface for validating contract files, checking
 tool calls against contracts, diffing contract bundle versions, and replaying audit logs against updated contracts.
 
+## When to use this
+
+**You need contract validation in CI/CD.** Add `edictum validate contracts/production.yaml` to your pipeline to catch YAML schema errors, duplicate contract IDs, and broken regex patterns before they reach production. Add `edictum test contracts/production.yaml --cases tests/cases.yaml` to verify expected deny/allow verdicts. Both commands return structured exit codes (`0` success, `1` failure).
+
+**You are iterating on contracts during local development.** Use `edictum check` to simulate a specific tool call against your contracts without running any tools: `edictum check contracts.yaml --tool read_file --args '{"path": ".env"}'`. Add `--principal-role analyst` to test role-based contracts. Add `--json` to get machine-readable output.
+
+**You need to compare contract versions before deploying.** Use `edictum diff contracts/v1.yaml contracts/v2.yaml` to see which contract IDs were added, removed, or changed. Use `edictum replay contracts/v2.yaml --audit-log audit/last-week.jsonl` to answer: "If I deploy these contracts, which past calls would have been treated differently?"
+
+**You want to test postconditions from the command line.** Use `edictum test contracts.yaml --calls tests/calls.json` with a JSON array of tool calls that include `output` fields. This mode uses `evaluate_batch()` under the hood and evaluates both preconditions and postconditions exhaustively.
+
+The CLI is for validation, testing, and comparison. For runtime enforcement, use an [adapter](adapters/overview.md) or `guard.run()`. For programmatic dry-run evaluation, use [`evaluate()`](evaluation.md).
+
 ## Installation
 
 ```bash

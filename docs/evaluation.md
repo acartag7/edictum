@@ -2,6 +2,16 @@
 
 You need to test whether a tool call would be allowed or denied without actually executing it. The `evaluate()` and `evaluate_batch()` methods on the `Edictum` class check a tool call against all matching contracts and return a detailed result -- no tool execution, no session state changes, no audit events.
 
+## When to use this
+
+**You are gating CI/CD pipelines on contract compliance.** Before deploying a new contract bundle, run `guard.evaluate_batch()` against a list of known tool calls to verify that expected denials and allowances still hold. `evaluate()` is synchronous and produces no audit events -- it runs fast and leaves no side effects.
+
+**You are testing contract changes before deployment.** A developer modifies a contract's `when` condition and wants to check the impact. `evaluate()` evaluates all matching contracts exhaustively (no short-circuit on first denial), so you see every contract that fires, not just the first one. Pass `output="SSN: 123-45-6789"` to test postconditions as well.
+
+**You are building a contract validation UI or approval workflow.** Your platform team needs a synchronous API that checks a hypothetical tool call against the current contract bundle and returns structured results (`EvaluationResult` with per-contract `ContractResult` objects). Unlike `guard.run()`, `evaluate()` requires no `asyncio`, no session state, and no tool function.
+
+Use `evaluate()` for fast, synchronous contract logic testing. Use `run()` when you need the full pipeline with session state, hooks, and audit events. Use the CLI (`edictum check`, `edictum test`) for spot-checks and CI integration. See the [comparison table](#evaluate-vs-run-vs-cli) below.
+
 ---
 
 ## Quick Example

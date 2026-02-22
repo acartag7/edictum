@@ -4,6 +4,22 @@ Edictum instruments the pipeline with OpenTelemetry spans, metrics, and structur
 
 ---
 
+## When to use this
+
+You need to monitor contract enforcement decisions in a running system.
+
+- **Production monitoring with Grafana, Datadog, or Splunk.** Your agent is deployed and you need dashboards showing denial rates, which tools trigger the most denials, and how denial patterns change after contract updates. Edictum emits `edictum.calls.denied` and `edictum.calls.allowed` counters plus `tool.execute {tool_name}` spans with `edictum.verdict`, `edictum.decision.name`, and `edictum.policy_version` attributes. Use `configure_otel()` to connect to your collector.
+
+- **Debugging contract behavior in staging.** A contract is firing unexpectedly in staging and you need to see the full evaluation context. OTel spans include `edictum.tool.name`, `edictum.principal.role`, `edictum.mode`, and denial reasons. Point `configure_otel(endpoint="http://localhost:4317")` at a local collector with Tempo and Grafana to inspect individual spans.
+
+- **Correlating enforcement spans with application traces.** Your application already emits OTel spans for HTTP requests or agent loop iterations. Edictum spans automatically participate in OTel context propagation -- they appear as children of whatever span is active when the pipeline runs. No additional configuration is required; the standard `TracerProvider` handles span parenting.
+
+- **Validating new contracts with observe mode metrics.** You deployed a new contract in observe mode and need to track `CALL_WOULD_DENY` volume before flipping to enforce. The `edictum.verdict` span attribute distinguishes `allowed`, `denied`, and `would_deny`, letting you build alerts for shadow-denial spikes that indicate the contract needs tuning.
+
+For the audit event format and sink configuration, see [Audit sinks](../audit/sinks.md). For the full span attribute and metric reference, see [Telemetry reference](../audit/telemetry.md).
+
+---
+
 ## What Edictum Emits
 
 ### Spans

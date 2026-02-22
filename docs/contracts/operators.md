@@ -4,6 +4,17 @@ Edictum's expression grammar supports 15 operators across five categories. Each 
 
 For the full schema context, see the [YAML Contract Reference](yaml-reference.md).
 
+## When to use this
+
+You need this reference when you are writing `when` expressions and need to pick the right operator for a condition.
+
+- **Choosing between string operators.** You have a selector that resolves to a string and need to decide between `contains`, `starts_with`, `ends_with`, `matches`, or `matches_any`. Use `contains` / `contains_any` for simple substring checks (e.g., `.env` in a file path). Use `starts_with` / `ends_with` for prefix/suffix matching (e.g., blocking absolute paths with `starts_with: /`). Use `matches` / `matches_any` when you need regex precision with word boundaries (e.g., `'\brm\s+(-rf?|--recursive)\b'` to match `rm -rf` without catching `perform`).
+- **Building numeric guards.** You need to cap or validate numeric tool arguments like `batch_size`, `timeout`, or `max_retries`. The four numeric operators (`gt`, `gte`, `lt`, `lte`) require both the selector value and the operator value to be numbers. If the selector resolves to a string, the operator triggers a `policy_error` (fail-closed).
+- **Handling missing or optional fields.** The `exists` operator is the only operator that works on missing fields. Use `exists: false` to detect absent fields (e.g., `principal.ticket_ref: { exists: false }` to require a ticket reference). All other operators return `false` when the field is missing -- the contract does not fire.
+- **Understanding fail-closed behavior.** When an operator receives a value of the wrong type (e.g., `contains` on an integer), the evaluation triggers a `policy_error`. This means the contract fires rather than silently ignoring the mismatch. This page documents the exact type requirements for each operator.
+
+Contract authors writing YAML bundles and developers debugging unexpected contract evaluations will reference this page. The 15 operators map directly to the `_OPERATORS` registry in the evaluator, each implemented as a single Python function.
+
 ---
 
 ## Quick Reference

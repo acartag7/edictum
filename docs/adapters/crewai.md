@@ -4,6 +4,13 @@ The `CrewAIAdapter` registers global before/after tool-call hooks with the
 CrewAI framework. Every tool call across all agents in a crew passes through
 these hooks.
 
+## When to use this
+
+- **You have a CrewAI crew and need shared contract enforcement across all agents.** The `register()` method installs global before/after hooks via `register_before_tool_call_hook` and `register_after_tool_call_hook`. Every tool call across every agent in the crew passes through the same contracts — one registration covers the entire runtime.
+- **You need to limit tool usage across a multi-agent crew.** Session contracts (e.g., max 50 tool calls) apply to the entire session. Because CrewAI hooks are global, a single adapter instance tracks cumulative usage across all agents, preventing any one agent from exhausting shared resources.
+- **You want a production audit trail for crew operations.** Every tool call emits a structured `AuditEvent` with the principal, tool name, arguments (redacted), and decision. Route these to a `FileAuditSink` for local development or OTel spans for production observability.
+- **You need to validate contracts before enforcing them.** Deploy with `mode="observe"` to see which tool calls would be denied without disrupting your crew's execution. Tool name normalization (spaces and hyphens to underscores) happens automatically so contract names match regardless of how CrewAI formats them.
+
 ## Installation
 
 ```bash

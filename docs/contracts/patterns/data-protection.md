@@ -2,6 +2,17 @@
 
 Data protection contracts prevent sensitive information from leaking through agent tool calls. They cover two sides: blocking access to sensitive files (preconditions) and scanning tool output for sensitive patterns (postconditions).
 
+## When to use this
+
+You need data protection patterns when sensitive information -- PII, secrets, credentials -- could flow through your agent's tool calls, either as input or output.
+
+- **Scanning tool output for PII or secrets.** Your agent calls tools that return data from databases, APIs, or files. Postconditions with `output.text` and `matches_any` detect patterns like SSNs, email addresses, credit card numbers, AWS access keys, and JWT tokens after the tool runs. Use `effect: warn` for detection-only, `effect: redact` for automatic pattern replacement on READ/PURE tools, or `effect: deny` to suppress the entire output.
+- **Blocking reads of sensitive files before they happen.** Preconditions with `args.path` and `contains_any` or `ends_with` deny access to files like `.env`, `.pem`, `kubeconfig`, `.tfvars`, and `.npmrc` before the tool executes. No data is exposed because the tool never runs.
+- **Monitoring for oversized output.** Large tool responses waste context window tokens and dilute agent focus. A postcondition with `output.text` and `matches: '.{50000,}'` warns when output exceeds a size threshold.
+- **Defense in depth across pre and post stages.** Preconditions block known-dangerous inputs; postconditions catch sensitive data that slips through in output. Combining both covers the full lifecycle of a tool call.
+
+These patterns use both preconditions (`type: pre`) and postconditions (`type: post`). Postcondition effects (`warn`, `redact`, `deny`) are constrained by the tool's side-effect classification in the `tools:` section -- `redact` and `deny` only work for `SideEffect.READ` and `SideEffect.PURE` tools.
+
 ---
 
 ## PII Detection in Tool Output

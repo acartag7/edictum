@@ -4,6 +4,13 @@ The `AgnoAdapter` produces a wrap-around hook function compatible with Agno's
 `tool_hooks` parameter. Unlike other adapters, the Agno hook wraps the entire
 tool execution -- it receives the callable and is responsible for invoking it.
 
+## When to use this
+
+- **You are building with Agno and want contract enforcement via `tool_hooks`.** The `as_tool_hook()` method returns a function matching Agno's `(function_name, function_call, arguments) -> result` signature. Pass it to `Agent(tool_hooks=[hook])` and every tool call flows through precondition and postcondition evaluation.
+- **You need full control over tool results, including redaction.** Because the Agno hook wraps the entire tool execution — the adapter calls `function_call(**arguments)` itself — it can replace the returned result. The `on_postcondition_warn` callback's return value becomes the final tool output, making this adapter suitable for PII interception in regulated environments.
+- **You have async tool callables.** If `function_call(**arguments)` returns a coroutine, the adapter awaits it automatically. No extra wiring is needed for async tools.
+- **You want to enforce contracts without framework lock-in.** Your contracts are defined in YAML and evaluated by the pipeline — switching from Agno to another framework means changing only the adapter, not the contract bundle.
+
 ## Installation
 
 ```bash

@@ -2,6 +2,12 @@
 
 Edictum ships six framework adapters. This guide helps you choose the right one and understand the tradeoffs.
 
+## When to use this
+
+- **You are evaluating which agent framework to use and want to understand governance tradeoffs.** Each framework handles tool call interception differently — some adapters can redact results before the LLM sees them, others can only deny or log. This page breaks down the capabilities so you can choose the framework that fits your compliance requirements.
+- **You are migrating from one framework to another.** Your contracts stay the same — only the adapter wiring changes. Use this comparison to understand what behavioral differences to expect (e.g., moving from LangChain's wrap-around pattern to OpenAI's separate input/output guardrails).
+- **You need to understand the postcondition enforcement story per adapter.** Some adapters support `effect: redact` natively (LangChain, Agno, Semantic Kernel), while others require a wrapper integration path or are limited to side-effect callbacks. This page maps which effects work where.
+
 ---
 
 ## Quick Comparison

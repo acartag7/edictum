@@ -4,6 +4,17 @@ Rate limiting contracts use session-level counters to govern cumulative agent be
 
 Session contracts have no `tool` or `when` fields. They track three types of counters: total successful executions, total attempts (including denied calls), and per-tool execution counts.
 
+## When to use this
+
+You need rate limiting patterns when you want to cap how much work an agent can do in a single session, either globally or per-tool.
+
+- **Preventing runaway agents.** Your agent runs autonomously and could loop indefinitely. A session contract with `max_tool_calls` sets a hard ceiling on successful executions. When the limit is reached, the pipeline denies further calls and the denial message instructs the agent to summarize progress and stop. The `OperationLimits` dataclass tracks these counters via the `Session` and `MemoryBackend`.
+- **Capping high-impact tools independently.** Certain tools (deployments, notifications, external API calls) have outsized impact. Use `max_calls_per_tool` to cap specific tools while leaving others constrained only by the overall session limit. For example, cap `deploy_service` at 3 calls and `send_email` at 10, with an overall `max_tool_calls` of 100.
+- **Detecting denial loops and stuck agents.** Combine `max_attempts` with `max_tool_calls`. The attempt counter tracks all contract evaluations, including denied calls. When `max_attempts` fires before `max_tool_calls`, the agent is making many failed attempts -- a sign of a retry loop or misconfigured tool. A ratio of 1.5:1 to 3:1 (attempts to calls) is typical depending on how aggressively you want to detect stuck agents.
+- **Setting cost and resource budgets.** Session limits act as a cost guardrail. An agent with `max_tool_calls: 50` cannot exceed 50 external API calls regardless of what the LLM decides to do. This is a deterministic ceiling, not a suggestion.
+
+These patterns are session contracts (`type: session`). They apply across all tool calls in a session and are evaluated on every attempt. For per-tool access restrictions, see [Access Control](access-control.md).
+
 ---
 
 ## Session-Wide Limits

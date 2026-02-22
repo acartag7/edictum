@@ -5,6 +5,13 @@ per-tool guardrail system. It produces a pair of guardrail objects --
 `(ToolInputGuardrail, ToolOutputGuardrail)` -- that you attach to individual
 tools via `@function_tool`.
 
+## When to use this
+
+- **You are building with the OpenAI Agents SDK and need per-tool contract enforcement.** You have `@function_tool`-decorated functions and want preconditions evaluated before execution and postconditions evaluated after. The adapter returns `(ToolInputGuardrail, ToolOutputGuardrail)` from `as_guardrails()` that attach directly to the decorator via `tool_input_guardrails` and `tool_output_guardrails`.
+- **You need to deny tool calls that violate contracts.** The input guardrail calls `reject_content(reason)` when a precondition fails, preventing the tool from executing. The output guardrail enforces `effect: deny` postconditions the same way.
+- **You want audit and session tracking alongside SDK guardrails.** Each guardrail evaluation emits a structured `AuditEvent` and increments session counters, giving you a complete trace of every tool call — allowed, denied, or observed.
+- **You need to validate contracts in production without blocking.** Deploy with `mode="observe"` to log what would be denied, then switch to `mode="enforce"` when ready. Note that `effect: redact` postconditions require the wrapper integration path — native guardrails cannot transform tool results.
+
 ## Installation
 
 ```bash

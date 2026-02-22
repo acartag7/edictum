@@ -2,6 +2,17 @@
 
 Compliance patterns address regulatory and organizational requirements: classifying contracts with tags, tracking contract bundle versions, rolling out new contracts safely with observe mode, and filtering audit events downstream.
 
+## When to use this
+
+You need compliance patterns when your governance contracts must produce auditable evidence for regulatory, organizational, or operational requirements.
+
+- **Classifying contracts for regulatory reporting.** Your audit system needs to categorize events by concern (PII, secrets, change control). Use `then.tags` to stamp classification labels on every contract. Tags flow into `AuditEvent` and can be filtered, aggregated, and routed downstream. Define a tag taxonomy before writing contracts to keep filtering reliable.
+- **Proving which contract bundle was active during an incident.** Every YAML bundle gets a SHA256 hash computed by `load_bundle()` at load time. This hash is stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span, creating an immutable link between any audit record and the exact contract bundle that produced it. Store your YAML files in version control so the hash points to a specific commit.
+- **Rolling out new contracts safely.** You are adding a contract to a production bundle and need to validate it first. Set `mode: observe` on the new contract to shadow-test it. Observed denials emit `CALL_WOULD_DENY` audit events without denying tool calls. Review the events, confirm no false positives, then switch to `mode: enforce`. For testing a candidate bundle against the enforced version, use `observe_alongside: true` with multi-path `from_yaml()`.
+- **Building a compliance dashboard from audit events.** Tags and `policy_version` together give you the building blocks for downstream dashboards. Filter events by tag (`pii`, `compliance`, `dlp`) to show regulatory coverage, and correlate `policy_version` across events to detect contract drift.
+
+These patterns combine all three contract types and focus on the metadata and observability features of the contract bundle format. For the actual enforcement contracts they classify, see [Access Control](access-control.md), [Data Protection](data-protection.md), and [Change Control](change-control.md).
+
 ---
 
 ## Regulatory Tags
