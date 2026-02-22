@@ -135,43 +135,86 @@ def version() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _count_contracts(bundle_data: dict) -> dict[str, int]:
+    """Count contracts by type in a bundle."""
+    counts: dict[str, int] = {}
+    for c in bundle_data.get("contracts", []):
+        ct = c.get("type", "unknown")
+        counts[ct] = counts.get(ct, 0) + 1
+    return counts
+
+
+def _composition_report_to_dict(report: Any) -> dict:
+    """Convert a composition report to a JSON-serializable dict."""
+    result: dict[str, list] = {"overrides": [], "shadows": []}
+    for o in report.overridden_contracts:
+        result["overrides"].append(
+            {
+                "contract_id": o.contract_id,
+                "overridden_by": o.overridden_by,
+                "original_source": o.original_source,
+            }
+        )
+    for s in report.shadow_contracts:
+        result["shadows"].append(
+            {
+                "contract_id": s.contract_id,
+                "observed_source": s.observed_source,
+                "enforced_source": s.enforced_source,
+            }
+        )
+    return result
+
+
 @cli.command()
 @click.argument("files", nargs=-1, required=True, type=click.Path())
-def validate(files: tuple[str, ...]) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output results as JSON.")
+def validate(files: tuple[str, ...], json_output: bool) -> None:
     """Validate one or more contract bundle files."""
     has_errors = False
     valid_bundles: list[tuple[dict, str]] = []
+    json_files: list[dict] = []
 
     for file_path in files:
         path = Path(file_path)
         if not path.exists():
-            _err_console.print(f"[red]  {escape(str(path))} — file not found[/red]")
+            if json_output:
+                json_files.append({"file": str(path), "valid": False, "error": "file not found"})
+            else:
+                _err_console.print(f"[red]  {escape(str(path))} — file not found[/red]")
             has_errors = True
             continue
 
         try:
             bundle_data, _ = load_bundle(file_path)
-        except EdictumConfigError as e:
-            _err_console.print(f"[red]  {escape(path.name)} — {escape(str(e))}[/red]")
-            has_errors = True
-            continue
-        except Exception as e:
-            _err_console.print(f"[red]  {escape(path.name)} — {escape(str(e))}[/red]")
+        except (EdictumConfigError, Exception) as e:
+            if json_output:
+                json_files.append({"file": path.name, "valid": False, "error": str(e)})
+            else:
+                _err_console.print(f"[red]  {escape(path.name)} — {escape(str(e))}[/red]")
             has_errors = True
             continue
 
-        contracts = bundle_data.get("contracts", [])
-        counts: dict[str, int] = {}
-        for c in contracts:
-            ct = c.get("type", "unknown")
-            counts[ct] = counts.get(ct, 0) + 1
-
+        counts = _count_contracts(bundle_data)
         total = sum(counts.values())
-        breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
-        _console.print(f"[green]  {escape(path.name)}[/green] — {total} contracts ({breakdown})")
+
+        if json_output:
+            json_files.append(
+                {
+                    "file": path.name,
+                    "valid": True,
+                    "contracts": total,
+                    "breakdown": counts,
+                }
+            )
+        else:
+            breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+            _console.print(f"[green]  {escape(path.name)}[/green] — {total} contracts ({breakdown})")
+
         valid_bundles.append((bundle_data, path.name))
 
     # Compose when 2+ valid bundles
+    json_composed: dict | None = None
     if len(valid_bundles) >= 2:
         from edictum.yaml_engine.compiler import compile_contracts
         from edictum.yaml_engine.composer import compose_bundles
@@ -181,20 +224,32 @@ def validate(files: tuple[str, ...]) -> None:
         try:
             compile_contracts(composed.bundle)
         except EdictumConfigError as e:
-            _err_console.print(f"[red]Composed bundle failed compilation: {escape(str(e))}[/red]")
+            if json_output:
+                json_composed = {"error": str(e)}
+            else:
+                _err_console.print(f"[red]Composed bundle failed compilation: {escape(str(e))}[/red]")
             has_errors = True
             sys.exit(1)
 
-        contracts = composed.bundle.get("contracts", [])
-        counts = {}
-        for c in contracts:
-            ct = c.get("type", "unknown")
-            counts[ct] = counts.get(ct, 0) + 1
-
+        counts = _count_contracts(composed.bundle)
         total = sum(counts.values())
-        breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
-        _console.print(f"\n[bold]Composed:[/bold] {total} contracts ({breakdown})")
-        _print_composition_report(composed.report)
+
+        if json_output:
+            json_composed = {
+                "contracts": total,
+                "breakdown": counts,
+                **_composition_report_to_dict(composed.report),
+            }
+        else:
+            breakdown = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
+            _console.print(f"\n[bold]Composed:[/bold] {total} contracts ({breakdown})")
+            _print_composition_report(composed.report)
+
+    if json_output:
+        output: dict[str, Any] = {"files": json_files, "valid": not has_errors}
+        if json_composed is not None:
+            output["composed"] = json_composed
+        click.echo(json.dumps(output, indent=2))
 
     sys.exit(1 if has_errors else 0)
 
@@ -212,6 +267,7 @@ def validate(files: tuple[str, ...]) -> None:
 @click.option("--principal-role", default=None, help="Principal role.")
 @click.option("--principal-user", default=None, help="Principal user ID.")
 @click.option("--principal-ticket", default=None, help="Principal ticket ref.")
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output results as JSON.")
 def check(
     file: str,
     tool: str,
@@ -220,20 +276,27 @@ def check(
     principal_role: str | None,
     principal_user: str | None,
     principal_ticket: str | None,
+    json_output: bool,
 ) -> None:
     """Dry-run a tool call against contracts."""
     # Parse JSON args
     try:
         parsed_args = json.loads(tool_args)
     except json.JSONDecodeError as e:
-        _err_console.print(f"[red]Invalid JSON in --args: {escape(str(e))}[/red]")
+        if json_output:
+            click.echo(json.dumps({"error": f"Invalid JSON in --args: {e}"}, indent=2))
+        else:
+            _err_console.print(f"[red]Invalid JSON in --args: {escape(str(e))}[/red]")
         sys.exit(2)
 
     # Load contracts
     try:
         _, _, compiled = _load_and_compile(file)
     except EdictumConfigError as e:
-        _err_console.print(f"[red]Failed to load contracts: {escape(str(e))}[/red]")
+        if json_output:
+            click.echo(json.dumps({"error": f"Failed to load contracts: {e}"}, indent=2))
+        else:
+            _err_console.print(f"[red]Failed to load contracts: {escape(str(e))}[/red]")
         sys.exit(1)
 
     # Build principal
@@ -252,6 +315,21 @@ def check(
     verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
 
     n_evaluated = len(evaluated)
+    verdict_label = "deny" if verdict == "denied" else "allow"
+
+    if json_output:
+        output: dict[str, Any] = {
+            "tool": tool,
+            "args": parsed_args,
+            "verdict": verdict_label,
+            "reason": message,
+            "contracts_evaluated": n_evaluated,
+            "environment": environment,
+        }
+        if contract_id:
+            output["contract_id"] = contract_id
+        click.echo(json.dumps(output, indent=2))
+        sys.exit(1 if verdict == "denied" else 0)
 
     if verdict == "denied":
         _console.print(f"[red bold]DENIED[/red bold] by contract [yellow]{escape(contract_id or '')}[/yellow]")
@@ -281,10 +359,14 @@ def _contracts_by_id(bundle: dict) -> dict[str, dict]:
 
 @cli.command()
 @click.argument("files", nargs=-1, required=True, type=click.Path(exists=True))
-def diff(files: tuple[str, ...]) -> None:
+@click.option("--json", "json_output", is_flag=True, default=False, help="Output results as JSON.")
+def diff(files: tuple[str, ...], json_output: bool) -> None:
     """Compare contract bundles and show changes."""
     if len(files) < 2:
-        _err_console.print("[red]diff requires at least 2 files.[/red]")
+        if json_output:
+            click.echo(json.dumps({"error": "diff requires at least 2 files."}, indent=2))
+        else:
+            _err_console.print("[red]diff requires at least 2 files.[/red]")
         sys.exit(2)
 
     # Load all bundles
@@ -294,10 +376,14 @@ def diff(files: tuple[str, ...]) -> None:
             bundle_data, _, _ = _load_and_compile(file_path)
             loaded.append((bundle_data, file_path))
         except EdictumConfigError as e:
-            _err_console.print(f"[red]Failed to load {escape(file_path)}: {escape(str(e))}[/red]")
+            if json_output:
+                click.echo(json.dumps({"error": f"Failed to load {file_path}: {e}"}, indent=2))
+            else:
+                _err_console.print(f"[red]Failed to load {escape(file_path)}: {escape(str(e))}[/red]")
             sys.exit(1)
 
     has_changes = False
+    json_result: dict[str, Any] = {}
 
     # Standard diff for exactly 2 files
     if len(files) == 2:
@@ -325,38 +411,47 @@ def diff(files: tuple[str, ...]) -> None:
 
         has_changes = bool(added or removed or changed)
 
-        if added:
-            _console.print("[green bold]Added:[/green bold]")
-            for cid in added:
-                c = new_contracts[cid]
-                _console.print(f"  + {cid} (type: {c.get('type', '?')})")
+        if json_output:
+            json_result = {
+                "added": [{"id": cid, "type": new_contracts[cid].get("type", "?")} for cid in added],
+                "removed": [{"id": cid, "type": old_contracts[cid].get("type", "?")} for cid in removed],
+                "changed": changed,
+                "unchanged": unchanged,
+                "has_changes": has_changes,
+            }
+        else:
+            if added:
+                _console.print("[green bold]Added:[/green bold]")
+                for cid in added:
+                    c = new_contracts[cid]
+                    _console.print(f"  + {cid} (type: {c.get('type', '?')})")
 
-        if removed:
-            _console.print("[red bold]Removed:[/red bold]")
-            for cid in removed:
-                c = old_contracts[cid]
-                _console.print(f"  - {cid} (type: {c.get('type', '?')})")
+            if removed:
+                _console.print("[red bold]Removed:[/red bold]")
+                for cid in removed:
+                    c = old_contracts[cid]
+                    _console.print(f"  - {cid} (type: {c.get('type', '?')})")
 
-        if changed:
-            _console.print("[yellow bold]Changed:[/yellow bold]")
-            for cid in changed:
-                _console.print(f"  ~ {cid}")
+            if changed:
+                _console.print("[yellow bold]Changed:[/yellow bold]")
+                for cid in changed:
+                    _console.print(f"  ~ {cid}")
 
-        if unchanged and not has_changes:
-            _console.print("[dim]No changes detected. Bundles are identical.[/dim]")
+            if unchanged and not has_changes:
+                _console.print("[dim]No changes detected. Bundles are identical.[/dim]")
 
-        # Summary
-        parts = []
-        if added:
-            parts.append(f"{len(added)} added")
-        if removed:
-            parts.append(f"{len(removed)} removed")
-        if changed:
-            parts.append(f"{len(changed)} changed")
-        if unchanged:
-            parts.append(f"{len(unchanged)} unchanged")
-        if parts:
-            _console.print(f"\nSummary: {', '.join(parts)}")
+            # Summary
+            parts = []
+            if added:
+                parts.append(f"{len(added)} added")
+            if removed:
+                parts.append(f"{len(removed)} removed")
+            if changed:
+                parts.append(f"{len(changed)} changed")
+            if unchanged:
+                parts.append(f"{len(unchanged)} unchanged")
+            if parts:
+                _console.print(f"\nSummary: {', '.join(parts)}")
 
     # Composition report for 2+ files
     from edictum.yaml_engine.composer import compose_bundles
@@ -368,7 +463,17 @@ def diff(files: tuple[str, ...]) -> None:
         # For 3+ files (no standard diff), composition is the primary output
         if len(files) > 2:
             has_changes = True
-        _print_composition_report(report)
+        if json_output:
+            json_result["composition"] = _composition_report_to_dict(report)
+            if len(files) > 2:
+                json_result["has_changes"] = has_changes
+        else:
+            _print_composition_report(report)
+
+    if json_output:
+        if "has_changes" not in json_result:
+            json_result["has_changes"] = has_changes
+        click.echo(json.dumps(json_result, indent=2))
 
     sys.exit(1 if has_changes else 0)
 
