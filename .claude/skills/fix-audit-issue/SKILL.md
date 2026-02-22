@@ -24,7 +24,9 @@ If the issue involves adding a new feature or changing API behavior (not just a 
 - Does this overlap with existing features? Explain when to use which.
 - Does this surface related features that should be designed separately? Note them for future work.
 
-Include this analysis in the PR body under a `## Scenarios` section.
+Include this analysis in BOTH:
+- The PR body under a `## Scenarios` section
+- The docs page under a `## When to use this` section (see `.docs-style-guide.md` page structure pattern)
 
 ## Step 3: Follow fix-bug procedure
 

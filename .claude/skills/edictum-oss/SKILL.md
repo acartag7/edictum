@@ -36,7 +36,9 @@ Everything under `src/edictum/` is OSS core (MIT). This includes:
    - What user personas benefit? (developer debugging locally vs. platform team in production)
    - Does this overlap with existing features? (e.g., OTel already covers some observability use cases — explain when to use which)
    - Does this naturally surface related features that should be designed separately? (e.g., on_deny surfaced HITL as a distinct future feature)
-   - Include this analysis in the PR body under a "## Scenarios" section
+   - Include this analysis in BOTH:
+     - The PR body under a `## Scenarios` section
+     - The docs page under a `## When to use this` section (see `.docs-style-guide.md` page structure pattern)
 5. **Scope with user** — confirm approach before writing code
 6. **Implement** — small, focused changes
 7. **Behavior test** — every new/changed API parameter gets a test in `tests/test_behavior/test_{module}_behavior.py`
