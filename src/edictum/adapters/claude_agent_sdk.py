@@ -40,6 +40,7 @@ class ClaudeAgentSDKAdapter:
         guard: Edictum,
         session_id: str | None = None,
         principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ):
         self._guard = guard
         self._pipeline = GovernancePipeline(guard)
@@ -48,10 +49,21 @@ class ClaudeAgentSDKAdapter:
         self._call_index = 0
         self._pending: dict[str, tuple[Any, Any]] = {}
         self._principal = principal
+        self._principal_resolver = principal_resolver
 
     @property
     def session_id(self) -> str:
         return self._session_id
+
+    def set_principal(self, principal: Principal) -> None:
+        """Update the principal for subsequent tool calls."""
+        self._principal = principal
+
+    def _resolve_principal(self, tool_name: str, tool_input: dict[str, Any]) -> Principal | None:
+        """Resolve principal: resolver overrides static."""
+        if self._principal_resolver is not None:
+            return self._principal_resolver(tool_name, tool_input)
+        return self._principal
 
     def to_hook_callables(
         self,
@@ -99,7 +111,7 @@ class ClaudeAgentSDKAdapter:
             tool_use_id=tool_use_id,
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
-            principal=self._principal,
+            principal=self._resolve_principal(tool_name, tool_input),
         )
         self._call_index += 1
 

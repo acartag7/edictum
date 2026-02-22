@@ -130,6 +130,8 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ):
         self.environment = environment
         self.mode = mode
@@ -146,6 +148,8 @@ class Edictum:
         self._on_deny = on_deny
         self._on_allow = on_allow
         self._success_check = success_check
+        self._principal = principal
+        self._principal_resolver = principal_resolver
 
         # Build tool registry
         self.tool_registry = ToolRegistry()
@@ -191,6 +195,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -217,6 +223,9 @@ class Edictum:
                 ``{"context": lambda env: env.metadata}`` makes ``context.key``
                 selectors available in YAML contracts. Prefixes must not clash
                 with built-in selector prefixes.
+            principal: Static principal for all tool calls.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Overrides static principal.
 
         Returns:
             Configured Edictum instance, or a tuple of (Edictum, CompositionReport)
@@ -310,6 +319,8 @@ class Edictum:
             on_deny=on_deny,
             on_allow=on_allow,
             success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
         )
 
         if return_report:
@@ -332,6 +343,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -355,6 +368,9 @@ class Edictum:
                 Each callable receives a ``ToolEnvelope`` and returns a ``dict``
                 that is searched via dotted-path resolution. Prefixes must not
                 clash with built-in selector prefixes.
+            principal: Static principal for all tool calls.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Overrides static principal.
 
         Returns:
             Configured Edictum instance.
@@ -425,6 +441,8 @@ class Edictum:
             on_deny=on_deny,
             on_allow=on_allow,
             success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
         )
 
     @classmethod
@@ -444,6 +462,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a template.
 
@@ -464,6 +484,10 @@ class Edictum:
                 to ``from_yaml()``.
             custom_selectors: Mapping of selector prefixes to resolver callables.
                 Forwarded to ``from_yaml()``.
+            principal: Static principal for all tool calls. Forwarded to
+                ``from_yaml()``.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Forwarded to ``from_yaml()``.
 
         Returns:
             Configured Edictum instance.
@@ -491,6 +515,8 @@ class Edictum:
                     custom_operators=custom_operators,
                     custom_selectors=custom_selectors,
                     success_check=success_check,
+                    principal=principal,
+                    principal_resolver=principal_resolver,
                 )
 
         all_templates: set[str] = set()
@@ -610,6 +636,24 @@ class Edictum:
                 merged._session_contracts.append(contract)
 
         return merged
+
+    def set_principal(self, principal: Principal) -> None:
+        """Update the principal used for subsequent tool calls.
+
+        Does not affect in-flight calls or session state (attempt counts,
+        execution history).
+        """
+        self._principal = principal
+
+    def _resolve_principal(self, tool_name: str, tool_input: dict[str, Any]) -> Principal | None:
+        """Resolve the principal for a tool call.
+
+        If a principal_resolver is set, it is called with (tool_name, tool_input)
+        and its result overrides the static principal.
+        """
+        if self._principal_resolver is not None:
+            return self._principal_resolver(tool_name, tool_input)
+        return self._principal
 
     def _register_contract(self, item: Any) -> None:
         contract_type = getattr(item, "_edictum_type", None)
@@ -865,6 +909,12 @@ class Edictum:
 
         # Allow per-call environment override; fall back to guard-level default
         env = envelope_kwargs.pop("environment", self.environment)
+
+        # Resolve principal: per-call resolver > static > envelope_kwargs
+        if "principal" not in envelope_kwargs:
+            resolved = self._resolve_principal(tool_name, args)
+            if resolved is not None:
+                envelope_kwargs["principal"] = resolved
 
         envelope = create_envelope(
             tool_name=tool_name,
