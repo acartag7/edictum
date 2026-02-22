@@ -27,13 +27,21 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,yaml,sinks,cli]"
+
       - name: Run Code Review
         id: review
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}
-          claude_args: '--max-turns 12 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(cat:*),Read,Glob,Grep,Write"'
+          claude_args: '--max-turns 16 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(cat:*),Bash(pytest:*),Bash(python:*),Bash(ruff:*),Read,Glob,Grep,Write"'
           prompt: |
             You are a code reviewer for this repository.
 
