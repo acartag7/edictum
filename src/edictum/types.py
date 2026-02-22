@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass
 class HookRegistration:
-    """Internal registration for a hook callback."""
+    """Registration for a hook callback."""
 
     phase: str  # "before" | "after"
     tool: str  # tool name or "*" for all

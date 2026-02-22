@@ -63,6 +63,7 @@ __all__ = [
     "ToolRegistry",
     "BashClassifier",
     "HookDecision",
+    "HookRegistration",
     "HookResult",
     "Verdict",
     "precondition",
