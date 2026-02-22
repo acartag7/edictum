@@ -11,7 +11,7 @@ from edictum import Edictum, HookRegistration, HookDecision
 
 def block_destructive(envelope):
     """Deny any bash command containing 'rm -rf'."""
-    cmd = envelope.tool_input.get("command", "")
+    cmd = envelope.args.get("command", "")
     if "rm -rf" in cmd:
         return HookDecision.deny("Destructive command denied")
     return HookDecision.allow()
@@ -150,7 +150,7 @@ async def check_external_policy(envelope):
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://policy.internal/check",
-            json={"tool": envelope.tool_name, "args": envelope.tool_input},
+            json={"tool": envelope.tool_name, "args": envelope.args},
         )
         if resp.json().get("denied"):
             return HookDecision.deny(resp.json()["reason"])
