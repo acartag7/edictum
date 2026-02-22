@@ -4,7 +4,7 @@
 
 Runtime contract enforcement for AI agent tool calls. Deterministic pipeline: preconditions, postconditions, session contracts, principal-aware enforcement. Six framework adapters (LangChain, CrewAI, Agno, Semantic Kernel, OpenAI Agents SDK, Claude Agent SDK). Zero runtime deps in core.
 
-Current version: 0.8.1 (PyPI: `edictum`)
+Current version: 0.9.0 (PyPI: `edictum`)
 
 ## Architecture: Open-Core with ee/ Directory
 
@@ -95,6 +95,7 @@ The tier split follows one rule: **evaluation engine = OSS, infrastructure = ent
 - v0.7.0: env.* selector, Edictum.from_multiple() guard merging, Claude Code GitHub Actions
 - v0.8.0: Bundle composition (compose_bundles, from_yaml multi-file), dual-mode evaluation
 - v0.8.1: RuleResult → ContractResult rename, terminology enforcement
+- v0.9.0: YAML extensibility (custom_operators, custom_selectors, metadata.* selector, template_dirs, from_yaml_string), adapter lifecycle (on_deny, on_allow, success_check, set_principal, principal_resolver), CompositeSink, CLI --json/--environment, OTel TLS
 - Docs overhaul: homepage, quickstart, concepts section, patterns, 7 guides
 - edictum-demo repo: github.com/acartag7/edictum-demo
 

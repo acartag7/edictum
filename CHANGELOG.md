@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+- `custom_operators` parameter on `from_yaml()`, `from_yaml_string()`, and `from_template()` — register custom YAML condition operators
+- `custom_selectors` parameter on `from_yaml()`, `from_yaml_string()`, and `from_template()` — register custom YAML value selectors
+- `metadata.*` selector — contracts can reference bundle metadata fields
+- `template_dirs` parameter on `from_template()` and `list_templates()` — load templates from custom directories
+- `from_yaml_string()` and `load_bundle_string()` — load contracts from string/bytes input
+- `on_deny` and `on_allow` lifecycle callbacks on `Edictum` — fire on every denial or allow decision
+- `success_check` parameter on `Edictum` — custom tool success detection for postconditions
+- `set_principal()` and `principal_resolver` on all 6 adapters — mutable principal for mid-session role changes
+- `CompositeSink` — fan-out audit events to multiple sinks
+- `--json` flag on CLI `check`, `validate`, and `diff` commands — machine-readable output
+- `--environment` flag on CLI `test` command — pass environment variables to test cases
+- `insecure` parameter on `configure_otel()` — disable TLS verification for development OTel collectors
+- `terminate_on_deny` parameter on Semantic Kernel adapter
+
+### Fixed
+- OpenAI adapter `on_postcondition_warn` callback now fires from `_post()` (was only in `as_guardrails()` closure)
+- CrewAI adapter double callback invocation removed; `_deny()` returns reason string
+- OpenAI output guardrail now enforces postcondition `effect: deny`
+- Removed dead `ttl` parameter from `StorageBackend` protocol
+- Removed ghost `PIIDetector`/`pii.py` references from docs
+
+### Changed
+- CI safety-nets job removed; all tests (parity, behavior, docs-sync) now run in the main test job
+- Review workflow now has Python + test execution capability (pytest, ruff, python)
+
 ## 0.8.1
 
 ### Changed

@@ -100,6 +100,8 @@ See the [quickstart guide](https://docs.edictum.dev/quickstart/) to write your f
 - Postconditions scan tool output -- warn, redact PII, or deny entirely
 - Session contracts cap total calls, per-tool calls, and retry attempts
 - Role-gate tools with `principal` claims and `env.*` environment context
+- `on_deny` / `on_allow` callbacks for deny logging, alerting, or approval workflows
+- `set_principal()` for mid-session role changes (analyst -> operator escalation)
 
 **Test and validate**
 
@@ -115,6 +117,7 @@ See the [quickstart guide](https://docs.edictum.dev/quickstart/) to write your f
 - `edictum diff` -- see what changed between contract bundle versions
 - `edictum replay` -- replay audit logs against updated contracts to predict drift
 - Multi-file composition with `from_yaml()` and deterministic merge
+- Custom YAML operators and selectors for domain-specific contract logic
 
 **Automatic security (zero config)**
 
@@ -129,7 +132,8 @@ See the [quickstart guide](https://docs.edictum.dev/quickstart/) to write your f
 - Structured audit events on every evaluation
 - OpenTelemetry spans and metrics
 - Policy version hash on every event
-- File and stdout sinks included; custom sinks are one protocol method
+- File and stdout sinks included; `CompositeSink` fans out to multiple destinations
+- `--json` CLI output for CI/CD pipeline integration
 
 **Works with 6 frameworks**
 
@@ -159,7 +163,7 @@ See [Use Cases](https://docs.edictum.dev/use-cases/) for complete YAML bundles a
 
 ## Install
 
-Requires Python 3.11+. Current version: **v0.8.1**.
+Requires Python 3.11+. Current version: **v0.9.0**.
 
 ```bash
 pip install edictum              # core (zero deps)

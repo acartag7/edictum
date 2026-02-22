@@ -20,6 +20,25 @@ The foundation is production-usable today as an in-process library (v0.6.0).
 
 ---
 
+## [Shipped] YAML Extensibility & Adapter Lifecycle (v0.9.0)
+
+The contract engine and adapters are now extensible without forking.
+
+- **Custom operators** — register domain-specific condition operators (e.g., `valid_iban`, `pii_free`) via `custom_operators` parameter
+- **Custom selectors** — register custom value selectors for YAML conditions via `custom_selectors` parameter
+- **`metadata.*` selector** — contracts can reference bundle metadata fields in conditions
+- **`template_dirs`** — load templates from custom directories alongside built-in ones
+- **`from_yaml_string()`** — load contracts from string/bytes input for dynamic scenarios
+- **`on_deny` / `on_allow` callbacks** — lifecycle hooks on every decision for logging, alerting, or approval gates
+- **`success_check` parameter** — custom tool success detection for postcondition evaluation
+- **`set_principal()` / `principal_resolver`** — mutable principal for mid-session role escalation (analyst -> operator)
+- **`CompositeSink`** — fan-out audit events to multiple sinks simultaneously
+- **CLI `--json`** — machine-readable output on `check`, `validate`, and `diff` for CI/CD integration
+- **CLI `--environment`** — pass environment variables to `edictum test` cases
+- **OTel TLS support** — `insecure` parameter on `configure_otel()` for development collectors
+
+---
+
 ## [Planned] PII Detection
 
 Tool outputs often contain personally identifiable information that should not propagate back to the LLM or appear in logs. Basic PII finding classification already exists in `findings.py` (`classify_finding` returns `pii_detected` for contracts matching PII-related terms), but the full pluggable detection system is not yet implemented.
