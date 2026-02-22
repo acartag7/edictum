@@ -21,6 +21,8 @@ def evaluate_expression(
     expr: dict,
     envelope: ToolEnvelope,
     output_text: str | None = None,
+    *,
+    custom_operators: dict[str, Any] | None = None,
 ) -> bool | _PolicyError:
     """Evaluate a boolean expression tree against an envelope.
 
@@ -31,14 +33,14 @@ def evaluate_expression(
     Missing fields always evaluate to False (contract doesn't fire).
     """
     if "all" in expr:
-        return _eval_all(expr["all"], envelope, output_text)
+        return _eval_all(expr["all"], envelope, output_text, custom_operators)
     if "any" in expr:
-        return _eval_any(expr["any"], envelope, output_text)
+        return _eval_any(expr["any"], envelope, output_text, custom_operators)
     if "not" in expr:
-        return _eval_not(expr["not"], envelope, output_text)
+        return _eval_not(expr["not"], envelope, output_text, custom_operators)
 
     # Leaf node: exactly one selector key
-    return _eval_leaf(expr, envelope, output_text)
+    return _eval_leaf(expr, envelope, output_text, custom_operators)
 
 
 class _PolicyError:
@@ -57,9 +59,10 @@ def _eval_all(
     exprs: list[dict],
     envelope: ToolEnvelope,
     output_text: str | None,
+    custom_operators: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     for expr in exprs:
-        result = evaluate_expression(expr, envelope, output_text)
+        result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
         if isinstance(result, _PolicyError):
             return result
         if not result:
@@ -71,9 +74,10 @@ def _eval_any(
     exprs: list[dict],
     envelope: ToolEnvelope,
     output_text: str | None,
+    custom_operators: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     for expr in exprs:
-        result = evaluate_expression(expr, envelope, output_text)
+        result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
         if isinstance(result, _PolicyError):
             return result
         if result:
@@ -85,8 +89,9 @@ def _eval_not(
     expr: dict,
     envelope: ToolEnvelope,
     output_text: str | None,
+    custom_operators: dict[str, Any] | None,
 ) -> bool | _PolicyError:
-    result = evaluate_expression(expr, envelope, output_text)
+    result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
     if isinstance(result, _PolicyError):
         return result
     return not result
@@ -96,6 +101,7 @@ def _eval_leaf(
     leaf: dict,
     envelope: ToolEnvelope,
     output_text: str | None,
+    custom_operators: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     # Exactly one key in the leaf
     selector = next(iter(leaf))
@@ -108,7 +114,7 @@ def _eval_leaf(
     op_name = next(iter(operator_block))
     op_value = operator_block[op_name]
 
-    return _apply_operator(op_name, value, op_value, selector)
+    return _apply_operator(op_name, value, op_value, selector, custom_operators)
 
 
 def _coerce_env_value(raw: str) -> str | bool | int | float:
@@ -203,6 +209,7 @@ def _apply_operator(
     field_value: Any,
     op_value: Any,
     selector: str,
+    custom_operators: dict[str, Any] | None = None,
 ) -> bool | _PolicyError:
     """Apply a single operator to a resolved field value."""
     # exists is special — works on _MISSING
@@ -215,14 +222,16 @@ def _apply_operator(
         return False
 
     try:
-        return _OPERATORS[op](field_value, op_value)
+        if op in _OPERATORS:
+            return _OPERATORS[op](field_value, op_value)
+        if custom_operators and op in custom_operators:
+            return bool(custom_operators[op](field_value, op_value))
+        return _PolicyError(f"Unknown operator: '{op}'")
     except TypeError:
         return _PolicyError(
             f"Type mismatch: operator '{op}' cannot be applied to "
             f"selector '{selector}' value {type(field_value).__name__}"
         )
-    except KeyError:
-        return _PolicyError(f"Unknown operator: '{op}'")
 
 
 # --- Operator implementations ---
@@ -328,3 +337,5 @@ _OPERATORS: dict[str, Any] = {
     "lt": _op_lt,
     "lte": _op_lte,
 }
+
+BUILTIN_OPERATOR_NAMES: frozenset[str] = frozenset(_OPERATORS) | frozenset({"exists"})
