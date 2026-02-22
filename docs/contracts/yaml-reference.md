@@ -56,6 +56,34 @@ Multiple bundles can be composed by passing multiple paths. Later bundles overri
 guard = Edictum.from_yaml("contracts/base.yaml", "contracts/overrides.yaml")
 ```
 
+### Loading from a String or Bytes {#from-yaml-string}
+
+When YAML is generated programmatically or fetched from an API, use `from_yaml_string()` to skip the file system. Follows the `json.load()` / `json.loads()` convention:
+
+```python
+yaml_content = """
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: dynamic-policy
+defaults:
+  mode: enforce
+contracts:
+  - id: block-dotenv
+    type: pre
+    tool: read_file
+    when:
+      args.path: { contains: ".env" }
+    then:
+      effect: deny
+      message: "Denied: {args.path}"
+"""
+
+guard = Edictum.from_yaml_string(yaml_content)
+```
+
+`from_yaml_string()` accepts `str` or `bytes` and supports the same keyword arguments as `from_yaml()` (`tools`, `mode`, `audit_sink`, `redaction`, `backend`, `environment`). The low-level equivalent is `load_bundle_string()` from `edictum.yaml_engine`.
+
 See [Bundle Composition](#bundle-composition) for full details.
 
 A SHA256 hash of the raw YAML bytes is computed at load time and stamped as `policy_version` on every `AuditEvent` and OpenTelemetry span. This gives you an immutable link between any audit record and the exact contract bundle that produced it. When multiple bundles are composed, the combined hash is derived from all individual bundle hashes.

@@ -270,6 +270,94 @@ class Edictum:
         return guard
 
     @classmethod
+    def from_yaml_string(
+        cls,
+        content: str | bytes,
+        *,
+        tools: dict[str, dict] | None = None,
+        mode: str | None = None,
+        audit_sink: AuditSink | None = None,
+        redaction: RedactionPolicy | None = None,
+        backend: StorageBackend | None = None,
+        environment: str = "production",
+    ) -> Edictum:
+        """Create an Edictum instance from a YAML string or bytes.
+
+        Like :meth:`from_yaml` but accepts YAML content directly instead of
+        a file path.  Follows the ``json.load()`` / ``json.loads()`` convention.
+
+        Args:
+            content: YAML contract bundle as a string or bytes.
+            tools: Tool side-effect classifications. Merged with any ``tools:``
+                section in the YAML bundle (parameter wins on conflict).
+            mode: Override the bundle's default mode (enforce/observe).
+            audit_sink: Custom audit sink.
+            redaction: Custom redaction policy.
+            backend: Custom storage backend.
+            environment: Environment name for envelope context.
+
+        Returns:
+            Configured Edictum instance.
+
+        Raises:
+            EdictumConfigError: If the YAML is invalid.
+        """
+        from edictum.yaml_engine.compiler import compile_contracts
+        from edictum.yaml_engine.loader import load_bundle_string
+
+        bundle_data, bundle_hash = load_bundle_string(content)
+        policy_version = str(bundle_hash)
+
+        compiled = compile_contracts(bundle_data)
+
+        # Handle observability config
+        obs_config = bundle_data.get("observability", {})
+        otel_config = obs_config.get("otel", {})
+        if otel_config.get("enabled"):
+            from edictum.otel import configure_otel
+
+            configure_otel(
+                service_name=otel_config.get("service_name", "edictum-agent"),
+                endpoint=otel_config.get("endpoint", "http://localhost:4317"),
+                protocol=otel_config.get("protocol", "grpc"),
+                resource_attributes=otel_config.get("resource_attributes"),
+                insecure=otel_config.get("insecure", True),
+            )
+
+        # Auto-configure audit sink from observability block if not explicitly provided
+        if audit_sink is None:
+            obs_file = obs_config.get("file")
+            obs_stdout = obs_config.get("stdout", True)
+            if obs_file:
+                audit_sink = FileAuditSink(obs_file, redaction)
+            elif obs_stdout is False:
+
+                class _NullSink:
+                    async def emit(self, event):
+                        pass
+
+                audit_sink = _NullSink()
+
+        effective_mode = mode or compiled.default_mode
+        all_contracts = compiled.preconditions + compiled.postconditions + compiled.session_contracts
+
+        # Merge YAML tools with parameter tools (parameter wins on conflict)
+        yaml_tools = compiled.tools
+        merged_tools = {**yaml_tools, **(tools or {})}
+
+        return cls(
+            environment=environment,
+            mode=effective_mode,
+            limits=compiled.limits,
+            tools=merged_tools if merged_tools else None,
+            contracts=all_contracts,
+            audit_sink=audit_sink,
+            redaction=redaction,
+            backend=backend,
+            policy_version=policy_version,
+        )
+
+    @classmethod
     def from_template(
         cls,
         name: str,
