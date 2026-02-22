@@ -195,6 +195,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -221,6 +223,9 @@ class Edictum:
                 ``{"context": lambda env: env.metadata}`` makes ``context.key``
                 selectors available in YAML contracts. Prefixes must not clash
                 with built-in selector prefixes.
+            principal: Static principal for all tool calls.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Overrides static principal.
 
         Returns:
             Configured Edictum instance, or a tuple of (Edictum, CompositionReport)
@@ -314,6 +319,8 @@ class Edictum:
             on_deny=on_deny,
             on_allow=on_allow,
             success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
         )
 
         if return_report:
@@ -336,6 +343,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -359,6 +368,9 @@ class Edictum:
                 Each callable receives a ``ToolEnvelope`` and returns a ``dict``
                 that is searched via dotted-path resolution. Prefixes must not
                 clash with built-in selector prefixes.
+            principal: Static principal for all tool calls.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Overrides static principal.
 
         Returns:
             Configured Edictum instance.
@@ -429,6 +441,8 @@ class Edictum:
             on_deny=on_deny,
             on_allow=on_allow,
             success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
         )
 
     @classmethod
@@ -448,6 +462,8 @@ class Edictum:
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a template.
 
@@ -468,6 +484,10 @@ class Edictum:
                 to ``from_yaml()``.
             custom_selectors: Mapping of selector prefixes to resolver callables.
                 Forwarded to ``from_yaml()``.
+            principal: Static principal for all tool calls. Forwarded to
+                ``from_yaml()``.
+            principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
+                for per-call dynamic resolution. Forwarded to ``from_yaml()``.
 
         Returns:
             Configured Edictum instance.
@@ -495,6 +515,8 @@ class Edictum:
                     custom_operators=custom_operators,
                     custom_selectors=custom_selectors,
                     success_check=success_check,
+                    principal=principal,
+                    principal_resolver=principal_resolver,
                 )
 
         all_templates: set[str] = set()

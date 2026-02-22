@@ -175,11 +175,9 @@ Combined with a `principal_resolver` that sets `org_id` per call, each tenant's 
 ```yaml
 - id: write-requires-operator
   type: pre
-  tool: "*"
+  tool: ["deploy", "write_file", "delete_record"]
   when:
-    all:
-      - side_effect: { in: [write, irreversible] }
-      - principal.role: { not_in: [operator, admin] }
+    principal.role: { not_in: [operator, admin] }
   then:
     effect: deny
     message: "Write operations require operator or admin role."
