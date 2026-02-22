@@ -23,6 +23,13 @@ def load_bundle(source: str) -> tuple[dict, BundleHash]:
     return _load(source)
 
 
+def load_bundle_string(content: str | bytes) -> tuple[dict, BundleHash]:
+    """Load and validate a YAML contract bundle from a string or bytes. See :func:`loader.load_bundle_string`."""
+    from edictum.yaml_engine.loader import load_bundle_string as _load_string
+
+    return _load_string(content)
+
+
 def compile_contracts(bundle: dict) -> CompiledBundle:
     """Compile a parsed bundle into contract objects. See :func:`compiler.compile_contracts`."""
     from edictum.yaml_engine.compiler import compile_contracts as _compile
@@ -40,4 +47,5 @@ __all__ = [
     "compile_contracts",
     "compose_bundles",
     "load_bundle",
+    "load_bundle_string",
 ]

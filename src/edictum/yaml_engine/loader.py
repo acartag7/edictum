@@ -190,3 +190,48 @@ def load_bundle(source: str | Path) -> tuple[dict, BundleHash]:
     _validate_pre_selectors(data)
 
     return data, bundle_hash
+
+
+def load_bundle_string(content: str | bytes) -> tuple[dict, BundleHash]:
+    """Load and validate a YAML contract bundle from a string or bytes.
+
+    Like :func:`load_bundle` but accepts YAML content directly instead of
+    a file path. Useful when YAML is generated programmatically or fetched
+    from an API.
+
+    Args:
+        content: YAML content as a string or bytes.
+
+    Returns:
+        Tuple of (parsed bundle dict, bundle hash).
+
+    Raises:
+        EdictumConfigError: If the YAML is invalid, fails schema validation,
+            has duplicate contract IDs, or contains invalid regex patterns.
+    """
+    from edictum import EdictumConfigError
+
+    if isinstance(content, str):
+        raw_bytes = content.encode("utf-8")
+    else:
+        raw_bytes = content
+
+    if len(raw_bytes) > MAX_BUNDLE_SIZE:
+        raise EdictumConfigError(f"Bundle content too large ({len(raw_bytes)} bytes, max {MAX_BUNDLE_SIZE})")
+
+    bundle_hash = _compute_hash(raw_bytes)
+
+    try:
+        data = yaml.safe_load(raw_bytes)
+    except yaml.YAMLError as e:
+        raise EdictumConfigError(f"YAML parse error: {e}") from e
+
+    if not isinstance(data, dict):
+        raise EdictumConfigError("YAML document must be a mapping")
+
+    _validate_schema(data)
+    _validate_unique_ids(data)
+    _validate_regexes(data)
+    _validate_pre_selectors(data)
+
+    return data, bundle_hash

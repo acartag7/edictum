@@ -138,6 +138,14 @@ DENIED: Destructive command denied: rm -rf /tmp
 
 The `.env` file was never read. The `rm -rf` command never executed. Both calls were denied by contracts evaluated in Python, outside the LLM. The agent cannot talk its way past these checks.
 
+**Tip:** If your YAML is generated programmatically or fetched from an API, use `from_yaml_string()` instead:
+
+```python
+guard = Edictum.from_yaml_string(yaml_content)  # str or bytes
+```
+
+See the [YAML reference](contracts/yaml-reference.md#from-yaml-string) for details.
+
 ## 4. Add to Your Framework
 
 Create the guard from the same YAML, then use the adapter for your framework.
