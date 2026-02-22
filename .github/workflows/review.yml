@@ -41,14 +41,16 @@ jobs:
             PR: #${{ github.event.pull_request.number }}
             SHA: ${{ github.event.pull_request.head.sha }}
 
-            ## Step 1: Load review criteria from the repo
+            ## Step 1: Load context from the repo
 
-            Read these files to learn what to check — they ARE the review criteria:
+            Read these files — they define what to check and how to format results:
             1. `CLAUDE.md` — project conventions, API design checklist, tier boundary, dropped features
             2. `.docs-style-guide.md` — canonical terminology, banned terms, page structure
-            3. `.claude/agents/code-reviewer.md` — full review checklist, do-not-flag list, output format
+            3. `.claude/agents/code-reviewer.md` — full review checklist, do-not-flag list
+            4. `.github/review-instructions.md` — how to format the review comment (template placeholders, icons, section structure)
+            5. `.github/review-template.md` — the template to fill in
 
-            Do NOT invent checks beyond what these files specify.
+            Do NOT invent checks beyond what the criteria files specify.
 
             ## Step 2: Get the diff
 
@@ -67,7 +69,7 @@ jobs:
 
             ## Step 3: Review
 
-            For each changed file, apply the applicable checks from the files you read in Step 1.
+            For each changed file, apply the applicable checks from the criteria files.
 
             For each potential issue:
             - Read the actual source file to verify (not just the diff)
@@ -79,56 +81,18 @@ jobs:
 
             ## Step 4: Post results as a sticky PR comment
 
-            IMPORTANT: Overwrite any previous review comment instead of creating a new one.
+            Fill in the template from `.github/review-template.md` following the instructions in `.github/review-instructions.md`.
 
-            First, check for an existing review comment:
+            Write the filled template to `/tmp/review.md` using the Write tool.
+
+            Then check for an existing review comment to overwrite:
             ```
             gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | contains("<!-- edictum-review -->")) | .id'
             ```
 
-            Build your comment body. Always start with `<!-- edictum-review -->` on the first line.
-
-            If NO issues found:
-            ```
-            <!-- edictum-review -->
-            ## Code Review
-
-            No issues found.
-
-            **Files reviewed:** [list changed files]
-            **Checks applied:** [list which categories were relevant]
-            ```
-
-            If issues found:
-            ```
-            <!-- edictum-review -->
-            ## Code Review
-
-            **N issue(s) found**
-
-            ### Critical
-            - **file:line** — description. Violates: [section from CLAUDE.md/.docs-style-guide.md/code-reviewer.md]. Fix: suggestion.
-
-            ### Warnings
-            - ...
-
-            ### Suggestions
-            - ...
-
-            ---
-            **Files reviewed:** [list changed files]
-            ```
-
-            Write the comment body to a temp file to handle multiline safely:
-            ```
-            cat > /tmp/review.md << 'ENDREVIEW'
-            ... your review content ...
-            ENDREVIEW
-            ```
-
             If you found an existing comment ID, update it:
             ```
-            gh api "repos/${{ github.repository }}/issues/comments/COMMENT_ID" -X PATCH --input /tmp/review.md -f body=@/tmp/review.md
+            gh api "repos/${{ github.repository }}/issues/comments/COMMENT_ID" -X PATCH -f body=@/tmp/review.md
             ```
 
             If no existing comment, create new:
