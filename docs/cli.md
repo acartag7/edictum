@@ -28,10 +28,16 @@ When two or more valid files are provided, bundles are composed and the composed
 **Usage**
 
 ```
-edictum validate FILES...
+edictum validate FILES... [--json]
 ```
 
 Takes one or more file paths as positional arguments. Each file is validated independently first, then composed if multiple files are valid.
+
+**Options**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output results as JSON |
 
 **Example -- single file**
 
@@ -63,6 +69,24 @@ $ edictum validate contracts/broken.yaml
   broken.yaml — Invalid YAML: ...
 ```
 
+**Example -- JSON output**
+
+```
+$ edictum validate contracts/production.yaml --json
+
+{
+  "files": [
+    {
+      "file": "production.yaml",
+      "valid": true,
+      "contracts": 12,
+      "breakdown": {"pre": 8, "post": 2, "session": 2}
+    }
+  ],
+  "valid": true
+}
+```
+
 Exit codes: `0` on success, `1` on validation errors.
 
 ---
@@ -89,6 +113,7 @@ edictum check <file.yaml> --tool <name> --args '<json>'
 | `--principal-role TEXT` | Principal role |
 | `--principal-user TEXT` | Principal user ID |
 | `--principal-ticket TEXT` | Principal ticket ref |
+| `--json` | Output results as JSON |
 
 **Example -- allowed call**
 
@@ -155,6 +180,25 @@ The principal flags map directly to `Principal` fields:
 
 A `Principal` is constructed only when at least one `--principal-*` flag is provided. If none are set, the check runs without principal context (all `principal.*` selectors evaluate to `false`).
 
+**Example -- JSON output**
+
+```
+$ edictum check contracts/production.yaml \
+    --tool read_file \
+    --args '{"path": "/home/user/.env"}' \
+    --json
+
+{
+  "tool": "read_file",
+  "args": {"path": "/home/user/.env"},
+  "verdict": "deny",
+  "reason": "Sensitive file '/home/user/.env' denied.",
+  "contracts_evaluated": 1,
+  "environment": "production",
+  "contract_id": "block-sensitive-reads"
+}
+```
+
 Exit codes: `0` on allow, `1` on deny, `2` on invalid JSON.
 
 ---
@@ -169,10 +213,16 @@ With exactly two files, a standard contract-by-contract diff is shown. With two 
 **Usage**
 
 ```
-edictum diff FILES...
+edictum diff FILES... [--json]
 ```
 
 Requires at least two file paths.
+
+**Options**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output results as JSON |
 
 **Example -- two-file diff**
 
@@ -199,6 +249,20 @@ $ edictum diff contracts/base.yaml contracts/overrides.yaml contracts/candidate.
 Composition report:
   ⇄ block-sensitive-reads — overridden by contracts/overrides.yaml (was in base.yaml)
   ⊕ block-sensitive-reads — shadow from contracts/candidate.yaml (enforced in contracts/overrides.yaml)
+```
+
+**Example -- JSON output**
+
+```
+$ edictum diff contracts/v1.yaml contracts/v2.yaml --json
+
+{
+  "added": [{"id": "require-ticket-ref", "type": "pre"}],
+  "removed": [{"id": "legacy-read-block", "type": "pre"}],
+  "changed": ["no-secrets"],
+  "unchanged": ["pii-check", "session-cap", "bash-safety"],
+  "has_changes": true
+}
 ```
 
 Exit codes: `0` if identical, `1` if differences found.

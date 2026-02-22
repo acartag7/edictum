@@ -226,10 +226,11 @@ def validate(files: tuple[str, ...], json_output: bool) -> None:
         except EdictumConfigError as e:
             if json_output:
                 json_composed = {"error": str(e)}
+                has_errors = True
             else:
                 _err_console.print(f"[red]Composed bundle failed compilation: {escape(str(e))}[/red]")
-            has_errors = True
-            sys.exit(1)
+                has_errors = True
+                sys.exit(1)
 
         counts = _count_contracts(composed.bundle)
         total = sum(counts.values())
