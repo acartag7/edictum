@@ -1,0 +1,136 @@
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Code Review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--max-turns 10 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(gh pr comment:*),Bash(gh api:*),Read,Glob,Grep"'
+          prompt: |
+            You are a code reviewer for this repository.
+
+            REPO: ${{ github.repository }}
+            PR: #${{ github.event.pull_request.number }}
+            SHA: ${{ github.event.pull_request.head.sha }}
+
+            ## Step 1: Load review criteria from the repo
+
+            Read these files to learn what to check — they ARE the review criteria:
+            1. `CLAUDE.md` — project conventions, API design checklist, tier boundary, dropped features
+            2. `.docs-style-guide.md` — canonical terminology, banned terms, page structure
+            3. `.claude/agents/code-reviewer.md` — full review checklist, do-not-flag list, output format
+
+            Do NOT invent checks beyond what these files specify.
+
+            ## Step 2: Get the diff
+
+            Run `git diff origin/main...HEAD --name-only` for changed files.
+            Run `git diff origin/main...HEAD` for the full diff.
+
+            Route checks by file type:
+            - `src/edictum/**` → code quality, tier boundary, contract correctness, API design, security, agentic engineering
+            - `src/edictum/adapters/**` → also adapter parity
+            - `docs/**` → docs-code sync, terminology, page structure, YAML schema validation
+            - `tests/**` → test conventions, behavior test coverage
+            - `.github/**` → security (Actions injection patterns)
+            - `CLAUDE.md`, `.docs-style-guide.md`, `code-reviewer.md` → governance file consistency (section 8)
+
+            Only run checks relevant to the files that changed.
+
+            ## Step 3: Review
+
+            For each changed file, apply the applicable checks from the files you read in Step 1.
+
+            For each potential issue:
+            - Read the actual source file to verify (not just the diff)
+            - Confirm it was INTRODUCED by this PR, not pre-existing
+            - Confirm it is high signal — a senior engineer would flag this
+            - Check against the "Do NOT flag" list in code-reviewer.md
+
+            Drop anything speculative or that a linter would catch.
+
+            ## Step 4: Post results as a sticky PR comment
+
+            IMPORTANT: Overwrite any previous review comment instead of creating a new one.
+
+            First, check for an existing review comment:
+            ```
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" --jq '.[] | select(.body | contains("<!-- edictum-review -->")) | .id'
+            ```
+
+            Build your comment body. Always start with `<!-- edictum-review -->` on the first line.
+
+            If NO issues found:
+            ```
+            <!-- edictum-review -->
+            ## Code Review
+
+            No issues found.
+
+            **Files reviewed:** [list changed files]
+            **Checks applied:** [list which categories were relevant]
+            ```
+
+            If issues found:
+            ```
+            <!-- edictum-review -->
+            ## Code Review
+
+            **N issue(s) found**
+
+            ### Critical
+            - **file:line** — description. Violates: [section from CLAUDE.md/.docs-style-guide.md/code-reviewer.md]. Fix: suggestion.
+
+            ### Warnings
+            - ...
+
+            ### Suggestions
+            - ...
+
+            ---
+            **Files reviewed:** [list changed files]
+            ```
+
+            Write the comment body to a temp file to handle multiline safely:
+            ```
+            cat > /tmp/review.md << 'ENDREVIEW'
+            ... your review content ...
+            ENDREVIEW
+            ```
+
+            If you found an existing comment ID, update it:
+            ```
+            gh api "repos/${{ github.repository }}/issues/comments/COMMENT_ID" -X PATCH --input /tmp/review.md -f body=@/tmp/review.md
+            ```
+
+            If no existing comment, create new:
+            ```
+            gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/review.md
+            ```
+        env:
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
+          API_TIMEOUT_MS: "600000"
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
+          ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5
+          ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
