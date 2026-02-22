@@ -18,6 +18,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from edictum.approval import (
+    ApprovalBackend,
+    ApprovalDecision,
+    ApprovalRequest,
+    ApprovalStatus,
+    LocalApprovalBackend,
+)
 from edictum.audit import (
     AuditAction,
     AuditEvent,
@@ -53,6 +60,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "__version__",
+    "ApprovalBackend",
+    "ApprovalDecision",
+    "ApprovalRequest",
+    "ApprovalStatus",
+    "LocalApprovalBackend",
     "Edictum",
     "EdictumConfigError",
     "EdictumDenied",
@@ -132,6 +144,7 @@ class Edictum:
         success_check: Callable[[str, Any], bool] | None = None,
         principal: Principal | None = None,
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+        approval_backend: ApprovalBackend | None = None,
     ):
         self.environment = environment
         self.mode = mode
@@ -150,6 +163,7 @@ class Edictum:
         self._success_check = success_check
         self._principal = principal
         self._principal_resolver = principal_resolver
+        self._approval_backend = approval_backend
 
         # Build tool registry
         self.tool_registry = ToolRegistry()
@@ -197,6 +211,7 @@ class Edictum:
         success_check: Callable[[str, Any], bool] | None = None,
         principal: Principal | None = None,
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+        approval_backend: ApprovalBackend | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -226,6 +241,7 @@ class Edictum:
             principal: Static principal for all tool calls.
             principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
                 for per-call dynamic resolution. Overrides static principal.
+            approval_backend: Backend for human-in-the-loop approval workflows.
 
         Returns:
             Configured Edictum instance, or a tuple of (Edictum, CompositionReport)
@@ -321,6 +337,7 @@ class Edictum:
             success_check=success_check,
             principal=principal,
             principal_resolver=principal_resolver,
+            approval_backend=approval_backend,
         )
 
         if return_report:
@@ -345,6 +362,7 @@ class Edictum:
         success_check: Callable[[str, Any], bool] | None = None,
         principal: Principal | None = None,
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+        approval_backend: ApprovalBackend | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -371,6 +389,7 @@ class Edictum:
             principal: Static principal for all tool calls.
             principal_resolver: Callable ``(tool_name, tool_input) -> Principal``
                 for per-call dynamic resolution. Overrides static principal.
+            approval_backend: Backend for human-in-the-loop approval workflows.
 
         Returns:
             Configured Edictum instance.
@@ -443,6 +462,7 @@ class Edictum:
             success_check=success_check,
             principal=principal,
             principal_resolver=principal_resolver,
+            approval_backend=approval_backend,
         )
 
     @classmethod
