@@ -9,11 +9,47 @@ from typing import Any
 from edictum.contracts import Verdict
 from edictum.envelope import ToolEnvelope
 from edictum.limits import OperationLimits
-from edictum.yaml_engine.evaluator import _PolicyError, evaluate_expression
+from edictum.yaml_engine.evaluator import BUILTIN_OPERATOR_NAMES, _PolicyError, evaluate_expression
 
 # Placeholder pattern for message templating: {selector}
 _PLACEHOLDER_RE = re.compile(r"\{([^}]+)\}")
 _PLACEHOLDER_CAP = 200
+
+
+def _validate_operators(bundle: dict, custom_operators: dict[str, Any] | None) -> None:
+    """Validate that all operators used in the bundle are known (built-in or custom)."""
+    known = BUILTIN_OPERATOR_NAMES | frozenset(custom_operators or {})
+    for contract in bundle.get("contracts", []):
+        when = contract.get("when")
+        if when:
+            _validate_expression_operators(when, known, contract["id"])
+
+
+def _validate_expression_operators(expr: dict | Any, known: frozenset[str], contract_id: str) -> None:
+    """Recursively validate operator names in an expression tree."""
+    if not isinstance(expr, dict):
+        return
+
+    if "all" in expr:
+        for sub in expr["all"]:
+            _validate_expression_operators(sub, known, contract_id)
+        return
+    if "any" in expr:
+        for sub in expr["any"]:
+            _validate_expression_operators(sub, known, contract_id)
+        return
+    if "not" in expr:
+        _validate_expression_operators(expr["not"], known, contract_id)
+        return
+
+    # Leaf node: selector -> operator
+    for _selector, operator in expr.items():
+        if isinstance(operator, dict):
+            for op_name in operator:
+                if op_name not in known:
+                    from edictum import EdictumConfigError
+
+                    raise EdictumConfigError(f"Contract '{contract_id}': unknown operator '{op_name}'")
 
 
 @dataclass(frozen=True)
@@ -28,16 +64,25 @@ class CompiledBundle:
     tools: dict[str, dict] = field(default_factory=dict)
 
 
-def compile_contracts(bundle: dict) -> CompiledBundle:
+def compile_contracts(
+    bundle: dict,
+    *,
+    custom_operators: dict[str, Any] | None = None,
+) -> CompiledBundle:
     """Compile a validated YAML bundle into contract objects.
 
     Args:
         bundle: A validated bundle dict (output of load_bundle).
+        custom_operators: Optional mapping of operator names to callables.
+            Each callable receives ``(field_value, operator_value)`` and
+            returns ``bool``.
 
     Returns:
         CompiledBundle with preconditions, postconditions, session_contracts,
         and merged OperationLimits.
     """
+    _validate_operators(bundle, custom_operators)
+
     default_mode = bundle["defaults"]["mode"]
     preconditions: list = []
     postconditions: list = []
@@ -53,10 +98,10 @@ def compile_contracts(bundle: dict) -> CompiledBundle:
         contract_mode = contract.get("mode", default_mode)
 
         if contract_type == "pre":
-            fn = _compile_pre(contract, contract_mode)
+            fn = _compile_pre(contract, contract_mode, custom_operators)
             preconditions.append(fn)
         elif contract_type == "post":
-            fn = _compile_post(contract, contract_mode)
+            fn = _compile_post(contract, contract_mode, custom_operators)
             postconditions.append(fn)
         elif contract_type == "session":
             is_shadow = contract.get("_shadow", False)
@@ -109,7 +154,11 @@ def _precompile_regexes(expr: dict | Any) -> dict | Any:
     return compiled
 
 
-def _compile_pre(contract: dict, mode: str) -> Any:
+def _compile_pre(
+    contract: dict,
+    mode: str,
+    custom_operators: dict[str, Any] | None = None,
+) -> Any:
     """Compile a pre-contract into a precondition callable."""
     contract_id = contract["id"]
     tool = contract["tool"]
@@ -121,7 +170,7 @@ def _compile_pre(contract: dict, mode: str) -> Any:
 
     def precondition_fn(envelope: ToolEnvelope) -> Verdict:
         try:
-            result = evaluate_expression(when_expr, envelope)
+            result = evaluate_expression(when_expr, envelope, custom_operators=custom_operators)
         except Exception as exc:
             # Fail-closed: evaluation error triggers the contract
             msg = _expand_message(message_template, envelope)
@@ -195,7 +244,11 @@ def _extract_output_patterns(expr: dict | Any) -> list[re.Pattern]:
     return collected
 
 
-def _compile_post(contract: dict, mode: str) -> Any:
+def _compile_post(
+    contract: dict,
+    mode: str,
+    custom_operators: dict[str, Any] | None = None,
+) -> Any:
     """Compile a post-contract into a postcondition callable."""
     contract_id = contract["id"]
     tool = contract["tool"]
@@ -209,7 +262,12 @@ def _compile_post(contract: dict, mode: str) -> Any:
     def postcondition_fn(envelope: ToolEnvelope, response: Any) -> Verdict:
         output_text = str(response) if response is not None else None
         try:
-            result = evaluate_expression(when_expr, envelope, output_text=output_text)
+            result = evaluate_expression(
+                when_expr,
+                envelope,
+                output_text=output_text,
+                custom_operators=custom_operators,
+            )
         except Exception as exc:
             msg = _expand_message(message_template, envelope, output_text=output_text)
             return Verdict.fail(

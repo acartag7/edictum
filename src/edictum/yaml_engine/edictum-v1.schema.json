@@ -291,7 +291,7 @@
       "type": "object",
       "minProperties": 1,
       "maxProperties": 1,
-      "additionalProperties": false,
+      "additionalProperties": {},
       "properties": {
         "exists": { "type": "boolean" },
         "equals": { "description": "Strict equality. Any scalar type." },

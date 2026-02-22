@@ -425,3 +425,25 @@ When a selector references a field that does not exist:
 - All other operators return `false` (the contract does not fire).
 
 This means a contract like `args.path: { contains: ".env" }` will not fire if the tool call has no `path` argument. No error is raised.
+
+---
+
+## Custom Operators
+
+Beyond the 15 built-in operators, you can register domain-specific operators via the `custom_operators` parameter on `from_yaml()`, `from_yaml_string()`, and `from_template()`. Each operator is a callable receiving `(field_value, operator_value)` and returning `bool`.
+
+```python
+import ipaddress
+
+def ip_in_cidr(field_value: str, cidr: str) -> bool:
+    return ipaddress.ip_address(field_value) in ipaddress.ip_network(cidr)
+
+guard = Edictum.from_yaml(
+    "contracts.yaml",
+    custom_operators={"ip_in_cidr": ip_in_cidr},
+)
+```
+
+Custom operators follow the same missing-field and type-mismatch behavior as built-in operators. Names must not clash with the 15 built-in operators. Unknown operator names in YAML are caught at compile time.
+
+For a full guide with examples, see [Custom Operators](../guides/custom-operators.md).

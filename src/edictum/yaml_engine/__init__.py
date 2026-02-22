@@ -30,11 +30,11 @@ def load_bundle_string(content: str | bytes) -> tuple[dict, BundleHash]:
     return _load_string(content)
 
 
-def compile_contracts(bundle: dict) -> CompiledBundle:
+def compile_contracts(bundle: dict, *, custom_operators: dict | None = None) -> CompiledBundle:
     """Compile a parsed bundle into contract objects. See :func:`compiler.compile_contracts`."""
     from edictum.yaml_engine.compiler import compile_contracts as _compile
 
-    return _compile(bundle)
+    return _compile(bundle, custom_operators=custom_operators)
 
 
 __all__ = [

@@ -83,6 +83,7 @@ nav:
   - Guides:
     - Writing Contracts: guides/writing-contracts.md
     - Testing Contracts: guides/testing-contracts.md
+    - Custom Operators: guides/custom-operators.md
     - Python Hooks: guides/python-hooks.md
     - Adapter Comparison: guides/adapter-comparison.md
     - Observability: guides/observability.md
