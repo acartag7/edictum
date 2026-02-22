@@ -176,7 +176,16 @@ Combined with a `principal_resolver` that sets `org_id` per call, each tenant's 
 ```yaml
 - id: write-requires-operator
   type: pre
-  tool: ["deploy", "write_file", "delete_record"]
+  tool: deploy
+  when:
+    principal.role: { not_in: [operator, admin] }
+  then:
+    effect: deny
+    message: "Write operations require operator or admin role."
+
+- id: write-file-requires-operator
+  type: pre
+  tool: write_file
   when:
     principal.role: { not_in: [operator, admin] }
   then:
@@ -184,7 +193,7 @@ Combined with a `principal_resolver` that sets `org_id` per call, each tenant's 
     message: "Write operations require operator or admin role."
 ```
 
-Before the human approval step, the agent has `role: "analyst"` and write tools are denied. After `set_principal(Principal(role="operator"))`, the same contract allows writes through.
+Before the human approval step, the agent has `role: "analyst"` and write tools are denied. After `set_principal(Principal(role="operator"))`, the same contracts allow writes through.
 
 ---
 
