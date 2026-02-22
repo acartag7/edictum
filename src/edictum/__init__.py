@@ -130,6 +130,8 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
+        principal: Principal | None = None,
+        principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ):
         self.environment = environment
         self.mode = mode
@@ -146,6 +148,8 @@ class Edictum:
         self._on_deny = on_deny
         self._on_allow = on_allow
         self._success_check = success_check
+        self._principal = principal
+        self._principal_resolver = principal_resolver
 
         # Build tool registry
         self.tool_registry = ToolRegistry()
@@ -611,6 +615,24 @@ class Edictum:
 
         return merged
 
+    def set_principal(self, principal: Principal) -> None:
+        """Update the principal used for subsequent tool calls.
+
+        Does not affect in-flight calls or session state (attempt counts,
+        execution history).
+        """
+        self._principal = principal
+
+    def _resolve_principal(self, tool_name: str, tool_input: dict[str, Any]) -> Principal | None:
+        """Resolve the principal for a tool call.
+
+        If a principal_resolver is set, it is called with (tool_name, tool_input)
+        and its result overrides the static principal.
+        """
+        if self._principal_resolver is not None:
+            return self._principal_resolver(tool_name, tool_input)
+        return self._principal
+
     def _register_contract(self, item: Any) -> None:
         contract_type = getattr(item, "_edictum_type", None)
         is_shadow = getattr(item, "_edictum_shadow", False)
@@ -865,6 +887,12 @@ class Edictum:
 
         # Allow per-call environment override; fall back to guard-level default
         env = envelope_kwargs.pop("environment", self.environment)
+
+        # Resolve principal: per-call resolver > static > envelope_kwargs
+        if "principal" not in envelope_kwargs:
+            resolved = self._resolve_principal(tool_name, args)
+            if resolved is not None:
+                envelope_kwargs["principal"] = resolved
 
         envelope = create_envelope(
             tool_name=tool_name,

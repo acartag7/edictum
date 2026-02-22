@@ -89,6 +89,7 @@ nav:
     - Observability: guides/observability.md
     - Postcondition Design: guides/postcondition-design.md
     - Tool Success Detection: guides/success-check.md
+    - Mutable Principal: guides/mutable-principal.md
     - Adversarial Testing: guides/adversarial.md
   - Reference:
     - Lifecycle Callbacks: lifecycle-callbacks.md

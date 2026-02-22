@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from edictum import Edictum, Verdict, postcondition, precondition
+from edictum import Edictum, Principal, Verdict, postcondition, precondition
 from edictum.audit import AuditAction
 from edictum.storage import MemoryBackend
 from tests.conftest import NullAuditSink
@@ -308,3 +308,141 @@ class TestParitySuccessCheck:
             f"{name} did not emit CALL_FAILED with custom success_check. "
             f"Events: {[e.action.value for e in sink.events]}"
         )
+
+
+# --- Mutable principal helpers ---
+
+
+def _is_denied(result) -> bool:
+    """Adapter-agnostic check for a denial result."""
+    if result is None:
+        return False
+    if isinstance(result, str):
+        return "DENIED" in result
+    if isinstance(result, dict):
+        hook = result.get("hookSpecificOutput", {})
+        return hook.get("permissionDecision") == "deny"
+    # LangChain ToolMessage
+    content = getattr(result, "content", "")
+    return "DENIED" in content
+
+
+# Second-call pre helpers with fresh call IDs
+
+
+async def _langchain_pre_2(adapter, tool_name="TestTool", args=None):
+    request = MagicMock()
+    request.tool_call = {"name": tool_name, "args": args or {}, "id": "tc-2"}
+    return await adapter._pre_tool_call(request)
+
+
+async def _crewai_pre_2(adapter, tool_name="TestTool", args=None):
+    ctx = SimpleNamespace(tool_name=tool_name, tool_input=args or {}, agent=None, task=None)
+    return await adapter._before_hook(ctx)
+
+
+async def _openai_pre_2(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre(tool_name, args or {}, "call-2")
+
+
+async def _claude_sdk_pre_2(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre_tool_use(tool_name, args or {}, "tc-2")
+
+
+async def _agno_pre_2(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre(tool_name, args or {}, "call-2")
+
+
+async def _sk_pre_2(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre(tool_name, args or {}, "call-2")
+
+
+def _all_adapter_configs_with_pre2():
+    from edictum.adapters.agno import AgnoAdapter
+    from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+    from edictum.adapters.crewai import CrewAIAdapter
+    from edictum.adapters.langchain import LangChainAdapter
+    from edictum.adapters.openai_agents import OpenAIAgentsAdapter
+    from edictum.adapters.semantic_kernel import SemanticKernelAdapter
+
+    return [
+        ("CrewAI", CrewAIAdapter, _crewai_pre, _crewai_pre_2),
+        ("OpenAI", OpenAIAgentsAdapter, _openai_pre, _openai_pre_2),
+        ("LangChain", LangChainAdapter, _langchain_pre, _langchain_pre_2),
+        ("ClaudeSDK", ClaudeAgentSDKAdapter, _claude_sdk_pre, _claude_sdk_pre_2),
+        ("Agno", AgnoAdapter, _agno_pre, _agno_pre_2),
+        ("SK", SemanticKernelAdapter, _sk_pre, _sk_pre_2),
+    ]
+
+
+ALL_CONFIGS_WITH_PRE2 = _all_adapter_configs_with_pre2()
+ALL_ADAPTER_WITH_PRE2_IDS = [c[0] for c in ALL_CONFIGS_WITH_PRE2]
+
+
+class TestParitySetPrincipal:
+    """All adapters must update principal after set_principal()."""
+
+    @pytest.mark.parametrize(
+        "name,cls,pre_fn,pre_fn_2",
+        ALL_CONFIGS_WITH_PRE2,
+        ids=ALL_ADAPTER_WITH_PRE2_IDS,
+    )
+    async def test_set_principal_updates_enforcement(self, name, cls, pre_fn, pre_fn_2):
+        @precondition("*")
+        def require_admin(envelope):
+            if envelope.principal is None or envelope.principal.role != "admin":
+                return Verdict.fail("admin required")
+            return Verdict.pass_()
+
+        guard = _make_guard(contracts=[require_admin])
+        adapter = cls(guard, principal=Principal(role="viewer"))
+
+        # First call: viewer -> denied
+        result1 = await pre_fn(adapter)
+        assert _is_denied(result1), f"{name} did not deny viewer principal"
+
+        # Mutate principal
+        adapter.set_principal(Principal(role="admin"))
+
+        # Second call: admin -> allowed
+        result2 = await pre_fn_2(adapter)
+        assert not _is_denied(result2), f"{name} denied after set_principal(admin)"
+
+
+class TestParityPrincipalResolver:
+    """All adapters must use principal_resolver when provided."""
+
+    @pytest.mark.parametrize("name,cls,pre_fn", ALL_CONFIGS, ids=ALL_ADAPTER_IDS)
+    async def test_resolver_determines_principal(self, name, cls, pre_fn):
+        @precondition("*")
+        def require_admin(envelope):
+            if envelope.principal is None or envelope.principal.role != "admin":
+                return Verdict.fail("admin required")
+            return Verdict.pass_()
+
+        def resolver(tool_name: str, tool_input: dict) -> Principal:
+            return Principal(role="admin")
+
+        guard = _make_guard(contracts=[require_admin])
+        adapter = cls(guard, principal_resolver=resolver)
+
+        result = await pre_fn(adapter)
+        assert not _is_denied(result), f"{name} denied when resolver returns admin"
+
+    @pytest.mark.parametrize("name,cls,pre_fn", ALL_CONFIGS, ids=ALL_ADAPTER_IDS)
+    async def test_resolver_overrides_static_principal(self, name, cls, pre_fn):
+        @precondition("*")
+        def require_admin(envelope):
+            if envelope.principal is None or envelope.principal.role != "admin":
+                return Verdict.fail("admin required")
+            return Verdict.pass_()
+
+        def resolver(tool_name: str, tool_input: dict) -> Principal:
+            return Principal(role="admin")
+
+        guard = _make_guard(contracts=[require_admin])
+        # Static principal is viewer, but resolver returns admin
+        adapter = cls(guard, principal=Principal(role="viewer"), principal_resolver=resolver)
+
+        result = await pre_fn(adapter)
+        assert not _is_denied(result), f"{name} denied when resolver returns admin (should override static viewer)"
