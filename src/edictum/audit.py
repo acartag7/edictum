@@ -26,6 +26,10 @@ class AuditAction(StrEnum):
     CALL_EXECUTED = "call_executed"
     CALL_FAILED = "call_failed"
     POSTCONDITION_WARNING = "postcondition_warning"
+    CALL_APPROVAL_REQUESTED = "call_approval_requested"
+    CALL_APPROVAL_GRANTED = "call_approval_granted"
+    CALL_APPROVAL_DENIED = "call_approval_denied"
+    CALL_APPROVAL_TIMEOUT = "call_approval_timeout"
 
 
 @dataclass
