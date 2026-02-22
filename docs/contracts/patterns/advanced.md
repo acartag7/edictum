@@ -2,17 +2,6 @@
 
 This page covers patterns that combine multiple Edictum features: nested boolean logic, regex composition, principal claims, template composition, wildcards, dynamic messages, comprehensive contract bundles, per-contract mode overrides, environment-based conditions, and guard merging.
 
-## When to use this
-
-You need these advanced patterns when the basic single-condition, single-operator recipes on other pattern pages are not enough for your governance requirements.
-
-- **Building multi-condition gates with nested logic.** Your access contract requires AND, OR, and NOT logic combined -- for example, "production deploys require (admin or sre role) AND a ticket reference." Use nested `all`/`any`/`not` combinators in the `when` expression. The evaluator handles arbitrary nesting depth, but keep trees under three levels for readability.
-- **Combining multiple regex patterns in one contract.** You want one postcondition to catch SSNs, emails, credit cards, AWS keys, and JWTs. Use `matches_any` with an array of patterns. All patterns are compiled once at `load_bundle()` time. `matches_any` short-circuits on the first match, so order patterns from most common to least common.
-- **Using environment variables to toggle contracts at runtime.** The `env.*` selector reads from `os.environ` at evaluation time with automatic type coercion (`"true"` becomes `True`, numeric strings become `int`/`float`). Use it to activate contracts based on flags like `DRY_RUN=true` or `ENVIRONMENT=production` without code changes.
-- **Composing contracts across multiple YAML files or Python guards.** Use multi-path `from_yaml()` for deterministic YAML composition with merge semantics, `observe_alongside: true` for shadow-testing candidate bundles, and `Edictum.from_multiple()` for runtime merging of Python-defined guards. The `CompositionReport` tracks which contracts were overridden during composition.
-
-These patterns combine features documented individually on other pages. For foundational operator usage, see the [Operator Reference](../operators.md). For single-concern recipes, see [Access Control](access-control.md), [Data Protection](data-protection.md), [Change Control](change-control.md), and [Rate Limiting](rate-limiting.md).
-
 ---
 
 ## Nested All/Any/Not Logic
@@ -245,7 +234,7 @@ principal = Principal(
 **Gotchas:**
 - Claims are set by your application. Edictum does not validate claim values against any external source.
 - If a claim key does not exist, the leaf evaluates to `false`. Use `principal.claims.<key>: { exists: false }` to explicitly require a claim.
-- Nested claims (e.g., `principal.claims.org.team`) are not supported. Claims are a flat dictionary.
+- Nested claims are supported. Dotted paths like `principal.claims.org.team` resolve through nested dicts in the `Principal.claims` dictionary (e.g., `claims={"org": {"team": "backend"}}`).
 
 ---
 
@@ -529,7 +518,7 @@ A comprehensive contract bundle combines all three contract types: preconditions
 === "Python"
 
     ```python
-    from edictum import Edictum, OperationLimits, Principal, Verdict, precondition
+    from edictum import Edictum, OperationLimits, Verdict, precondition
     from edictum.contracts import postcondition
     import re
 
@@ -576,14 +565,13 @@ A comprehensive contract bundle combines all three contract types: preconditions
             max_attempts=120,
             max_calls_per_tool={"deploy_service": 3, "send_email": 10},
         ),
-        principal=Principal(role="analyst"),
     )
     ```
 
 **Gotchas:**
 - Contract evaluation order within a type follows the array order in the YAML. For preconditions, the first matching deny wins and stops evaluation.
-- Postconditions always run, even if the tool was already denied by a precondition. However, if a precondition denies the call, the tool does not execute, so there is no output for the postcondition to inspect.
-- Session contracts are checked on every tool call attempt, even before preconditions evaluate.
+- When a precondition denies a call in enforce mode, `run()` raises `EdictumDenied` immediately. The tool does not execute and postconditions are not evaluated. Postconditions only run when the tool actually executes.
+- Session contracts are checked after preconditions, not before. The full pre-execution order is: 1. Attempt limit, 2. Before hooks, 3. Preconditions, 4. Session contracts, 5. Execution limits.
 
 ---
 
@@ -667,7 +655,7 @@ Individual contracts can override the bundle's default mode. This lets you mix e
 **Gotchas:**
 - Observe mode emits `CALL_WOULD_DENY` audit events. The tool call proceeds normally. Review these events before switching to enforce.
 - The mode override is per-contract. Other contracts in the same bundle continue to use the bundle default.
-- Postconditions are always `warn`, so `mode: observe` has no visible effect on postconditions. Observe mode is meaningful only for preconditions and session contracts.
+- For postconditions, `mode: observe` downgrades `redact`/`deny` effects to a warning prefixed with `[observe]`. The tool output is not modified. Observe mode is meaningful for all contract types.
 
 ---
 

@@ -4,16 +4,6 @@ This section contains reusable contract recipes organized by enforcement concern
 
 All YAML examples use the `edictum/v1` ContractBundle format and compile with `Edictum.from_yaml()`. All Python examples use the `@precondition`, `@postcondition`, and `@session_contract` decorator APIs.
 
-## When to use this
-
-You need these patterns when you know what concern you want to enforce but need a concrete implementation to start from.
-
-- **Designing contracts for a new agent.** You are building governance for an agent and need to decide which contract types and operators to use. Browse the six pattern categories below to find recipes that match your concerns -- each category maps to a common enforcement domain (access control, data protection, rate limiting, change control, compliance, advanced logic).
-- **Implementing a specific governance requirement.** Your team has a requirement like "block production deploys without a ticket" or "scan output for PII." Find the matching pattern, copy the YAML or Python code, and adjust selectors and values for your tools. Every pattern includes gotchas that flag common mistakes.
-- **Learning Edictum's contract model by example.** The [YAML Reference](../yaml-reference.md) and [Operator Reference](../operators.md) define the schema and operators. These patterns show how to combine them into real contracts. Each pattern demonstrates specific operators, boolean combinators (`all`/`any`/`not`), and contract types (`pre`/`post`/`session`) in context.
-
-Contract authors writing YAML bundles and developers implementing governance for the first time will use these patterns as starting points.
-
 ---
 
 ## Patterns

@@ -2,17 +2,6 @@
 
 Change control contracts enforce process requirements around high-impact operations: ticket references, approval gates, blast radius limits, dry-run requirements, and SQL safety. These are primarily preconditions that block before execution.
 
-## When to use this
-
-You need change control patterns when high-impact operations require process gates -- traceability, authorization, scope limits, or verification steps -- before the agent can proceed.
-
-- **Requiring ticket references for production changes.** Your organization mandates that production changes are traceable to tickets. Use `principal.ticket_ref: { exists: false }` combined with `environment: { equals: production }` in an `all` block to deny deploys and write queries without a ticket. The `Principal.ticket_ref` field carries the ticket ID from your project management system.
-- **Gating destructive operations behind senior roles.** Deploys, migrations, and infrastructure changes should only be performed by experienced operators. Combine `environment` with `principal.role: { not_in: [...] }` to restrict production tools to specific roles. The `not_in` operator checks membership against a list of allowed roles.
-- **Limiting blast radius on batch operations.** Your agent performs bulk inserts, mass notifications, or batch updates where unbounded scope could cause widespread damage. Use `args.batch_size: { gt: 500 }` or `args.recipient_count: { gt: 50 }` with numeric operators to cap scope before execution.
-- **Blocking dangerous SQL patterns.** Your agent generates SQL dynamically. Use `matches` with word boundaries (`'\bDROP\b'`, `'\bTRUNCATE\b'`) to deny DDL statements, and combine `matches` with `not` to require `LIMIT` clauses on `SELECT` queries.
-
-These patterns are preconditions (`type: pre`) that deny before the tool executes. For post-execution data scanning, see [Data Protection](data-protection.md). For session-level caps on cumulative operations, see [Rate Limiting](rate-limiting.md).
-
 ---
 
 ## Ticket Requirement for Production Changes
