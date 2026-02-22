@@ -6,17 +6,7 @@ with zero overhead.
 
 ## When to use this
 
-You need span-level and metric-level telemetry from the Edictum pipeline, routed to an OpenTelemetry-compatible backend.
-
-- **Connecting to an OTel collector.** You have a Jaeger, Tempo, or Datadog backend and want enforcement spans flowing to it. Call `configure_otel(service_name="my-agent", endpoint="http://collector:4317")` once at startup, or set `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` environment variables. Edictum emits `tool.execute {tool_name}` spans and `edictum.calls.denied` / `edictum.calls.allowed` counters automatically.
-
-- **Adding enforcement spans to existing application traces.** Your application already has OTel instrumentation. Edictum spans participate in standard context propagation -- they appear as children of whatever span is active when the pipeline runs. No additional wiring is needed; `GovernanceTelemetry` picks up the global `TracerProvider`.
-
-- **Monitoring denial rates and contract effectiveness.** The `edictum.calls.denied` and `edictum.calls.allowed` counters (labeled by `tool.name`) let you build dashboards answering: what percentage of calls are denied? Which tools trigger the most denials? How does the denial rate change after a contract update? Span attributes like `edictum.verdict`, `edictum.decision.name`, and `edictum.policy_version` provide the drill-down detail.
-
-- **Running without OTel in lightweight environments.** If `opentelemetry` is not installed, `GovernanceTelemetry` degrades to a silent no-op -- `start_tool_span()` returns a `_NoOpSpan`, counters are skipped, no exceptions are raised. There is no performance cost beyond a single boolean check per call. Local audit sinks (`StdoutAuditSink`, `FileAuditSink`) work independently.
-
-This is the reference page for OTel integration. For a setup walkthrough with Grafana and local development, see the [Observability guide](../guides/observability.md). For the audit event format and local sinks, see [Audit sinks](sinks.md).
+This is the reference page for Edictum's OpenTelemetry integration -- span attributes, metric names, `configure_otel()` parameters, and advanced setup with custom tracer/meter providers. Read this when you need the exact attribute names for building dashboards or writing queries against your observability backend. For a setup walkthrough with Grafana and local development, see the [Observability guide](../guides/observability.md). For the audit event format and local sinks, see [Audit sinks](sinks.md).
 
 ---
 
@@ -80,13 +70,9 @@ Attributes are set at different lifecycle stages.
 | `governance.tool_success` | `bool` | Whether the tool call succeeded |
 | `governance.postconditions_passed` | `bool` | Whether all postconditions passed |
 
-### Postcondition Findings in OTel (v0.5.1+)
+### Postcondition Findings (v0.5.1+)
 
-When a postcondition produces a finding, the `edictum.evaluate` span includes the
-finding details in the `contracts_evaluated` audit record. The span's
-`governance.postconditions_passed` attribute is set to `false`, making it easy to
-filter for tool calls that triggered postcondition warnings in your observability
-backend. See [findings.md](../findings.md) for the structured Finding interface.
+When a postcondition produces a finding, two things happen. On the `tool.execute` span, the `governance.postconditions_passed` attribute is set to `false`, making it easy to filter for tool calls that triggered postcondition warnings in your observability backend. Separately, the `AuditEvent` dataclass includes the full finding details in its `contracts_evaluated` list -- but this data lives on the audit event, not on the OTel span. The `edictum.evaluate` span only carries summary attributes (`edictum.verdict`, `edictum.verdict.reason`). For the full per-contract breakdown, query the audit log. See [findings.md](../findings.md) for the structured Finding interface.
 
 ---
 

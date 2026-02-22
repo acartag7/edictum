@@ -6,17 +6,7 @@ Some enforcement logic doesn't fit in YAML contracts. You might need to call an 
 
 ## When to use this
 
-Your enforcement logic needs to run arbitrary Python code -- something YAML contracts cannot express.
-
-- **Checking an external service before allowing a tool call.** You need to call an internal policy API, check a dynamic allowlist in a database, or verify a ticket exists in Jira before the tool executes. A `HookRegistration(phase="before", ...)` with an async callback can make HTTP requests and return `HookDecision.deny()` or `HookDecision.allow()` based on the response.
-
-- **Dynamic preconditions based on runtime state.** The set of allowed tools or arguments changes at runtime -- a feature flag, a time-of-day restriction, or a budget counter that lives outside Edictum's session. Before hooks receive the full `ToolEnvelope` (tool name, args, principal, environment) and can evaluate any condition that Python can express.
-
-- **Custom postcondition logic beyond pattern matching.** YAML postconditions support regex-based detection via `matches` and `matches_any`. If you need NLP-based classification, ML model inference, or multi-field validation that crosses tool boundaries, register an `HookRegistration(phase="after", ...)` to run after the tool executes.
-
-- **Logging or metrics beyond built-in audit.** You want to send tool call metadata to a custom system (Slack notification, internal dashboard, cost tracker) without implementing a full `AuditSink`. After hooks receive the `ToolEnvelope` and tool response and can perform any side effect -- their return value is ignored and errors are logged but do not affect the tool result.
-
-Hooks run in the pipeline alongside YAML contracts: before hooks run *before* preconditions (step 2 of 9), after hooks run *after* postconditions (step 8 of 9). Pass them via `Edictum(hooks=[...])`. For declarative enforcement that does not require Python, see [Writing contracts](writing-contracts.md).
+Use Python hooks when your enforcement logic requires something YAML contracts cannot express -- calling an external policy API, checking a dynamic allowlist, running ML-based classification on tool output, or sending metadata to a custom system. Hooks run alongside YAML contracts in the pipeline: before hooks run before preconditions (and can deny), after hooks run after postconditions (for side effects only). For declarative enforcement that does not require Python, see [Writing contracts](writing-contracts.md).
 
 ---
 

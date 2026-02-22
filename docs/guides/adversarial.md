@@ -6,17 +6,7 @@ This guide covers how to test whether your contracts hold up against adversarial
 
 ## When to use this
 
-You need to verify that your contracts hold up against intentional attempts to bypass them.
-
-- **Red-teaming before production deployment.** You are about to flip contracts from observe to enforce mode and want to confirm they cannot be circumvented. Run `guard.run()` with crafted arguments that simulate retry-after-deny, exfiltration via external URLs, cross-tool chaining, and role escalation. Assert that `EdictumDenied` is raised in every case.
-
-- **Testing against prompt injection and social engineering.** An attacker manipulates the agent's prompt to attempt tool calls it should not make -- reading `.env` files, sending data to external endpoints, or calling tools reserved for admin principals. Contract enforcement is model-agnostic: the pipeline evaluates tool calls, not model intentions. These tests prove that contracts deny regardless of which model drives the agent.
-
-- **Validating defense-in-depth with multiple contract types.** A single precondition might not catch a multi-step attack (write to temp file, read temp file, send externally). You need to test that preconditions, postconditions, and session contracts work together -- preconditions deny the exfiltration call, postconditions detect PII in output, and session limits cap total tool calls to prevent infinite retry loops.
-
-- **Comparing enforcement across models.** Different LLMs have different levels of model-level safety. Some self-censor (refuse to attempt the attack), while others comply with the prompt and get denied by contracts. Testing against multiple models proves that contract enforcement provides consistent guarantees regardless of model behavior.
-
-This guide provides four test scenarios with working pytest examples using `Edictum.run()`, `EdictumDenied`, and `Principal`. For the contract YAML that powers these tests, see [Writing contracts](writing-contracts.md).
+Use this guide when you are red-teaming your contracts before flipping from observe to enforce mode. It covers four adversarial scenarios -- retry-after-deny, PII exfiltration, cross-tool chaining, and role escalation -- with working pytest examples that assert `EdictumDenied` is raised in each case. The results section compares enforcement across two LLMs to demonstrate that contract enforcement is model-agnostic. For the contract YAML that powers these tests, see [Writing contracts](writing-contracts.md).
 
 ---
 

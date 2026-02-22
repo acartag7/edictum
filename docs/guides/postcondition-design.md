@@ -6,17 +6,7 @@ Postconditions evaluate *after* the tool has already executed. Their behavior de
 
 ## When to use this
 
-You need to enforce contracts on tool *output* -- after the tool has already executed.
-
-- **Scanning output for PII or secrets.** A database query tool returns results containing SSNs, API keys, or patient names. You need the pipeline to detect these patterns in `output.text` using `matches` or `matches_any` operators, then decide: `warn` (log a finding for your `on_postcondition_warn` callback to handle), `redact` (replace matched patterns with `[REDACTED]`), or `deny` (suppress the entire output with `[OUTPUT SUPPRESSED]`).
-
-- **Choosing between warn, redact, and deny effects.** Your postcondition fires, but you are not sure which effect is appropriate. `warn` gives you detection without enforcement -- your callback decides what to do. `redact` is for structured sensitive tokens (API keys, SSNs) embedded in otherwise useful data. `deny` is for output that is entirely sensitive where partial redaction still leaks information (medical records, legal documents).
-
-- **Understanding the side-effect constraint.** Your postcondition with `effect: redact` is falling back to `warn` and you do not know why. The pipeline checks `SideEffect` classification: `redact` and `deny` only apply to `READ` or `PURE` tools. For `WRITE` or `IRREVERSIBLE` tools, the action already happened -- hiding the result is counterproductive, so effects fall back to `warn`. You need to classify tools in the `tools:` YAML section or via `Edictum.from_yaml(tools=...)`.
-
-- **Separating detection from remediation across teams.** Your compliance team writes YAML contracts that detect PII patterns. Your engineering team writes Python `on_postcondition_warn` callbacks that redact or replace the findings. Neither team needs to understand the other's domain. This guide covers the detect-remediate pattern and which adapters support result replacement.
-
-For precondition design (denying calls before execution), see [Writing contracts](writing-contracts.md). For the callback API by adapter, see the individual [adapter guides](../adapters/langchain.md).
+Read this when you need to enforce contracts on tool output -- choosing between the `warn`, `redact`, and `deny` effects, understanding why effects fall back to `warn` for write/irreversible tools, or designing the detect-remediate pattern where compliance teams write YAML postconditions and engineering teams write `on_postcondition_warn` callbacks. For precondition design, see [Writing contracts](writing-contracts.md). For the callback API by adapter, see the individual [adapter guides](../adapters/langchain.md).
 
 ---
 

@@ -6,17 +6,7 @@ This guide covers how to validate, dry-run, unit test, and regression test your 
 
 ## When to use this
 
-You need to verify that your contracts produce the correct verdicts before deploying them.
-
-- **Gating contract changes in CI.** Your team merges contract YAML alongside application code. You need `edictum validate` and `edictum test --cases` in your CI pipeline so that a broken contract or an unintended verdict change fails the build before reaching production.
-
-- **Debugging a contract that denies (or allows) unexpectedly.** A tool call that should be allowed is getting denied, or vice versa. You need to test specific scenarios without running the full agent. Use `edictum check` for a single tool call, or `guard.evaluate()` in Python for programmatic dry-run evaluation with full `EvaluationResult` details including `contract_id`, `deny_reasons`, and `policy_error`.
-
-- **Regression testing after contract updates.** You edited a contract's `when` clause and need to confirm that previously-allowed calls are still allowed. Use `edictum replay` against a baseline audit log to detect verdict changes across hundreds of historical tool calls, or `edictum test --cases` with a YAML test suite that covers your known-good scenarios.
-
-- **Evaluating postconditions against sample output.** Precondition testing is straightforward (tool name + args), but postconditions need tool output to evaluate. Use `edictum test --calls` with a JSON file containing `output` fields, or `guard.evaluate("tool", args, output="...")` in pytest to test postcondition matching and effects.
-
-This guide covers the full testing ladder: `edictum validate` for schema validation, `edictum check` for spot-checks, `edictum test` for batch testing, `guard.evaluate()` / `guard.evaluate_batch()` for programmatic tests, and `edictum replay` for regression testing against audit logs.
+Use this guide when you need to verify contracts produce correct verdicts before deploying them -- whether that means gating contract changes in CI with `edictum validate` and `edictum test`, spot-checking a specific tool call with `edictum check`, running programmatic dry-run evaluations with `guard.evaluate()`, or regression testing against historical audit logs with `edictum replay`.
 
 ---
 
@@ -36,7 +26,7 @@ Validation checks include:
 - Missing required fields (`apiVersion`, `kind`, `metadata.name`, `defaults.mode`)
 - Invalid regex patterns in `matches` / `matches_any`
 - Duplicate contract IDs within a bundle
-- Wrong effect for contract type (`deny` on a postcondition, `warn` on a precondition)
+- Invalid effect for contract type (preconditions only allow `deny`; postconditions allow `warn`, `redact`, or `deny`)
 - Use of `output.text` in a precondition
 
 ---

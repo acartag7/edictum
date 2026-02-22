@@ -6,17 +6,7 @@ enables routing enforcement spans to any observability backend.
 
 ## When to use this
 
-You need to capture, store, or route the `AuditEvent` records that the pipeline emits for every contract evaluation.
-
-- **Local debugging during development.** You are building contracts and want to see every allow/deny decision as it happens. `StdoutAuditSink` (the default when no `audit_sink` is provided) prints each event as a single JSON line to stdout -- no setup required, works with `Edictum.from_yaml()` out of the box.
-
-- **Production audit trail for compliance.** Your organization requires a persistent record of every tool call decision -- who called what, which contract fired, whether it was allowed or denied. `FileAuditSink("/var/log/edictum/events.jsonl")` appends each `AuditEvent` as a JSON line, creating a tamper-evident log suitable for offline analysis and compliance evidence.
-
-- **Redacting secrets from audit records.** Audit events contain `tool_args` which may include API keys, passwords, or JWTs. `RedactionPolicy` automatically scrubs sensitive keys (matches 18+ common key names plus substring detection), detects secret value patterns (OpenAI keys, AWS keys, GitHub tokens, Slack tokens, JWTs), redacts inline secrets in bash commands, and caps payloads at 32 KB. Pass custom `sensitive_keys` or `custom_patterns` to extend the defaults.
-
-- **Routing events to a custom destination.** You want to send events to Kafka, a webhook, or an internal service. Implement the `AuditSink` protocol (a single `async def emit(self, event: AuditEvent)` method) and pass it to `Edictum(audit_sink=...)`. The protocol is `@runtime_checkable` -- Edictum validates your sink at construction time.
-
-For production observability with span-level metrics and dashboards, see [Telemetry reference](telemetry.md) and the [Observability guide](../guides/observability.md).
+Read this when you need to configure where audit events go. It covers the two built-in sinks (`StdoutAuditSink` for development, `FileAuditSink` for persistent JSONL logs), the `RedactionPolicy` for scrubbing secrets from audit records, and the `AuditSink` protocol for routing events to custom destinations. For production observability with span-level metrics and dashboards, see [Telemetry reference](telemetry.md) and the [Observability guide](../guides/observability.md).
 
 ---
 
@@ -86,7 +76,7 @@ Every audit event contains the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed` |
+| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed`, `postcondition_warning` |
 | `decision_source` | `str \| None` | What produced the decision: `hook`, `precondition`, `session_contract`, `attempt_limit`, `operation_limit` |
 | `decision_name` | `str \| None` | Name of the specific hook or contract |
 | `reason` | `str \| None` | Human-readable denial reason |
@@ -137,7 +127,7 @@ sink = StdoutAuditSink(redaction=RedactionPolicy())
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy (always applied; defaults to standard policy) |
+| `redaction` | `RedactionPolicy \| None` | `None` | Redaction policy. When `None`, a default `RedactionPolicy()` is created internally. |
 
 ### FileAuditSink
 
@@ -158,7 +148,7 @@ sink = FileAuditSink(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | `str \| Path` | (required) | File path for the JSONL output |
-| `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy |
+| `redaction` | `RedactionPolicy \| None` | `None` | Redaction policy. When `None`, a default `RedactionPolicy()` is created internally. |
 
 ### OpenTelemetry Span Emission
 
