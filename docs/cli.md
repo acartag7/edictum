@@ -100,7 +100,7 @@ prints the verdict. No tool actually executes.
 **Usage**
 
 ```
-edictum check <file.yaml> --tool <name> --args '<json>'
+edictum check <file.yaml> --tool <name> --args '<json>' [--json]
 ```
 
 **Options**
