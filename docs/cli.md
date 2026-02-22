@@ -262,6 +262,7 @@ edictum test <file.yaml> --calls <calls.json> [--json]
 | `--cases PATH` | YAML file with test cases (preconditions only) |
 | `--calls PATH` | JSON file with tool calls to evaluate (pre + postconditions) |
 | `--json` | Output results as JSON (only with `--calls`) |
+| `--environment TEXT` | Environment name for evaluation, defaults to `production` |
 
 Exit codes: `0` if all cases pass / no denials, `1` if any fail / any denial, `2` on usage error.
 
@@ -314,6 +315,7 @@ Each test case supports:
 | `expect` | Yes | Expected verdict: `allow` or `deny` |
 | `principal` | No | Principal context (see below) |
 | `match_contract` | No | Verify that this contract ID triggered the result |
+| `environment` | No | Environment override (defaults to `--environment` flag value) |
 
 The `principal` field supports `role`, `user_id`, `ticket_ref`, and `claims` (arbitrary key-value pairs).
 
