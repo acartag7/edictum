@@ -25,13 +25,7 @@ Agent decides to call tool
 
 ## When to use this
 
-**You need to understand the evaluation order.** Your agent is receiving unexpected deny or allow decisions and you want to trace which stage -- preconditions, session limits, or postconditions -- produced the result. The pipeline runs `pre_execute()` then `post_execute()` in a fixed order (attempt limits, hooks, preconditions, session contracts, execution limits, tool execution, postconditions), and knowing that order tells you where to look.
-
-**You are explaining Edictum to a new team member.** They need the mental model: every tool call goes through the pipeline, contracts are checked deterministically in Python (not in the LLM), and the call is either allowed or denied before the tool runs. This page is the starting point for that conversation.
-
-**You are debugging postcondition effects.** A postcondition with `effect: redact` is not redacting output for a WRITE tool. The pipeline only enforces `redact` and `deny` effects for READ/PURE tools -- WRITE/IRREVERSIBLE tools fall back to `warn`. Understanding the `SideEffect` classification and how `GovernancePipeline.post_execute()` handles it explains the behavior.
-
-This page covers the full pipeline flow. For writing contracts, see [contracts](contracts.md). For testing contracts without running tools, see [dry-run evaluation](../evaluation.md).
+Read this page when you need to understand why a tool call was denied or allowed. It walks through the full pipeline evaluation order -- attempt limits, hooks, preconditions, session contracts, execution limits, tool execution, postconditions -- so you can trace exactly where a decision was made. This is also the starting point for explaining Edictum to a new team member: every tool call passes through the pipeline, contracts are checked deterministically in Python (not in the LLM), and the call is either allowed or denied before the tool runs.
 
 ## A Denied Call: Step by Step
 

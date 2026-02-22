@@ -5,13 +5,7 @@ Edictum produces structured **findings** that your application can act on.
 
 ## When to use this
 
-**Your agent reads data that may contain PII and you need structured output to act on.** When a postcondition detects SSN or IBAN patterns, the pipeline produces `Finding` objects with `type="pii_detected"`, the `contract_id` that triggered it, and the `field` that matched. Your `on_postcondition_warn` callback receives these findings and can redact, replace, or log the result.
-
-**You are building dashboards or compliance reports grouped by finding type.** The `classify_finding()` function in `findings.py` categorizes postcondition results into `pii_detected`, `secret_detected`, `limit_exceeded`, or `policy_violation` based on the contract ID and message content. Filter your audit sink by finding type to track trends over time.
-
-**You need different remediation strategies per finding category.** Route `pii_detected` findings to a redaction callback, `secret_detected` findings to a full-block callback, and `policy_violation` findings to a logging-only callback. The `PostCallResult` returned by the adapter contains the `findings` list and the `postconditions_passed` flag. For adapters that support result transformation (LangChain, Agno, Semantic Kernel), the callback return value replaces the tool result.
-
-Findings are the structured output from postconditions. For the contract types that produce findings, see [contracts](concepts/contracts.md). For postcondition effect behavior (`warn`/`redact`/`deny`), see [YAML reference](contracts/yaml-reference.md#postcondition-effects).
+Read this page when you need to act on postcondition results programmatically -- redacting PII, routing findings to different handlers, or building compliance dashboards grouped by finding type. Findings are the structured output that postconditions produce, and your `on_postcondition_warn` callback receives them. For the contract types that produce findings, see [contracts](concepts/contracts.md). For postcondition effect behavior (`warn`/`redact`/`deny`), see [YAML reference](contracts/yaml-reference.md#postcondition-effects).
 
 ## The Pattern: Detect -> Remediate
 
@@ -45,7 +39,7 @@ Each finding contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `type` | str | Category: `pii_detected`, `secret_detected`, `limit_exceeded`, `policy_violation` |
+| `type` | str | Category: `pii_detected`, `secret_detected`, `limit_exceeded`, `policy_violation`. Assigned by `classify_finding()`, which uses substring matching on the contract ID and message -- for example, a contract ID containing "secret" maps to `secret_detected`. Be aware that this is a heuristic: a contract ID like `require-authentication` would match `secret_detected` because `"secret"` appears as a substring. Choose contract IDs carefully to avoid misclassification. |
 | `contract_id` | str | Which contract produced this finding |
 | `field` | str | Which selector triggered it. Defaults to `"output"` for postconditions; contracts can provide a more specific value via `Verdict.fail("msg", field="output.text")` |
 | `message` | str | Human-readable description |
@@ -143,7 +137,7 @@ wrapper = adapter.as_tool_wrapper(on_postcondition_warn=route_by_type)
 
 | Mode | Postcondition warns | Callback invoked | Result transformed |
 |------|-------------------|-----------------|-------------------|
-| **observe** | Logged as `would_warn` | Yes (if provided) | Yes |
+| **observe** | Warning prepended with `[observe]`; audit event is `CALL_EXECUTED` or `CALL_FAILED` | Yes (if provided) | Yes |
 | **enforce** | Logged as `postcondition_warning` | Yes (if provided) | Yes |
 
 The callback fires in both modes when postconditions produce findings.

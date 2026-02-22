@@ -4,13 +4,7 @@ A principal carries identity context -- who initiated the tool call, what role t
 
 ## When to use this
 
-**Your agent serves multiple roles and each needs different permissions.** An analyst should not deploy to production, but an SRE should. Set `Principal(role="analyst")` or `Principal(role="sre")` and write contracts that check `principal.role`. The `Principal` is a frozen dataclass -- set it once on the adapter and it propagates to every tool call, audit event, and OTel span.
-
-**You enforce tenant isolation in a multi-tenant system.** Set `Principal(org_id="acme-corp")` and write contracts that check `principal.org_id`. Each tenant's agent only accesses its own resources. The `claims` dict supports arbitrary key-value pairs for fine-grained access: `principal.claims.department`, `principal.claims.clearance`.
-
-**Compliance requires identity attribution on every tool call.** Auditors need to know who initiated each action. The principal's `user_id`, `service_id`, and `ticket_ref` fields are stamped on every `AuditEvent` and every OTel span (`edictum.principal.*` attributes). Contracts can require a ticket reference for destructive operations: `principal.ticket_ref: { exists: false }` triggers a deny.
-
-Principals carry identity context but Edictum does not authenticate them -- your application sets the principal. For contracts that use principal fields, see [contracts](contracts.md). For how principals flow through the pipeline, see [how it works](how-it-works.md).
+Read this page when you need to attach identity context to tool calls -- role-based permissions, tenant isolation, or compliance attribution. Principals carry fields like `role`, `user_id`, `org_id`, and `ticket_ref` that contracts can evaluate against and that appear on every audit event. OTel spans include the `role`, `team`, `ticket_ref`, `user_id`, and `org_id` fields as `edictum.principal.*` attributes (note: `service_id` is a Principal field but is not emitted to OTel spans, while `team` is emitted from the audit event's principal dict even though it is not a named Principal field). For contracts that use principal fields, see [contracts](contracts.md). For how principals flow through the pipeline, see [how it works](how-it-works.md).
 
 ## Principal Fields
 
@@ -122,7 +116,7 @@ Set the principal once at the adapter level. It propagates automatically to:
 - Every `ToolEnvelope` built for each tool call
 - Every precondition and postcondition evaluation
 - Every `AuditEvent` emitted by the pipeline
-- Every OpenTelemetry span (as `edictum.principal.*` attributes)
+- Every OpenTelemetry span (as `edictum.principal.*` attributes for `role`, `team`, `ticket_ref`, `user_id`, and `org_id` -- note that `service_id` is not included in OTel spans)
 
 You do not need to pass the principal on each tool call. The adapter carries it for the entire session.
 
