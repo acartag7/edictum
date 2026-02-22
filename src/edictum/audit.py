@@ -183,6 +183,28 @@ class RedactionPolicy:
         return data
 
 
+class CompositeSink:
+    """Fan-out sink that emits to multiple sinks sequentially.
+
+    Sinks are called in order. If a sink raises, the exception propagates
+    and subsequent sinks do not receive the event.
+    """
+
+    def __init__(self, sinks: list[AuditSink]) -> None:
+        if not sinks:
+            raise ValueError("CompositeSink requires at least one sink")
+        self._sinks: list[AuditSink] = list(sinks)
+
+    @property
+    def sinks(self) -> list[AuditSink]:
+        """The wrapped sinks, in emission order."""
+        return list(self._sinks)
+
+    async def emit(self, event: Any) -> None:
+        for sink in self._sinks:
+            await sink.emit(event)
+
+
 class StdoutAuditSink:
     """Emit audit events as JSON to stdout."""
 
