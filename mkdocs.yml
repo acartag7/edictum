@@ -89,6 +89,7 @@ nav:
     - Postcondition Design: guides/postcondition-design.md
     - Adversarial Testing: guides/adversarial.md
   - Reference:
+    - Lifecycle Callbacks: lifecycle-callbacks.md
     - Dry-Run Evaluation: evaluation.md
     - Postcondition Findings: findings.md
     - Audit Sinks: audit/sinks.md

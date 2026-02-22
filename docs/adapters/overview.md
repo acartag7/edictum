@@ -78,6 +78,21 @@ Some adapters accept additional parameters. See individual adapter docs for deta
 
 ## Common Features
 
+### Lifecycle Callbacks
+
+React to allow/deny decisions in real time with callbacks on the guard:
+
+```python
+guard = Edictum.from_yaml(
+    "contracts.yaml",
+    on_deny=lambda env, reason, cid: print(f"DENIED {env.tool_name}: {reason}"),
+    on_allow=lambda env: metrics.increment("allowed", tool=env.tool_name),
+)
+```
+
+These fire in all 6 adapters. See [Lifecycle Callbacks](../lifecycle-callbacks.md) for
+use cases and full API reference.
+
 ### Observe Mode
 
 Every adapter supports observe mode. When the guard is created with
