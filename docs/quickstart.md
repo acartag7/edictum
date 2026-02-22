@@ -234,32 +234,31 @@ See [observe mode](concepts/observe-mode.md) for the full workflow.
 
 ## 6. Dry-Run Evaluation
 
-Test a tool call against your contracts without executing anything — useful for CI pipelines and contract development:
+Test a tool call against your contracts without executing anything -- useful for CI pipelines and contract development:
 
 ```python
-result = await guard.evaluate("read_file", {"path": ".env"})
-print(result.verdict)      # Verdict.DENY
-print(result.reason)       # "Read of sensitive file denied: .env"
-print(result.contract_id)  # "block-dotenv"
+result = guard.evaluate("read_file", {"path": ".env"})
+print(result.verdict)                   # "deny"
+print(result.deny_reasons[0])           # "Read of sensitive file denied: .env"
+print(result.contracts[0].contract_id)  # "block-dotenv"
 ```
 
 Batch evaluation for testing multiple scenarios at once:
 
 ```python
-calls = [
-    ("read_file", {"path": ".env"}),
-    ("read_file", {"path": "readme.txt"}),
-    ("run_command", {"command": "rm -rf /"}),
-]
-results = await guard.evaluate_batch(calls)
+results = guard.evaluate_batch([
+    {"tool": "read_file", "args": {"path": ".env"}},
+    {"tool": "read_file", "args": {"path": "readme.txt"}},
+    {"tool": "run_command", "args": {"command": "rm -rf /"}},
+])
 for r in results:
-    print(f"{r.tool_name}: {r.verdict.name}")
+    print(f"{r.tool_name}: {r.verdict.upper()}")
 # read_file: DENY
 # read_file: ALLOW
 # run_command: DENY
 ```
 
-See [Testing Contracts](guides/testing-contracts.md) for YAML test cases and CI integration.
+Both methods are synchronous -- no `await` needed. See [Dry-Run Evaluation](evaluation.md) for the full API reference and [Testing Contracts](guides/testing-contracts.md) for YAML test cases and CI integration.
 
 ## Next Steps
 
