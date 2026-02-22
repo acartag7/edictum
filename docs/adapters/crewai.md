@@ -4,6 +4,10 @@ The `CrewAIAdapter` registers global before/after tool-call hooks with the
 CrewAI framework. Every tool call across all agents in a crew passes through
 these hooks.
 
+## When to use this
+
+Add Edictum to your CrewAI project when your crew's tools can cause side effects you need to govern -- deleting resources, sending messages, making purchases. The `register()` method hooks into CrewAI's global tool call lifecycle, so contracts apply to every agent in the crew without per-agent configuration. Session contracts track cumulative usage across all agents in the crew, and tool name normalization (spaces and hyphens to underscores) happens automatically so contract names match regardless of how CrewAI formats them.
+
 ## Installation
 
 ```bash

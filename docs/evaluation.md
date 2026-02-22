@@ -2,6 +2,10 @@
 
 You need to test whether a tool call would be allowed or denied without actually executing it. The `evaluate()` and `evaluate_batch()` methods on the `Edictum` class check a tool call against all matching contracts and return a detailed result -- no tool execution, no session state changes, no audit events.
 
+## When to use this
+
+Read this page when you need to test whether a tool call would be allowed or denied without actually executing it. `evaluate()` is synchronous, produces no audit events, and evaluates all matching contracts exhaustively (no short-circuit on first denial). Use it for CI/CD gating, contract change impact analysis, or building approval workflows. For the full pipeline with session state and audit events, use `run()`. For command-line spot-checks, use `edictum check` or `edictum test`. See the [comparison table](#evaluate-vs-run-vs-cli) below.
+
 ---
 
 ## Quick Example

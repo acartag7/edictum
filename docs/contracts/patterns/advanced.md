@@ -234,7 +234,7 @@ principal = Principal(
 **Gotchas:**
 - Claims are set by your application. Edictum does not validate claim values against any external source.
 - If a claim key does not exist, the leaf evaluates to `false`. Use `principal.claims.<key>: { exists: false }` to explicitly require a claim.
-- Nested claims (e.g., `principal.claims.org.team`) are not supported. Claims are a flat dictionary.
+- Nested claims are supported. Dotted paths like `principal.claims.org.team` resolve through nested dicts in the `Principal.claims` dictionary (e.g., `claims={"org": {"team": "backend"}}`).
 
 ---
 
@@ -518,7 +518,7 @@ A comprehensive contract bundle combines all three contract types: preconditions
 === "Python"
 
     ```python
-    from edictum import Edictum, OperationLimits, Principal, Verdict, precondition
+    from edictum import Edictum, OperationLimits, Verdict, precondition
     from edictum.contracts import postcondition
     import re
 
@@ -565,14 +565,13 @@ A comprehensive contract bundle combines all three contract types: preconditions
             max_attempts=120,
             max_calls_per_tool={"deploy_service": 3, "send_email": 10},
         ),
-        principal=Principal(role="analyst"),
     )
     ```
 
 **Gotchas:**
 - Contract evaluation order within a type follows the array order in the YAML. For preconditions, the first matching deny wins and stops evaluation.
-- Postconditions always run, even if the tool was already denied by a precondition. However, if a precondition denies the call, the tool does not execute, so there is no output for the postcondition to inspect.
-- Session contracts are checked on every tool call attempt, even before preconditions evaluate.
+- When a precondition denies a call in enforce mode, `run()` raises `EdictumDenied` immediately. The tool does not execute and postconditions are not evaluated. Postconditions only run when the tool actually executes.
+- Session contracts are checked after preconditions, not before. The full pre-execution order is: 1. Attempt limit, 2. Before hooks, 3. Preconditions, 4. Session contracts, 5. Execution limits.
 
 ---
 
@@ -656,7 +655,7 @@ Individual contracts can override the bundle's default mode. This lets you mix e
 **Gotchas:**
 - Observe mode emits `CALL_WOULD_DENY` audit events. The tool call proceeds normally. Review these events before switching to enforce.
 - The mode override is per-contract. Other contracts in the same bundle continue to use the bundle default.
-- Postconditions are always `warn`, so `mode: observe` has no visible effect on postconditions. Observe mode is meaningful only for preconditions and session contracts.
+- For postconditions, `mode: observe` downgrades `redact`/`deny` effects to a warning prefixed with `[observe]`. The tool output is not modified. Observe mode is meaningful for all contract types.
 
 ---
 

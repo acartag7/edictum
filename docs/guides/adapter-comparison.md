@@ -2,6 +2,10 @@
 
 Edictum ships six framework adapters. This guide helps you choose the right one and understand the tradeoffs.
 
+## When to use this
+
+Read this page if you are choosing between agent frameworks, migrating from one to another, or need to understand which postcondition effects each adapter supports. If you already know your framework, go directly to its adapter page. The comparison table and per-adapter notes below cover the capability differences that matter most: whether an adapter can redact tool results before the LLM sees them, how denial is communicated, and which postcondition effects are supported.
+
 ---
 
 ## Quick Comparison
@@ -135,4 +139,4 @@ hooks = adapter.to_hook_callables()
 
 ### OpenAI Agents (postcondition enforcement)
 
-- The output guardrail can `.allow()` or `.reject_content()` but cannot substitute the tool result. Postcondition `effect: deny` on pure/read tools returns `.reject_content()`, fully enforcing the denial. Postcondition `effect: redact` requires the wrapper integration path since the guardrail cannot transform the result. A warning is logged at adapter construction when postconditions declare `effect: redact`.
+- The output guardrail can `.allow()` or `.reject_content()` but cannot substitute the tool result. Postcondition `effect: deny` on pure/read tools returns `.reject_content()`, fully enforcing the denial. Postcondition `effect: redact` is not supported because native guardrails cannot transform tool results. A warning is logged at adapter construction when postconditions declare `effect: redact`.

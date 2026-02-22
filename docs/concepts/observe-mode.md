@@ -83,17 +83,11 @@ The critical difference: in observe mode, the tool always executes. The audit tr
 
 ## Postconditions in Observe Mode
 
-Postconditions always produce findings (warnings), never denials. In observe mode, postcondition findings are logged as `would_warn` instead of `postcondition_warning`. The `on_postcondition_warn` callback fires in both modes.
+Postconditions always produce findings (warnings), never denials. In observe mode, postcondition warnings are prepended with `[observe]` in the warning string (e.g., `"[observe] PII detected in output"`). The audit event is still emitted as `CALL_EXECUTED` or `CALL_FAILED` -- there is no separate `would_warn` action. The `on_postcondition_warn` callback fires in both modes.
 
-## When to Use Observe Mode
+## When to use this
 
-**Rolling out new contracts.** Write a new precondition, deploy it in observe mode, and watch the `CALL_WOULD_DENY` events for a few days. If the false positive rate is acceptable, switch to enforce.
-
-**Testing in production.** Your staging environment may not exercise the same tool call patterns as production. Observe mode lets you validate contracts against real agent behavior.
-
-**Compliance shadow runs.** Compliance teams can define contracts for upcoming regulatory requirements, deploy them in observe mode, and measure the impact before the deadline. The audit trail serves as evidence of preparedness.
-
-**Gradual rollout.** Start with all contracts in observe mode. Promote them to enforce one at a time as you gain confidence, starting with the most critical contracts (secret protection, destructive command prevention).
+Read this page when you want to deploy contracts without denying any tool calls yet. Observe mode is for safe rollouts: you deploy contracts in `mode: observe`, review the `CALL_WOULD_DENY` audit events they produce, tune false positives, and then switch to `mode: enforce` once you have confidence. For comparing two contract versions side-by-side in production, see [dual-mode evaluation](#dual-mode-evaluation-with-observe_alongside) below.
 
 ## Reviewing Observe-Mode Events
 

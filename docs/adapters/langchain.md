@@ -5,6 +5,10 @@ integration methods depending on your setup: `as_tool_wrapper()` for `ToolNode`,
 `as_middleware()` for `create_react_agent`, and `as_async_tool_wrapper()` for
 async contexts.
 
+## When to use this
+
+Add Edictum to your LangChain project when your agents use tools that need precondition checks, postcondition enforcement, or session limits. The adapter provides two distinct integration paths: `as_tool_wrapper()` returns a plain callable for the `ToolNode(wrap_tool_call=...)` constructor parameter, while `as_middleware()` uses the `@wrap_tool_call` decorator from `langchain.agents.middleware`. Both give the adapter full control over the returned `ToolMessage`, so the `on_postcondition_warn` callback can transform results (for example, stripping PII) before they reach the model. Use `as_async_tool_wrapper()` in async contexts like FastAPI to avoid sync-to-async bridging.
+
 ## Installation
 
 ```bash
@@ -132,7 +136,7 @@ result = agent.invoke({"messages": [("user", "Summarize the Q3 report")]})
 ## Observe Mode
 
 Deploy contracts in observation mode to see what would be denied without
-blocking any tool calls:
+denying any tool calls:
 
 ```python
 guard = Edictum.from_yaml("contracts.yaml", mode="observe")

@@ -4,6 +4,12 @@ Every contract evaluation in Edictum produces an `AuditEvent`. Audit sinks consu
 these events and route them to local storage, while OpenTelemetry integration
 enables routing enforcement spans to any observability backend.
 
+## When to use this
+
+Read this when you need to configure where audit events go. It covers the two built-in sinks (`StdoutAuditSink` for development, `FileAuditSink` for persistent JSONL logs), the `RedactionPolicy` for scrubbing secrets from audit records, and the `AuditSink` protocol for routing events to custom destinations. For production observability with span-level metrics and dashboards, see [Telemetry reference](telemetry.md) and the [Observability guide](../guides/observability.md).
+
+---
+
 ## The AuditSink Protocol
 
 Any class that implements the `AuditSink` protocol can receive audit events. The
@@ -81,7 +87,7 @@ Every audit event contains the following fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed` |
+| `action` | `AuditAction` | One of: `call_denied`, `call_would_deny`, `call_allowed`, `call_executed`, `call_failed`, `postcondition_warning` |
 | `decision_source` | `str \| None` | What produced the decision: `hook`, `precondition`, `session_contract`, `attempt_limit`, `operation_limit` |
 | `decision_name` | `str \| None` | Name of the specific hook or contract |
 | `reason` | `str \| None` | Human-readable denial reason |
@@ -132,7 +138,7 @@ sink = StdoutAuditSink(redaction=RedactionPolicy())
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy (always applied; defaults to standard policy) |
+| `redaction` | `RedactionPolicy \| None` | `None` | Redaction policy. When `None`, a default `RedactionPolicy()` is created internally. |
 
 ### FileAuditSink
 
@@ -153,7 +159,7 @@ sink = FileAuditSink(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `path` | `str \| Path` | (required) | File path for the JSONL output |
-| `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy |
+| `redaction` | `RedactionPolicy \| None` | `None` | Redaction policy. When `None`, a default `RedactionPolicy()` is created internally. |
 
 ### CompositeSink
 

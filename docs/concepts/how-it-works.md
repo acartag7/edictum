@@ -23,6 +23,10 @@ Agent decides to call tool
   +--------------+
 ```
 
+## When to use this
+
+Read this page when you need to understand why a tool call was denied or allowed. It walks through the full pipeline evaluation order -- attempt limits, hooks, preconditions, session contracts, execution limits, tool execution, postconditions -- so you can trace exactly where a decision was made. This is also the starting point for explaining Edictum to a new team member: every tool call passes through the pipeline, contracts are checked deterministically in Python (not in the LLM), and the call is either allowed or denied before the tool runs.
+
 ## A Denied Call: Step by Step
 
 An agent tries to read `.env` using the `read_file` tool. Here is what happens:

@@ -3,6 +3,10 @@
 Edictum ships a command-line interface for validating contract files, checking
 tool calls against contracts, diffing contract bundle versions, and replaying audit logs against updated contracts.
 
+## When to use this
+
+Read this page when you need to validate, test, diff, or replay contracts from the command line or in CI/CD. The CLI covers the full contract lifecycle outside of runtime: `edictum validate` catches schema errors, `edictum check` simulates a single tool call, `edictum test` runs batches of expected verdicts, `edictum diff` compares contract versions, and `edictum replay` re-evaluates historical audit events against new contracts. For runtime enforcement, use an [adapter](adapters/overview.md) or `guard.run()`. For programmatic dry-run evaluation, use [`evaluate()`](evaluation.md).
+
 ## Installation
 
 ```bash

@@ -4,6 +4,10 @@ A contract is a check that Edictum evaluates on every tool call. Contracts are w
 
 There are three contract types: **preconditions** check before execution, **postconditions** check after, and **session contracts** track state across multiple calls.
 
+## When to use this
+
+Read this page when you are writing or modifying contracts. It covers all three contract types -- preconditions that deny dangerous inputs before the tool runs, postconditions that scan output after execution, and session contracts that cap cumulative usage. If you need the full YAML syntax, see [YAML reference](../contracts/yaml-reference.md). For the evaluation order between contract types, see [how it works](how-it-works.md).
+
 ## Preconditions
 
 Preconditions evaluate **before** the tool runs. If the condition matches, the call is denied and the tool never executes.

@@ -4,6 +4,10 @@ The `AgnoAdapter` produces a wrap-around hook function compatible with Agno's
 `tool_hooks` parameter. Unlike other adapters, the Agno hook wraps the entire
 tool execution -- it receives the callable and is responsible for invoking it.
 
+## When to use this
+
+Add Edictum to your Agno agent when you need to enforce contracts on tool calls. The `as_tool_hook()` method returns a wrap-around function that integrates with Agno's `tool_hooks` parameter, applying preconditions and postconditions to every tool invocation. Because the hook wraps the entire tool execution, it can both deny calls and replace tool results -- making the `on_postcondition_warn` callback suitable for PII redaction in regulated environments.
+
 ## Installation
 
 ```bash

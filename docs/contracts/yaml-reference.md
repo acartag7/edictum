@@ -165,7 +165,7 @@ Preconditions evaluate **before** tool execution. If the expression matches, the
 
 - `then.effect` must be `deny`. Preconditions block; they do not warn.
 - The `output.text` selector is invalid in preconditions because the tool has not run yet. Using it is a validation error.
-- When `mode: observe` is set (either on the contract or via `defaults.mode`), a matching precondition emits a `CALL_WOULD_DENY` audit event instead of blocking. The tool call proceeds.
+- When `mode: observe` is set (either on the contract or via `defaults.mode`), a matching precondition emits a `CALL_WOULD_DENY` audit event instead of denying. The tool call proceeds.
 
 ```yaml
 - id: block-sensitive-reads
@@ -600,7 +600,6 @@ guard = Edictum.from_yaml(
 | Contracts (same ID) | Later layer **replaces** earlier layer entirely |
 | Contracts (unique ID) | Concatenated into final list |
 | `defaults.mode` | Later layer wins |
-| `defaults.environment` | Later layer wins |
 | `limits` | Later layer wins (entire limits block replaced) |
 | `tools` | Deep merge (tool configs from all layers combined) |
 | `metadata` | Deep merge (later keys override earlier) |

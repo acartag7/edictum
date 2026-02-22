@@ -232,7 +232,7 @@ Roll out new contracts safely by starting in `observe` mode and switching to `en
 4. Review `CALL_WOULD_DENY` events in your audit logs. If the contract fires correctly with no false positives, change it to `mode: enforce` (or remove the override to inherit the bundle default).
 
 **Gotchas:**
-- Observe mode applies to preconditions and session contracts. Postconditions always warn regardless of mode, so observe mode has no visible effect on them.
+- Observe mode applies to all contract types. For postconditions, when `mode: observe` is set and the condition matches, effects (`redact`/`deny`) are downgraded to a warning and the message is prefixed with `[observe]`. The tool output is not modified.
 - A `CALL_WOULD_DENY` event contains the same information as a real deny event (contract ID, message, tags, metadata). The only difference is the event type.
 - Do not leave contracts in observe mode indefinitely. Unreviewed observe-mode contracts accumulate audit noise without providing protection.
 
@@ -253,7 +253,7 @@ Tags enable downstream systems to filter, route, and aggregate audit events by c
 | `change-control` | Events related to production changes |
 | `rate-limit` | Session limit events |
 | `cost` | Events related to resource cost |
-| `experimental` | Shadow-mode / observe-mode contracts |
+| `experimental` | Observe-mode contracts |
 
 **Example: filtering audit events in Python:**
 

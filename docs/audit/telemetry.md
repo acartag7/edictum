@@ -4,6 +4,12 @@ Edictum instruments the pipeline with OpenTelemetry spans and metrics.
 When `opentelemetry` is not installed, all instrumentation degrades to silent no-ops
 with zero overhead.
 
+## When to use this
+
+This is the reference page for Edictum's OpenTelemetry integration -- span attributes, metric names, `configure_otel()` parameters, and advanced setup with custom tracer/meter providers. Read this when you need the exact attribute names for building dashboards or writing queries against your observability backend. For a setup walkthrough with Grafana and local development, see the [Observability guide](../guides/observability.md). For the audit event format and local sinks, see [Audit sinks](sinks.md).
+
+---
+
 ## Installation
 
 ```bash
@@ -64,13 +70,9 @@ Attributes are set at different lifecycle stages.
 | `governance.tool_success` | `bool` | Whether the tool call succeeded |
 | `governance.postconditions_passed` | `bool` | Whether all postconditions passed |
 
-### Postcondition Findings in OTel (v0.5.1+)
+### Postcondition Findings (v0.5.1+)
 
-When a postcondition produces a finding, the `edictum.evaluate` span includes the
-finding details in the `contracts_evaluated` audit record. The span's
-`governance.postconditions_passed` attribute is set to `false`, making it easy to
-filter for tool calls that triggered postcondition warnings in your observability
-backend. See [findings.md](../findings.md) for the structured Finding interface.
+When a postcondition produces a finding, two things happen. On the `tool.execute` span, the `governance.postconditions_passed` attribute is set to `false`, making it easy to filter for tool calls that triggered postcondition warnings in your observability backend. Separately, the `AuditEvent` dataclass includes the full finding details in its `contracts_evaluated` list -- but this data lives on the audit event, not on the OTel span. The `edictum.evaluate` span only carries summary attributes (`edictum.verdict`, `edictum.verdict.reason`). For the full per-contract breakdown, query the audit log. See [findings.md](../findings.md) for the structured Finding interface.
 
 ---
 

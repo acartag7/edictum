@@ -4,24 +4,43 @@ Edictum instruments the pipeline with OpenTelemetry spans, metrics, and structur
 
 ---
 
+## When to use this
+
+Read this when you are setting up monitoring for your Edictum-governed agents. It covers how to connect Edictum's OpenTelemetry spans to your observability stack, what each span attribute means, and what metrics to watch for production monitoring and observe-mode validation. For the audit event format and sink configuration, see [Audit sinks](../audit/sinks.md). For the full span attribute and metric reference, see [Telemetry reference](../audit/telemetry.md).
+
+---
+
 ## What Edictum Emits
 
 ### Spans
 
-Each tool call produces one span named `tool.execute {tool_name}`.
+Each tool call produces two kinds of spans:
 
-Key span attributes:
+**`tool.execute {tool_name}`** -- one per tool call, covering the full lifecycle from precondition evaluation through post-execution checks.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `governance.action` | string | `allowed`, `denied`, or `would_deny` |
+| `governance.reason` | string | Denial reason (only set when denied) |
+| `governance.tool_success` | bool | Whether the tool call succeeded |
+| `governance.postconditions_passed` | bool | Whether all postconditions passed |
+| `edictum.policy_version` | string | SHA-256 hash of the active YAML file |
+
+**`edictum.evaluate`** -- one per audit event (pre-decision, post-execution, and per-contract observed denials). Contains the full governance context.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `edictum.tool.name` | string | Name of the tool |
-| `edictum.verdict` | string | `allowed`, `denied`, or `would_deny` |
+| `edictum.verdict` | string | `call_allowed`, `call_denied`, or `call_would_deny` (AuditAction enum values) |
+| `edictum.verdict.reason` | string | Reason for the verdict |
 | `edictum.decision.name` | string | Contract ID that fired (if denied) |
 | `edictum.principal.role` | string | Principal role from the adapter |
 | `edictum.mode` | string | `enforce` or `observe` |
 | `edictum.policy_version` | string | SHA-256 hash of the active YAML file |
 
-Denied calls set the span status to ERROR with the denial reason.
+Note the different value formats: `governance.action` on the `tool.execute` span uses short forms (`allowed`, `denied`, `would_deny`), while `edictum.verdict` on the `edictum.evaluate` span uses the full AuditAction enum values with the `call_` prefix (`call_allowed`, `call_denied`, `call_would_deny`).
+
+Denied calls set the `edictum.evaluate` span status to ERROR with the denial reason.
 
 ### Counters
 

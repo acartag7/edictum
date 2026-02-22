@@ -11,7 +11,7 @@ All YAML examples use the `edictum/v1` ContractBundle format and compile with `E
 | Pattern | Description |
 |---|---|
 | [Access Control](access-control.md) | Role-based gates, environment restrictions, attribute-based access, and role escalation prevention. |
-| [Data Protection](data-protection.md) | PII detection, secret scanning, sensitive file blocking, and output size monitoring. |
+| [Data Protection](data-protection.md) | PII detection, secret scanning, sensitive file denial, and output size monitoring. |
 | [Change Control](change-control.md) | Ticket requirements, approval gates, blast radius limits, dry-run enforcement, and SQL safety. |
 | [Rate Limiting](rate-limiting.md) | Session-wide limits, per-tool caps, burst protection, and failure escalation detection. |
 | [Compliance and Audit](compliance.md) | Regulatory tags, contract bundle versioning, dual-mode deployment, and tag-based filtering. |

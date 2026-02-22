@@ -4,6 +4,12 @@ This guide covers how to test whether your contracts hold up against adversarial
 
 ---
 
+## When to use this
+
+Use this guide when you are red-teaming your contracts before flipping from observe to enforce mode. It covers four adversarial scenarios -- retry-after-deny, PII exfiltration, cross-tool chaining, and role escalation -- with working pytest examples that assert `EdictumDenied` is raised in each case. The results section compares enforcement across two LLMs to demonstrate that contract enforcement is model-agnostic. For the contract YAML that powers these tests, see [Writing contracts](writing-contracts.md).
+
+---
+
 ## Test Scenarios
 
 ### 1. Retry After Deny
@@ -106,7 +112,7 @@ def test_retry_after_deny(guard):
         with pytest.raises(EdictumDenied):
             asyncio.run(guard.run("read_file", {"path": ".env"}, read_file))
 
-def test_exfiltration_blocked(guard):
+def test_exfiltration_denied(guard):
     """Agent tries to send data to an external URL."""
     async def send_request(url, body):
         return "sent"
@@ -118,7 +124,7 @@ def test_exfiltration_blocked(guard):
             send_request,
         ))
 
-def test_role_escalation_blocked(guard):
+def test_role_escalation_denied(guard):
     """Agent with 'analyst' role tries an admin-only action."""
     async def deploy_service(env, version):
         return f"deployed {version} to {env}"

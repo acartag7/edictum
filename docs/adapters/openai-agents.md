@@ -5,6 +5,10 @@ per-tool guardrail system. It produces a pair of guardrail objects --
 `(ToolInputGuardrail, ToolOutputGuardrail)` -- that you attach to individual
 tools via `@function_tool`.
 
+## When to use this
+
+Add Edictum to your OpenAI Agents SDK project when your `@function_tool` functions need precondition and postcondition enforcement. The `as_guardrails()` method returns a `(ToolInputGuardrail, ToolOutputGuardrail)` pair that you attach directly to the `@function_tool` decorator. Native guardrails can deny tool calls and enforce `effect: deny` postconditions via `reject_content`, but they cannot transform tool results, so `effect: redact` postconditions are not supported with this adapter.
+
 ## Installation
 
 ```bash
@@ -44,7 +48,7 @@ postconditions and records the execution in the session. Postconditions with
 `ToolGuardrailFunctionOutput.reject_content(reason)` to deny the output.
 All other postcondition results return `ToolGuardrailFunctionOutput.allow()`.
 The SDK does not support transforming the tool result from an output guardrail,
-so `effect: redact` requires the wrapper integration path.
+so `effect: redact` postconditions are not supported with this adapter.
 
 ## PII Redaction Callback
 

@@ -9,6 +9,10 @@ This means you get identical enforcement semantics regardless of which framework
 you use. Switching frameworks requires changing only the adapter wiring, not
 your contracts.
 
+## When to use this
+
+Start here if you are new to Edictum's adapter system and need to understand which adapter fits your framework. The comparison table below shows the integration method and capabilities for each adapter. If you already know your framework, go directly to its adapter page; if your framework is not listed, use `Edictum.run()` directly. For a deeper side-by-side comparison of tradeoffs and limitations, see the [adapter comparison guide](../guides/adapter-comparison.md).
+
 ## The Common Pattern
 
 Every adapter follows the same three-step setup:

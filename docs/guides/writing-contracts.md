@@ -4,6 +4,12 @@ This guide walks through the full workflow of creating, validating, and deployin
 
 ---
 
+## When to use this
+
+Start here when you need to turn an informal restriction into a working YAML contract. This guide walks through the full authoring workflow -- translating a requirement into selectors and operators, validating the result with `edictum check`, deploying in observe mode, and flipping to enforce once you are confident. It also covers common pitfalls like missing principal fields, regex escaping in YAML, and choosing the right operator. For testing contracts once they are written, see [Testing contracts](testing-contracts.md). For postcondition-specific design, see [Postcondition design](postcondition-design.md).
+
+---
+
 ## Step 1: Start With a Requirement
 
 Suppose your team has this requirement:
@@ -122,16 +128,16 @@ middleware = adapter.as_middleware()
 
 ## Step 6: Review Audit Logs
 
-In observe mode, denied calls produce `CALL_WOULD_DENY` audit events. Review them to confirm the contract fires on the right calls and not on legitimate ones:
+In observe mode, denied calls produce `call_would_deny` audit events. Review them to confirm the contract fires on the right calls and not on legitimate ones:
 
 ```json
 {
-  "event_type": "CALL_WOULD_DENY",
+  "action": "call_would_deny",
   "tool_name": "read_file",
   "decision_name": "block-secret-reads",
-  "args": {"path": ".env"},
+  "tool_args": {"path": ".env"},
   "principal": {"user_id": "alice", "role": "analyst"},
-  "message": "Analysts cannot read '.env'. Ask an admin for help."
+  "reason": "Analysts cannot read '.env'. Ask an admin for help."
 }
 ```
 

@@ -4,6 +4,12 @@ This guide covers how to validate, dry-run, unit test, and regression test your 
 
 ---
 
+## When to use this
+
+Use this guide when you need to verify contracts produce correct verdicts before deploying them -- whether that means gating contract changes in CI with `edictum validate` and `edictum test`, spot-checking a specific tool call with `edictum check`, running programmatic dry-run evaluations with `guard.evaluate()`, or regression testing against historical audit logs with `edictum replay`.
+
+---
+
 ## CLI Validation
 
 Run `edictum validate` to catch schema, syntax, and semantic errors before deployment:
@@ -20,7 +26,7 @@ Validation checks include:
 - Missing required fields (`apiVersion`, `kind`, `metadata.name`, `defaults.mode`)
 - Invalid regex patterns in `matches` / `matches_any`
 - Duplicate contract IDs within a bundle
-- Wrong effect for contract type (`deny` on a postcondition, `warn` on a precondition)
+- Invalid effect for contract type (preconditions only allow `deny`; postconditions allow `warn`, `redact`, or `deny`)
 - Use of `output.text` in a precondition
 
 ---

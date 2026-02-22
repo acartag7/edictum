@@ -3,6 +3,10 @@
 When a postcondition contract detects an issue in tool output (PII, secrets, contract violations),
 Edictum produces structured **findings** that your application can act on.
 
+## When to use this
+
+Read this page when you need to act on postcondition results programmatically -- redacting PII, routing findings to different handlers, or building compliance dashboards grouped by finding type. Findings are the structured output that postconditions produce, and your `on_postcondition_warn` callback receives them. For the contract types that produce findings, see [contracts](concepts/contracts.md). For postcondition effect behavior (`warn`/`redact`/`deny`), see [YAML reference](contracts/yaml-reference.md#postcondition-effects).
+
 ## The Pattern: Detect -> Remediate
 
 Postconditions detect issues in tool output. What happens next depends on the declared `effect`:
@@ -35,7 +39,7 @@ Each finding contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `type` | str | Category: `pii_detected`, `secret_detected`, `limit_exceeded`, `policy_violation` |
+| `type` | str | Category: `pii_detected`, `secret_detected`, `limit_exceeded`, `policy_violation`. Assigned by `classify_finding()`, which uses substring matching on the contract ID and message -- for example, a contract ID containing "secret" maps to `secret_detected`. Be aware that this is a heuristic: a contract ID like `require-authentication` would match `secret_detected` because `"secret"` appears as a substring. Choose contract IDs carefully to avoid misclassification. |
 | `contract_id` | str | Which contract produced this finding |
 | `field` | str | Which selector triggered it. Defaults to `"output"` for postconditions; contracts can provide a more specific value via `Verdict.fail("msg", field="output.text")` |
 | `message` | str | Human-readable description |
@@ -133,7 +137,7 @@ wrapper = adapter.as_tool_wrapper(on_postcondition_warn=route_by_type)
 
 | Mode | Postcondition warns | Callback invoked | Result transformed |
 |------|-------------------|-----------------|-------------------|
-| **observe** | Logged as `would_warn` | Yes (if provided) | Yes |
+| **observe** | Warning prepended with `[observe]`; audit event is `CALL_EXECUTED` or `CALL_FAILED` | Yes (if provided) | Yes |
 | **enforce** | Logged as `postcondition_warning` | Yes (if provided) | Yes |
 
 The callback fires in both modes when postconditions produce findings.

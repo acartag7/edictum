@@ -4,6 +4,12 @@ Postconditions evaluate *after* the tool has already executed. Their behavior de
 
 ---
 
+## When to use this
+
+Read this when you need to enforce contracts on tool output -- choosing between the `warn`, `redact`, and `deny` effects, understanding why effects fall back to `warn` for write/irreversible tools, or designing the detect-remediate pattern where compliance teams write YAML postconditions and engineering teams write `on_postcondition_warn` callbacks. For precondition design, see [Writing contracts](writing-contracts.md). For the callback API by adapter, see the individual [adapter guides](../adapters/langchain.md).
+
+---
+
 ## Three Effects
 
 Postconditions support three effects:

@@ -4,6 +4,10 @@ The `SemanticKernelAdapter` registers an `AUTO_FUNCTION_INVOCATION` filter on a
 Semantic Kernel `Kernel` instance. The filter intercepts every auto-invoked
 tool call and enforces Edictum contracts around it.
 
+## When to use this
+
+Add Edictum to your Semantic Kernel project when you need contract enforcement on auto-invoked functions. The `register(kernel)` method installs an `AUTO_FUNCTION_INVOCATION` filter that evaluates every tool call the kernel makes -- plugin methods, planner steps, any auto-invoked function -- without per-function wiring. The filter can replace `context.function_result`, so the `on_postcondition_warn` callback supports PII redaction. By default, denied calls terminate the current turn (`terminate_on_deny=True`), but you can set `terminate_on_deny=False` to let remaining tool calls proceed.
+
 ## Installation
 
 ```bash

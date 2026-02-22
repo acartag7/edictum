@@ -1,6 +1,6 @@
 # Data Protection Patterns
 
-Data protection contracts prevent sensitive information from leaking through agent tool calls. They cover two sides: blocking access to sensitive files (preconditions) and scanning tool output for sensitive patterns (postconditions).
+Data protection contracts prevent sensitive information from leaking through agent tool calls. They cover two sides: denying access to sensitive files (preconditions) and scanning tool output for sensitive patterns (postconditions).
 
 ---
 
@@ -175,7 +175,7 @@ Block reads of files that commonly contain secrets, credentials, or private keys
     kind: ContractBundle
 
     metadata:
-      name: sensitive-file-blocking
+      name: sensitive-file-denial
 
     defaults:
       mode: enforce

@@ -171,7 +171,7 @@ Combine `max_attempts` with `max_tool_calls` to detect and stop agents that are 
 - The tighter the ratio between `max_attempts` and `max_tool_calls`, the more aggressively you detect retry loops. A 1.5:1 ratio (like 80 attempts / 50 calls) is aggressive. A 3:1 ratio is more forgiving.
 
 **Gotchas:**
-- Every precondition evaluation counts as an attempt, even if the tool was ultimately allowed. In bundles with many preconditions, a single tool call may generate multiple attempt counts. Test your ratios against your actual contract bundle.
+- Every tool call attempt counts as one attempt, regardless of how many contracts evaluate. The attempt counter is incremented once per `run()` invocation, not per contract. Test your ratios against your expected denial rate.
 
 ---
 
@@ -240,5 +240,5 @@ The following bundle uses both a session contract and a tight attempts-to-calls 
 - In a healthy session, attempts and executions track closely (ratio near 1:1). As the agent hits more denials, the gap widens and the attempt limit fires first.
 
 **Gotchas:**
-- This pattern is a heuristic. The attempt counter includes all evaluations, so a bundle with many preconditions per tool can inflate the attempt count even when the agent is working correctly.
+- This pattern is a heuristic. The attempt counter is incremented once per tool call attempt (per `run()` invocation), not per contract evaluation. A tool call that evaluates five contracts still counts as one attempt.
 - For more precise stuck detection with Python, use a session contract that compares `await session.attempt_count()` to `await session.execution_count()` and fires when the success rate drops below a threshold (e.g., 30%).

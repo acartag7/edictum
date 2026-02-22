@@ -4,6 +4,12 @@ Some enforcement logic doesn't fit in YAML contracts. You might need to call an 
 
 ---
 
+## When to use this
+
+Use Python hooks when your enforcement logic requires something YAML contracts cannot express -- calling an external policy API, checking a dynamic allowlist, running ML-based classification on tool output, or sending metadata to a custom system. Hooks run alongside YAML contracts in the pipeline: before hooks run before preconditions (and can deny), after hooks run after postconditions (for side effects only). For declarative enforcement that does not require Python, see [Writing contracts](writing-contracts.md).
+
+---
+
 ## Quick Example
 
 ```python
