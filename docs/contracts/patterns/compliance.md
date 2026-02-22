@@ -253,7 +253,7 @@ Tags enable downstream systems to filter, route, and aggregate audit events by c
 | `change-control` | Events related to production changes |
 | `rate-limit` | Session limit events |
 | `cost` | Events related to resource cost |
-| `experimental` | Shadow-mode / observe-mode contracts |
+| `experimental` | Observe-mode contracts |
 
 **Example: filtering audit events in Python:**
 

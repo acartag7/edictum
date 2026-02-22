@@ -112,7 +112,7 @@ def test_retry_after_deny(guard):
         with pytest.raises(EdictumDenied):
             asyncio.run(guard.run("read_file", {"path": ".env"}, read_file))
 
-def test_exfiltration_blocked(guard):
+def test_exfiltration_denied(guard):
     """Agent tries to send data to an external URL."""
     async def send_request(url, body):
         return "sent"
@@ -124,7 +124,7 @@ def test_exfiltration_blocked(guard):
             send_request,
         ))
 
-def test_role_escalation_blocked(guard):
+def test_role_escalation_denied(guard):
     """Agent with 'analyst' role tries an admin-only action."""
     async def deploy_service(env, version):
         return f"deployed {version} to {env}"

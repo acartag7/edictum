@@ -136,7 +136,7 @@ result = agent.invoke({"messages": [("user", "Summarize the Q3 report")]})
 ## Observe Mode
 
 Deploy contracts in observation mode to see what would be denied without
-blocking any tool calls:
+denying any tool calls:
 
 ```python
 guard = Edictum.from_yaml("contracts.yaml", mode="observe")

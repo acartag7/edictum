@@ -50,7 +50,7 @@ Teams can now compose multiple YAML bundles and shadow-test contract changes aga
 Stdout and File (.jsonl) sinks ship today in OSS core for development and local audit. Production deployments need audit data flowing to existing infrastructure.
 
 - **Enterprise audit sinks**: Webhook, Splunk HEC, Datadog -- network destinations for compliance-grade audit trails
-- **Alert notifications** -- notifications on abnormal patterns (denial spikes, PII detections, session exhaustion)
+- **Finding notifications** -- notifications on abnormal patterns (denial spikes, PII detections, session exhaustion)
 - **Deployment recipes**: end-to-end guides for OTel to Grafana, Datadog, and Splunk
 
 ---

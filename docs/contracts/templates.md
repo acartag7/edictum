@@ -15,7 +15,7 @@ Edictum ships three built-in contract templates for common agent patterns. Templ
 | Capability | `file-agent` | `research-agent` | `devops-agent` |
 |-----------|:---:|:---:|:---:|
 | Secret file protection | Yes | Yes (3 patterns) | Yes |
-| Destructive bash blocking | Yes | -- | Yes |
+| Destructive bash denial | Yes | -- | Yes |
 | Write scope enforcement | Yes | -- | -- |
 | PII detection in output | -- | Yes | Yes |
 | Session limits | -- | 50 calls / 100 attempts | 20 calls / 50 attempts |
@@ -207,7 +207,7 @@ contracts:
 
 ## `devops-agent`
 
-The devops-agent template is the most comprehensive built-in contract bundle. It combines secret protection, destructive command blocking, role-based access control for production deploys, ticket-required change management, PII detection, and session limits.
+The devops-agent template is the most comprehensive built-in contract bundle. It combines secret protection, destructive command denial, role-based access control for production deploys, ticket-required change management, PII detection, and session limits.
 
 ### Contracts
 
