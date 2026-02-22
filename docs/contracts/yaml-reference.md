@@ -341,6 +341,8 @@ Selectors resolve fields from the `ToolEnvelope` and `Principal` at evaluation t
 | `principal.ticket_ref` | string or null | pre, post | `Principal.ticket_ref` |
 | `principal.claims.<key>` | any | pre, post | `Principal.claims[key]` |
 | `env.<VAR>` | string, bool, int, or float | pre, post | `os.environ[VAR]` with type coercion |
+| `metadata.<key>` | any | pre, post | `ToolEnvelope.metadata[key]` |
+| `metadata.<key>.<subkey>` | any | pre, post | Nested dict access into metadata |
 | `output.text` | string | **post only** | Stringified tool response |
 
 **Missing fields:** If a selector references a field that does not exist (missing key, null value, no principal, unset env var), the leaf evaluates to `false`. The contract does not fire. This is not an error.
@@ -348,6 +350,58 @@ Selectors resolve fields from the `ToolEnvelope` and `Principal` at evaluation t
 **Nested args:** Dotted paths like `args.config.timeout` resolve through nested dicts: `envelope.args["config"]["timeout"]`. If any intermediate key is missing or the value is not a dict, the leaf evaluates to `false`.
 
 **Environment variables:** The `env.<VAR>` selector reads from `os.environ` at evaluation time. No adapter changes or envelope modifications are needed -- set the env var and reference it in YAML. Values are automatically coerced: `"true"`/`"false"` (case-insensitive) become booleans, numeric strings become `int` or `float`, everything else stays a string. Unset env vars evaluate to `false` (same as any missing field). Because env vars are read at evaluation time, changing an env var mid-process takes effect on the next tool call.
+
+**Envelope metadata:** The `metadata.<key>` selector reads from `ToolEnvelope.metadata` at evaluation time. Metadata is set per-call via `create_envelope(metadata={...})` or through adapter-specific mechanisms. Dotted paths like `metadata.tenant.tier` resolve through nested dicts. Missing keys evaluate to `false`.
+
+### Custom Selectors {#custom-selectors}
+
+The built-in selectors cover `args`, `principal`, `env`, `metadata`, and `output`. When contracts need data from sources outside the envelope -- risk scores, department codes, classification levels -- use the `custom_selectors` parameter.
+
+```python
+guard = Edictum.from_yaml(
+    "contracts.yaml",
+    custom_selectors={
+        "risk": lambda envelope: compliance_api.get_risk(envelope.tool_name),
+        "dept": lambda envelope: {"code": get_department(envelope.principal)},
+    },
+)
+```
+
+Each entry maps a selector prefix to a callable. The callable receives a `ToolEnvelope` and returns a `dict`. YAML contracts reference fields under the prefix with dotted paths:
+
+```yaml
+contracts:
+  - id: block-high-risk
+    type: pre
+    tool: transfer
+    when:
+      risk.score: { gt: 80 }
+    then:
+      effect: deny
+      message: "Risk score {risk.score} exceeds threshold"
+```
+
+Custom selector prefixes must not clash with built-in prefixes (`environment`, `tool`, `args`, `principal`, `output`, `env`, `metadata`). Attempting to register a clashing prefix raises `EdictumConfigError`.
+
+`custom_selectors` is accepted by `from_yaml()`, `from_yaml_string()`, and `from_template()`.
+
+#### When to use this
+
+1. **Request-scoped context** -- Your API gateway attaches `request_id`, `client_ip`, and `region` to each tool call via envelope metadata. With `metadata.*` selectors, YAML contracts can enforce region restrictions without Python code: `when: metadata.region: {not_in: ["eu-west-1"]}`.
+
+2. **Multi-tenant governance** -- Your SaaS platform sets `metadata.tenant_tier` per request. Contracts use `when: metadata.tenant_tier: {equals: "free"}` to restrict free-tier agents from expensive tools. Tenant logic stays in YAML, not hardcoded in Python.
+
+3. **Feature flags** -- Your deployment system sets `metadata.feature_flags` as a string. Contracts check `when: metadata.feature_flags: {contains: "beta_tools"}` to gate access to experimental tools.
+
+4. **Custom data sources** -- Your compliance system enriches envelopes with risk scores, department codes, or classification levels. Custom selectors let YAML contracts reference `risk.score`, `department.code`, or any domain-specific data path without modifying Edictum's core selector chain.
+
+**Who benefits:**
+
+- **Platform teams** -- route governance decisions based on runtime context (region, tenant, environment) without Python code
+- **Compliance teams** -- write contracts against any envelope data, not just the built-in fields
+- **Developers** -- attach per-request context and have it available in YAML conditions immediately
+
+**Overlap with other selectors:** `env.*` covers environment variables (global, process-wide config). `metadata.*` covers per-call context attached programmatically. `principal.*` covers identity. Custom selectors extend to any data source. Use `env.*` for global config, `metadata.*` for request-scoped data, custom selectors for external data.
 
 ---
 

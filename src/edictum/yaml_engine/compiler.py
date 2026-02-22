@@ -68,6 +68,7 @@ def compile_contracts(
     bundle: dict,
     *,
     custom_operators: dict[str, Any] | None = None,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> CompiledBundle:
     """Compile a validated YAML bundle into contract objects.
 
@@ -76,6 +77,9 @@ def compile_contracts(
         custom_operators: Optional mapping of operator names to callables.
             Each callable receives ``(field_value, operator_value)`` and
             returns ``bool``.
+        custom_selectors: Optional mapping of selector prefixes to resolver
+            callables. Each callable receives a ``ToolEnvelope`` and returns
+            a ``dict`` that is searched via dotted-path resolution.
 
     Returns:
         CompiledBundle with preconditions, postconditions, session_contracts,
@@ -98,10 +102,10 @@ def compile_contracts(
         contract_mode = contract.get("mode", default_mode)
 
         if contract_type == "pre":
-            fn = _compile_pre(contract, contract_mode, custom_operators)
+            fn = _compile_pre(contract, contract_mode, custom_operators, custom_selectors)
             preconditions.append(fn)
         elif contract_type == "post":
-            fn = _compile_post(contract, contract_mode, custom_operators)
+            fn = _compile_post(contract, contract_mode, custom_operators, custom_selectors)
             postconditions.append(fn)
         elif contract_type == "session":
             is_shadow = contract.get("_shadow", False)
@@ -158,6 +162,7 @@ def _compile_pre(
     contract: dict,
     mode: str,
     custom_operators: dict[str, Any] | None = None,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> Any:
     """Compile a pre-contract into a precondition callable."""
     contract_id = contract["id"]
@@ -170,10 +175,12 @@ def _compile_pre(
 
     def precondition_fn(envelope: ToolEnvelope) -> Verdict:
         try:
-            result = evaluate_expression(when_expr, envelope, custom_operators=custom_operators)
+            result = evaluate_expression(
+                when_expr, envelope, custom_operators=custom_operators, custom_selectors=custom_selectors
+            )
         except Exception as exc:
             # Fail-closed: evaluation error triggers the contract
-            msg = _expand_message(message_template, envelope)
+            msg = _expand_message(message_template, envelope, custom_selectors=custom_selectors)
             return Verdict.fail(
                 msg,
                 tags=tags,
@@ -183,11 +190,11 @@ def _compile_pre(
             )
 
         if isinstance(result, _PolicyError):
-            msg = _expand_message(message_template, envelope)
+            msg = _expand_message(message_template, envelope, custom_selectors=custom_selectors)
             return Verdict.fail(msg, tags=tags, policy_error=True, **then_metadata)
 
         if result:
-            msg = _expand_message(message_template, envelope)
+            msg = _expand_message(message_template, envelope, custom_selectors=custom_selectors)
             return Verdict.fail(msg, tags=tags, **then_metadata)
 
         return Verdict.pass_()
@@ -248,6 +255,7 @@ def _compile_post(
     contract: dict,
     mode: str,
     custom_operators: dict[str, Any] | None = None,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> Any:
     """Compile a post-contract into a postcondition callable."""
     contract_id = contract["id"]
@@ -267,9 +275,12 @@ def _compile_post(
                 envelope,
                 output_text=output_text,
                 custom_operators=custom_operators,
+                custom_selectors=custom_selectors,
             )
         except Exception as exc:
-            msg = _expand_message(message_template, envelope, output_text=output_text)
+            msg = _expand_message(
+                message_template, envelope, output_text=output_text, custom_selectors=custom_selectors
+            )
             return Verdict.fail(
                 msg,
                 tags=tags,
@@ -279,11 +290,15 @@ def _compile_post(
             )
 
         if isinstance(result, _PolicyError):
-            msg = _expand_message(message_template, envelope, output_text=output_text)
+            msg = _expand_message(
+                message_template, envelope, output_text=output_text, custom_selectors=custom_selectors
+            )
             return Verdict.fail(msg, tags=tags, policy_error=True, **then_metadata)
 
         if result:
-            msg = _expand_message(message_template, envelope, output_text=output_text)
+            msg = _expand_message(
+                message_template, envelope, output_text=output_text, custom_selectors=custom_selectors
+            )
             return Verdict.fail(msg, tags=tags, **then_metadata)
 
         return Verdict.pass_()
@@ -372,6 +387,8 @@ def _expand_message(
     template: str,
     envelope: ToolEnvelope,
     output_text: str | None = None,
+    *,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> str:
     """Expand {placeholder} tokens in a message template.
 
@@ -385,7 +402,7 @@ def _expand_message(
 
     def replacer(match: re.Match) -> str:
         selector = match.group(1)
-        value = _resolve_selector(selector, envelope, output_text)
+        value = _resolve_selector(selector, envelope, output_text, custom_selectors)
         if value is _MISSING or value is None:
             return match.group(0)  # Keep placeholder as-is
         text = str(value)
