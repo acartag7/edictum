@@ -15,7 +15,7 @@ pip install edictum[agno]
 ```python
 from edictum import Edictum
 from edictum.adapters.agno import AgnoAdapter
-from agno import Agent
+from agno.agent import Agent
 
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = AgnoAdapter(guard=guard)
@@ -88,7 +88,7 @@ hook = adapter.as_tool_hook(on_postcondition_warn=redact_pii)
 ```python
 from edictum import Edictum, Principal
 from edictum.adapters.agno import AgnoAdapter
-from agno import Agent
+from agno.agent import Agent
 
 # Load contracts
 guard = Edictum.from_yaml("contracts.yaml")
