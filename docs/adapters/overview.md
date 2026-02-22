@@ -49,7 +49,7 @@ wrapper = adapter.as_tool_wrapper()
 | LangChain | Yes | Return "DENIED: reason" as ToolMessage |
 | CrewAI | No (side-effect only) | before_hook returns "DENIED: reason" |
 | Agno | Yes (hook wraps execution) | Hook returns denial string |
-| Semantic Kernel | Yes (filter modifies FunctionResult) | Filter sets terminate + error |
+| Semantic Kernel | Yes (filter modifies FunctionResult) | Filter sets terminate (configurable) + error |
 | Claude SDK | No (side-effect only) | Returns deny dict to SDK |
 | OpenAI Agents | Deny only (`reject_content`) | `reject_content(reason)` |
 
@@ -58,7 +58,7 @@ LangChain, Agno, or Semantic Kernel.
 
 ## Common Constructor
 
-All adapters share the same constructor signature:
+All adapters share the same core constructor signature:
 
 ```python
 adapter = SomeAdapter(
@@ -73,6 +73,8 @@ adapter = SomeAdapter(
 | `guard` | `Edictum` | required | The Edictum instance holding contracts, limits, and sinks |
 | `session_id` | `str \| None` | auto UUID | Groups related tool calls into a session for limit tracking |
 | `principal` | `Principal \| None` | `None` | Identity context attached to every audit event in this session |
+
+Some adapters accept additional parameters. See individual adapter docs for details (e.g., `terminate_on_deny` for [Semantic Kernel](semantic-kernel.md#controlling-termination-on-denial)).
 
 ## Common Features
 

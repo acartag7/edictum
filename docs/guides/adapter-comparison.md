@@ -12,7 +12,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 | OpenAI Agents | `as_guardrails()` | Deny only (`reject_content`) | `reject_content(reason)` | $0.018 |
 | CrewAI | `register()` | No (side-effect only) | before_hook returns "DENIED: reason" | $0.040 |
 | Agno | `as_tool_hook()` | Yes (hook wraps execution) | Hook returns denial string | N/A |
-| Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets cancel + error | $0.008 |
+| Semantic Kernel | `register(kernel)` | Yes (filter modifies FunctionResult) | Filter sets terminate (configurable) + error | $0.008 |
 | Claude SDK | `to_hook_callables()` | No (side-effect only) | Returns deny dict to SDK | N/A |
 
 Cost column reflects benchmarks from [edictum-demo](https://github.com/acartag7/edictum-demo) using each framework's default model. N/A indicates no published benchmark data.
@@ -127,7 +127,7 @@ hooks = adapter.to_hook_callables()
 
 ### Semantic Kernel
 
-- `context.terminate = True` on deny stops all auto-invocations in the current turn, not just the denied tool. See [Semantic Kernel adapter docs](../adapters/semantic-kernel.md).
+- By default, `context.terminate = True` on deny stops all auto-invocations in the current turn, not just the denied tool. Set `terminate_on_deny=False` to allow remaining tool calls to proceed. See [Semantic Kernel adapter docs](../adapters/semantic-kernel.md).
 
 ### Claude SDK
 

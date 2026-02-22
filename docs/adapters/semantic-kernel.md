@@ -35,9 +35,10 @@ The adapter registers a filter using
 2. Evaluates preconditions.
 3. **On allow**: calls `await next(context)` to let Semantic Kernel execute the
    function, then evaluates postconditions against `context.function_result`.
-4. **On deny**: sets `context.function_result` to the denial string and sets
-   `context.terminate = True`. The function is never executed, and the kernel
-   stops further auto-invocations in the current turn.
+4. **On deny**: sets `context.function_result` to the denial string. The function
+   is never executed. By default (`terminate_on_deny=True`), the kernel also stops
+   further auto-invocations in the current turn. With `terminate_on_deny=False`,
+   remaining tool calls continue through contract enforcement normally.
 
 ## PII Redaction Callback
 
@@ -56,15 +57,32 @@ def redact_pii(result, findings):
 adapter.register(kernel, on_postcondition_warn=redact_pii)
 ```
 
+## Controlling Termination on Denial
+
+By default, when a tool call is denied, the adapter sets `context.terminate = True`,
+which stops the kernel from making additional function calls in the same turn. This
+is safe but aggressive — one denied tool prevents all remaining tools from executing.
+
+Set `terminate_on_deny=False` to let the kernel continue with remaining tool calls
+after a denial:
+
+```python
+adapter = SemanticKernelAdapter(
+    guard=guard,
+    terminate_on_deny=False,  # denied tools don't stop remaining calls
+)
+adapter.register(kernel)
+```
+
+The denied tool still receives a denial message and is never executed. Only the
+termination signal changes — subsequent tool calls proceed through contract
+enforcement as normal.
+
 ## Known Limitations
 
 - **Registration timing**: `adapter.register(kernel)` must be called before
   invoking prompts that trigger auto function calls. The filter is permanently
   registered on the kernel instance.
-
-- **Terminate on deny**: Setting `context.terminate = True` stops the kernel
-  from making additional function calls in the same turn. The LLM receives the
-  denial message and can decide how to proceed on the next turn.
 
 - **Error detection**: Beyond standard string-based error checking, the adapter
   also inspects Semantic Kernel `FunctionResult` objects for error metadata via
