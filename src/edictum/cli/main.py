@@ -483,7 +483,7 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _run_cases(file: str, cases: str) -> None:
+def _run_cases(file: str, cases: str, environment: str = "production") -> None:
     """Run YAML test cases against contracts (preconditions only)."""
     import yaml
 
@@ -551,7 +551,8 @@ def _run_cases(file: str, cases: str) -> None:
             )
 
         # Build envelope and evaluate
-        envelope = _build_envelope(tool, args, principal=principal)
+        case_env = tc.get("environment", environment)
+        envelope = _build_envelope(tool, args, environment=case_env, principal=principal)
         verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
 
         # Map verdict to expected format
@@ -589,7 +590,7 @@ def _run_cases(file: str, cases: str) -> None:
     sys.exit(1 if failed else 0)
 
 
-def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
+def _run_calls(file: str, calls_path: str, json_output: bool, environment: str = "production") -> None:
     """Evaluate JSON tool calls against contracts using guard.evaluate_batch()."""
     from dataclasses import asdict
 
@@ -601,7 +602,7 @@ def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
 
     # Load guard
     try:
-        guard = Edictum.from_yaml(file, audit_sink=_NullSink())
+        guard = Edictum.from_yaml(file, audit_sink=_NullSink(), environment=environment)
     except EdictumConfigError as e:
         _err_console.print(f"[red]Failed to load contracts: {escape(str(e))}[/red]")
         sys.exit(1)
@@ -668,7 +669,8 @@ def _run_calls(file: str, calls_path: str, json_output: bool) -> None:
 @click.option("--cases", default=None, type=click.Path(exists=True), help="YAML file with test cases.")
 @click.option("--calls", default=None, type=click.Path(exists=True), help="JSON file with tool calls to evaluate.")
 @click.option("--json", "json_output", is_flag=True, default=False, help="Output results as JSON.")
-def test_cmd(file: str, cases: str | None, calls: str | None, json_output: bool) -> None:
+@click.option("--environment", default="production", help="Environment name for evaluation.")
+def test_cmd(file: str, cases: str | None, calls: str | None, json_output: bool, environment: str) -> None:
     """Test contracts against test cases or evaluate tool calls.
 
     Two modes:
@@ -689,6 +691,6 @@ def test_cmd(file: str, cases: str | None, calls: str | None, json_output: bool)
         sys.exit(2)
 
     if cases:
-        _run_cases(file, cases)
+        _run_cases(file, cases, environment)
     else:
-        _run_calls(file, calls, json_output)
+        _run_calls(file, calls, json_output, environment)
