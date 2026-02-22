@@ -22,6 +22,7 @@ from edictum.audit import (
     AuditAction,
     AuditEvent,
     AuditSink,
+    CompositeSink,
     FileAuditSink,
     RedactionPolicy,
     StdoutAuditSink,
@@ -76,6 +77,7 @@ __all__ = [
     "AuditAction",
     "AuditEvent",
     "AuditSink",
+    "CompositeSink",
     "StdoutAuditSink",
     "FileAuditSink",
     "RedactionPolicy",
@@ -121,7 +123,7 @@ class Edictum:
         tools: dict[str, dict] | None = None,
         contracts: list | None = None,
         hooks: list | None = None,
-        audit_sink: AuditSink | None = None,
+        audit_sink: AuditSink | list[AuditSink] | None = None,
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         policy_version: str | None = None,
@@ -131,7 +133,10 @@ class Edictum:
         self.limits = limits or OperationLimits()
         self.backend = backend or MemoryBackend()
         self.redaction = redaction or RedactionPolicy()
-        self.audit_sink = audit_sink or StdoutAuditSink(self.redaction)
+        if isinstance(audit_sink, list):
+            self.audit_sink: AuditSink = CompositeSink(audit_sink)
+        else:
+            self.audit_sink = audit_sink or StdoutAuditSink(self.redaction)
         self.telemetry = GovernanceTelemetry()
         self._gov_tracer = get_tracer("edictum.governance")
         self.policy_version = policy_version
@@ -170,7 +175,7 @@ class Edictum:
         *paths: str | Path,
         tools: dict[str, dict] | None = None,
         mode: str | None = None,
-        audit_sink: AuditSink | None = None,
+        audit_sink: AuditSink | list[AuditSink] | None = None,
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
@@ -185,7 +190,8 @@ class Edictum:
             tools: Tool side-effect classifications. Merged with any ``tools:``
                 section in the YAML bundle (parameter wins on conflict).
             mode: Override the bundle's default mode (enforce/observe).
-            audit_sink: Custom audit sink.
+            audit_sink: Custom audit sink, or a list of sinks (auto-wrapped
+                in CompositeSink).
             redaction: Custom redaction policy.
             backend: Custom storage backend.
             environment: Environment name for envelope context.
@@ -287,7 +293,7 @@ class Edictum:
         *,
         tools: dict[str, dict] | None = None,
         mode: str | None = None,
-        audit_sink: AuditSink | None = None,
+        audit_sink: AuditSink | list[AuditSink] | None = None,
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
@@ -302,7 +308,8 @@ class Edictum:
             tools: Tool side-effect classifications. Merged with any ``tools:``
                 section in the YAML bundle (parameter wins on conflict).
             mode: Override the bundle's default mode (enforce/observe).
-            audit_sink: Custom audit sink.
+            audit_sink: Custom audit sink, or a list of sinks (auto-wrapped
+                in CompositeSink).
             redaction: Custom redaction policy.
             backend: Custom storage backend.
             environment: Environment name for envelope context.
@@ -376,7 +383,7 @@ class Edictum:
         template_dirs: list[str | Path] | None = None,
         tools: dict[str, dict] | None = None,
         mode: str | None = None,
-        audit_sink: AuditSink | None = None,
+        audit_sink: AuditSink | list[AuditSink] | None = None,
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",

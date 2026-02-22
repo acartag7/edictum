@@ -32,6 +32,17 @@ guard = Edictum(
 )
 ```
 
+You can also pass a list of sinks — they are automatically wrapped in a
+`CompositeSink`:
+
+```python
+from edictum.audit import StdoutAuditSink, FileAuditSink
+
+guard = Edictum(
+    audit_sink=[StdoutAuditSink(), FileAuditSink("audit.jsonl")],
+)
+```
+
 If no `audit_sink` is provided, a `StdoutAuditSink` is used by default.
 
 ---
@@ -143,6 +154,57 @@ sink = FileAuditSink(
 |-----------|------|---------|-------------|
 | `path` | `str \| Path` | (required) | File path for the JSONL output |
 | `redaction` | `RedactionPolicy \| None` | `RedactionPolicy()` | Redaction policy |
+
+### CompositeSink
+
+Fan-out sink that emits every event to multiple sinks sequentially. Useful when
+you need both terminal output and a persistent log file, or any combination of
+sinks.
+
+```python
+from edictum.audit import CompositeSink, StdoutAuditSink, FileAuditSink
+
+sink = CompositeSink([
+    StdoutAuditSink(),
+    FileAuditSink("/var/log/edictum/events.jsonl"),
+])
+```
+
+The `Edictum` constructor also accepts a list of sinks directly — it auto-wraps
+them in a `CompositeSink`:
+
+```python
+from edictum import Edictum
+from edictum.audit import StdoutAuditSink, FileAuditSink
+
+guard = Edictum(
+    audit_sink=[
+        StdoutAuditSink(),
+        FileAuditSink("audit.jsonl"),
+    ],
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sinks` | `list[AuditSink]` | (required) | One or more sinks to emit to, in order |
+
+Sinks are called in order. If a sink raises, the exception propagates and
+subsequent sinks do not receive the event.
+
+#### When to use CompositeSink
+
+| Scenario | Sinks | Who benefits |
+|----------|-------|--------------|
+| **Dev debugging + persistent audit trail** | `StdoutAuditSink` + `FileAuditSink` | Developer debugging locally — real-time terminal output plus a `.jsonl` file for later analysis |
+| **Multi-destination compliance** | `FileAuditSink` + custom sink | Platform team — file for regulatory retention plus a custom sink pushing to an internal dashboard |
+| **Gradual migration** | `StdoutAuditSink` + new sink | Anyone migrating — keep existing stdout while adding a new destination, without changing constructor code |
+| **Custom sink stacking** | `FileAuditSink` + `KafkaAuditSink` | Compliance — redundant audit trails from a one-liner, each sink independently processes the same events |
+
+CompositeSink is about the structured event log, not observability traces. OTel
+spans operate independently and are complementary — use both in production.
 
 ### OpenTelemetry Span Emission
 
