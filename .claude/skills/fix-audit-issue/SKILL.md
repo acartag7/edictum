@@ -16,7 +16,17 @@ git checkout -b fix/{short-description}
 
 Use a descriptive branch name based on the issue (e.g., `fix/redaction-policy-merge`, `fix/crewai-double-callback`).
 
-## Step 2: Follow fix-bug procedure
+## Step 2: Scenarios & use cases (for features/design changes)
+
+If the issue involves adding a new feature or changing API behavior (not just a simple bug fix), write down BEFORE implementing:
+- What concrete scenarios does this enable? (e.g., "send Slack alert on denial", "test env-specific contracts in CI")
+- What user personas benefit? (developer debugging vs. platform team in production)
+- Does this overlap with existing features? Explain when to use which.
+- Does this surface related features that should be designed separately? Note them for future work.
+
+Include this analysis in the PR body under a `## Scenarios` section.
+
+## Step 3: Follow fix-bug procedure
 
 Execute all 8 steps from the `fix-bug` skill:
 1. Understand the bug
@@ -42,6 +52,9 @@ git push -u origin fix/{short-description}
 gh pr create --title "fix: {short description}" --body "$(cat <<'EOF'
 ## Summary
 {one-line summary}
+
+## Scenarios
+{what concrete use cases does this enable — skip for trivial bug fixes}
 
 ## Root Cause
 {what the code did wrong and why tests didn't catch it}
