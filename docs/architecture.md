@@ -214,6 +214,24 @@ class StorageBackend(Protocol):
 
 `max_attempts` fires first because it counts denied calls too. An agent stuck in a denial loop hits the attempt cap without ever incrementing the execution counter. The denial message tells the agent to stop and reassess rather than keep retrying.
 
+### Claude Agent SDK: Intentional Decoupling
+
+`to_hook_callables()` returns callables using Edictum's own calling convention
+(snake_case keys, `(tool_name, tool_input, tool_use_id)` signature) rather than
+the SDK-native `HookCallback` signature (`(input_data, tool_use_id, context)`
+with PascalCase event keys and `HookMatcher` wrappers).
+
+This is intentional. The `claude-agent-sdk` package is pre-1.0 and its types
+(`HookMatcher`, `HookContext`, `HookCallback`) may change. Importing them would
+add a runtime dependency to Edictum's zero-dep core and couple releases to SDK
+breaking changes. The ~10-line bridge recipe in the
+[Claude SDK adapter docs](adapters/claude-sdk.md#using-with-claudesdkclient-bridge-recipe)
+lives in user-land where the `claude-agent-sdk` coupling already exists.
+
+If the SDK stabilizes at 1.0, a `to_native_hooks()` convenience method that
+returns `dict[HookEvent, list[HookMatcher]]` directly could be added without
+breaking `to_hook_callables()`.
+
 ### Error Handling: Fail-Closed
 
 Edictum follows a fail-closed default with explicit opt-in to permissive behavior:
