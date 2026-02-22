@@ -221,6 +221,11 @@ class LangChainAdapter:
         if decision.action == "deny":
             await self._emit_audit_pre(envelope, decision)
             self._guard.telemetry.record_denial(envelope, decision.reason)
+            if self._guard._on_deny:
+                try:
+                    self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                except Exception:
+                    logger.exception("on_deny callback raised")
             span.set_attribute("governance.action", "denied")
             span.end()
             self._pending.pop(tool_call_id, None)
@@ -252,6 +257,11 @@ class LangChainAdapter:
 
         # Allow
         await self._emit_audit_pre(envelope, decision)
+        if self._guard._on_allow:
+            try:
+                self._guard._on_allow(envelope)
+            except Exception:
+                logger.exception("on_allow callback raised")
         span.set_attribute("governance.action", "allowed")
         self._pending[tool_call_id] = (envelope, span)
         return None

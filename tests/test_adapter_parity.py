@@ -180,3 +180,70 @@ class TestParityCallbackCount:
         await post_fn(adapter)
 
         assert callback.call_count == 1, f"{name} fired on_postcondition_warn {callback.call_count} times, expected 1"
+
+
+# --- Pre helpers for all 6 adapters ---
+
+
+async def _claude_sdk_pre(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre_tool_use(tool_name, args or {}, "tc-1")
+
+
+async def _agno_pre(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre(tool_name, args or {}, "call-1")
+
+
+async def _sk_pre(adapter, tool_name="TestTool", args=None):
+    return await adapter._pre(tool_name, args or {}, "call-1")
+
+
+def _all_adapter_configs():
+    from edictum.adapters.agno import AgnoAdapter
+    from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+    from edictum.adapters.crewai import CrewAIAdapter
+    from edictum.adapters.langchain import LangChainAdapter
+    from edictum.adapters.openai_agents import OpenAIAgentsAdapter
+    from edictum.adapters.semantic_kernel import SemanticKernelAdapter
+
+    return [
+        ("CrewAI", CrewAIAdapter, _crewai_pre),
+        ("OpenAI", OpenAIAgentsAdapter, _openai_pre),
+        ("LangChain", LangChainAdapter, _langchain_pre),
+        ("ClaudeSDK", ClaudeAgentSDKAdapter, _claude_sdk_pre),
+        ("Agno", AgnoAdapter, _agno_pre),
+        ("SK", SemanticKernelAdapter, _sk_pre),
+    ]
+
+
+ALL_CONFIGS = _all_adapter_configs()
+ALL_ADAPTER_IDS = [c[0] for c in ALL_CONFIGS]
+
+
+class TestParityOnDeny:
+    """All adapters must fire on_deny exactly once when a precondition denies."""
+
+    @pytest.mark.parametrize("name,cls,pre_fn", ALL_CONFIGS, ids=ALL_ADAPTER_IDS)
+    async def test_on_deny_fires_once(self, name, cls, pre_fn):
+        @precondition("*")
+        def block_all(envelope):
+            return Verdict.fail("not allowed")
+
+        on_deny = MagicMock()
+        guard = _make_guard(contracts=[block_all], on_deny=on_deny)
+        adapter = cls(guard)
+        await pre_fn(adapter)
+
+        assert on_deny.call_count == 1, f"{name} fired on_deny {on_deny.call_count} times, expected 1"
+
+
+class TestParityOnAllow:
+    """All adapters must fire on_allow exactly once when no contracts deny."""
+
+    @pytest.mark.parametrize("name,cls,pre_fn", ALL_CONFIGS, ids=ALL_ADAPTER_IDS)
+    async def test_on_allow_fires_once(self, name, cls, pre_fn):
+        on_allow = MagicMock()
+        guard = _make_guard(on_allow=on_allow)
+        adapter = cls(guard, session_id="test")
+        await pre_fn(adapter)
+
+        assert on_allow.call_count == 1, f"{name} fired on_allow {on_allow.call_count} times, expected 1"
