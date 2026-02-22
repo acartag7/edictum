@@ -96,7 +96,7 @@ guard = Edictum.from_yaml(
 )
 ```
 
-These fire in all 6 adapters. See [Lifecycle Callbacks](../lifecycle-callbacks.md) for
+These fire in all 7 adapters. See [Lifecycle Callbacks](../lifecycle-callbacks.md) for
 use cases and full API reference.
 
 ### Observe Mode
