@@ -16,6 +16,11 @@ _MISSING = object()
 # Cap regex input to prevent catastrophic backtracking DoS
 MAX_REGEX_INPUT = 10_000
 
+# Built-in selector prefixes — custom selectors must not use these
+BUILTIN_SELECTOR_PREFIXES: frozenset[str] = frozenset(
+    {"environment", "tool", "args", "principal", "output", "env", "metadata"}
+)
+
 
 def evaluate_expression(
     expr: dict,
@@ -23,6 +28,7 @@ def evaluate_expression(
     output_text: str | None = None,
     *,
     custom_operators: dict[str, Any] | None = None,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> bool | _PolicyError:
     """Evaluate a boolean expression tree against an envelope.
 
@@ -33,14 +39,14 @@ def evaluate_expression(
     Missing fields always evaluate to False (contract doesn't fire).
     """
     if "all" in expr:
-        return _eval_all(expr["all"], envelope, output_text, custom_operators)
+        return _eval_all(expr["all"], envelope, output_text, custom_operators, custom_selectors)
     if "any" in expr:
-        return _eval_any(expr["any"], envelope, output_text, custom_operators)
+        return _eval_any(expr["any"], envelope, output_text, custom_operators, custom_selectors)
     if "not" in expr:
-        return _eval_not(expr["not"], envelope, output_text, custom_operators)
+        return _eval_not(expr["not"], envelope, output_text, custom_operators, custom_selectors)
 
     # Leaf node: exactly one selector key
-    return _eval_leaf(expr, envelope, output_text, custom_operators)
+    return _eval_leaf(expr, envelope, output_text, custom_operators, custom_selectors)
 
 
 class _PolicyError:
@@ -60,9 +66,12 @@ def _eval_all(
     envelope: ToolEnvelope,
     output_text: str | None,
     custom_operators: dict[str, Any] | None,
+    custom_selectors: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     for expr in exprs:
-        result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
+        result = evaluate_expression(
+            expr, envelope, output_text, custom_operators=custom_operators, custom_selectors=custom_selectors
+        )
         if isinstance(result, _PolicyError):
             return result
         if not result:
@@ -75,9 +84,12 @@ def _eval_any(
     envelope: ToolEnvelope,
     output_text: str | None,
     custom_operators: dict[str, Any] | None,
+    custom_selectors: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     for expr in exprs:
-        result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
+        result = evaluate_expression(
+            expr, envelope, output_text, custom_operators=custom_operators, custom_selectors=custom_selectors
+        )
         if isinstance(result, _PolicyError):
             return result
         if result:
@@ -90,8 +102,11 @@ def _eval_not(
     envelope: ToolEnvelope,
     output_text: str | None,
     custom_operators: dict[str, Any] | None,
+    custom_selectors: dict[str, Any] | None,
 ) -> bool | _PolicyError:
-    result = evaluate_expression(expr, envelope, output_text, custom_operators=custom_operators)
+    result = evaluate_expression(
+        expr, envelope, output_text, custom_operators=custom_operators, custom_selectors=custom_selectors
+    )
     if isinstance(result, _PolicyError):
         return result
     return not result
@@ -102,13 +117,14 @@ def _eval_leaf(
     envelope: ToolEnvelope,
     output_text: str | None,
     custom_operators: dict[str, Any] | None,
+    custom_selectors: dict[str, Any] | None,
 ) -> bool | _PolicyError:
     # Exactly one key in the leaf
     selector = next(iter(leaf))
     operator_block = leaf[selector]
 
     # Resolve the field value
-    value = _resolve_selector(selector, envelope, output_text)
+    value = _resolve_selector(selector, envelope, output_text, custom_selectors)
 
     # Apply the single operator
     op_name = next(iter(operator_block))
@@ -139,6 +155,7 @@ def _resolve_selector(
     selector: str,
     envelope: ToolEnvelope,
     output_text: str | None,
+    custom_selectors: dict[str, Any] | None = None,
 ) -> Any:
     """Resolve a dotted selector path to a value from the envelope.
 
@@ -184,6 +201,20 @@ def _resolve_selector(
         if raw is None:
             return _MISSING
         return _coerce_env_value(raw)
+
+    if selector.startswith("metadata."):
+        return _resolve_nested(selector[9:], envelope.metadata)
+
+    # Custom selectors: match prefix before first dot
+    if custom_selectors:
+        dot_pos = selector.find(".")
+        if dot_pos > 0:
+            prefix = selector[:dot_pos]
+            if prefix in custom_selectors:
+                resolver = custom_selectors[prefix]
+                data = resolver(envelope)
+                rest = selector[dot_pos + 1 :]
+                return _resolve_nested(rest, data)
 
     return _MISSING
 

@@ -187,6 +187,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -207,14 +208,21 @@ class Edictum:
             custom_operators: Mapping of operator names to callables. Each
                 callable receives ``(field_value, operator_value)`` and returns
                 ``bool``. Names must not clash with the 15 built-in operators.
+            custom_selectors: Mapping of selector prefixes to resolver callables.
+                Each callable receives a ``ToolEnvelope`` and returns a ``dict``
+                that is searched via dotted-path resolution. For example,
+                ``{"context": lambda env: env.metadata}`` makes ``context.key``
+                selectors available in YAML contracts. Prefixes must not clash
+                with built-in selector prefixes.
 
         Returns:
             Configured Edictum instance, or a tuple of (Edictum, CompositionReport)
             when *return_report* is True.
 
         Raises:
-            EdictumConfigError: If the YAML is invalid or custom operator names
-                clash with built-in operators.
+            EdictumConfigError: If the YAML is invalid, custom operator names
+                clash with built-in operators, or custom selector prefixes clash
+                with built-in selector prefixes.
         """
         import hashlib
 
@@ -224,6 +232,8 @@ class Edictum:
 
         if custom_operators:
             _validate_custom_operators(custom_operators)
+        if custom_selectors:
+            _validate_custom_selectors(custom_selectors)
 
         if not paths:
             raise EdictumConfigError("from_yaml() requires at least one path")
@@ -247,7 +257,7 @@ class Edictum:
             # Combined hash from all individual hashes
             policy_version = hashlib.sha256(":".join(str(h) for _d, h in loaded).encode()).hexdigest()
 
-        compiled = compile_contracts(bundle_data, custom_operators=custom_operators)
+        compiled = compile_contracts(bundle_data, custom_operators=custom_operators, custom_selectors=custom_selectors)
 
         # Handle observability config
         obs_config = bundle_data.get("observability", {})
@@ -316,6 +326,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -335,24 +346,31 @@ class Edictum:
             custom_operators: Mapping of operator names to callables. Each
                 callable receives ``(field_value, operator_value)`` and returns
                 ``bool``. Names must not clash with the 15 built-in operators.
+            custom_selectors: Mapping of selector prefixes to resolver callables.
+                Each callable receives a ``ToolEnvelope`` and returns a ``dict``
+                that is searched via dotted-path resolution. Prefixes must not
+                clash with built-in selector prefixes.
 
         Returns:
             Configured Edictum instance.
 
         Raises:
-            EdictumConfigError: If the YAML is invalid or custom operator names
-                clash with built-in operators.
+            EdictumConfigError: If the YAML is invalid, custom operator names
+                clash with built-in operators, or custom selector prefixes clash
+                with built-in selector prefixes.
         """
         from edictum.yaml_engine.compiler import compile_contracts
         from edictum.yaml_engine.loader import load_bundle_string
 
         if custom_operators:
             _validate_custom_operators(custom_operators)
+        if custom_selectors:
+            _validate_custom_selectors(custom_selectors)
 
         bundle_data, bundle_hash = load_bundle_string(content)
         policy_version = str(bundle_hash)
 
-        compiled = compile_contracts(bundle_data, custom_operators=custom_operators)
+        compiled = compile_contracts(bundle_data, custom_operators=custom_operators, custom_selectors=custom_selectors)
 
         # Handle observability config
         obs_config = bundle_data.get("observability", {})
@@ -418,6 +436,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        custom_selectors: dict[str, Callable[[ToolEnvelope], dict[str, Any]]] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a template.
 
@@ -436,6 +455,8 @@ class Edictum:
             environment: Environment name for envelope context.
             custom_operators: Mapping of operator names to callables. Forwarded
                 to ``from_yaml()``.
+            custom_selectors: Mapping of selector prefixes to resolver callables.
+                Forwarded to ``from_yaml()``.
 
         Returns:
             Configured Edictum instance.
@@ -461,6 +482,7 @@ class Edictum:
                     on_deny=on_deny,
                     on_allow=on_allow,
                     custom_operators=custom_operators,
+                    custom_selectors=custom_selectors,
                 )
 
         all_templates: set[str] = set()
@@ -1050,6 +1072,18 @@ def _validate_custom_operators(custom_operators: dict[str, Any]) -> None:
     for name, fn in custom_operators.items():
         if not callable(fn):
             raise EdictumConfigError(f"Custom operator '{name}' is not callable")
+
+
+def _validate_custom_selectors(custom_selectors: dict[str, Any]) -> None:
+    """Validate custom selector prefixes don't clash with built-in selectors."""
+    from edictum.yaml_engine.evaluator import BUILTIN_SELECTOR_PREFIXES
+
+    clashes = set(custom_selectors) & BUILTIN_SELECTOR_PREFIXES
+    if clashes:
+        raise EdictumConfigError(f"Custom selector prefixes clash with built-in selectors: {sorted(clashes)}")
+    for name, fn in custom_selectors.items():
+        if not callable(fn):
+            raise EdictumConfigError(f"Custom selector '{name}' is not callable")
 
 
 class EdictumDenied(Exception):  # noqa: N818
