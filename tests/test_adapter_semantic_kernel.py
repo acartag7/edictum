@@ -131,12 +131,12 @@ class TestSemanticKernelAdapter:
         guard = make_guard()
         adapter = SemanticKernelAdapter(guard)
 
-        assert adapter._check_tool_success(None) is True
-        assert adapter._check_tool_success("ok") is True
-        assert adapter._check_tool_success({"result": "good"}) is True
-        assert adapter._check_tool_success({"is_error": True}) is False
-        assert adapter._check_tool_success("Error: something failed") is False
-        assert adapter._check_tool_success("fatal: not a git repo") is False
+        assert adapter._check_tool_success("TestTool", None) is True
+        assert adapter._check_tool_success("TestTool", "ok") is True
+        assert adapter._check_tool_success("TestTool", {"result": "good"}) is True
+        assert adapter._check_tool_success("TestTool", {"is_error": True}) is False
+        assert adapter._check_tool_success("TestTool", "Error: something failed") is False
+        assert adapter._check_tool_success("TestTool", "fatal: not a git repo") is False
 
     async def test_public_api_returns_framework_native(self):
         guard = make_guard()

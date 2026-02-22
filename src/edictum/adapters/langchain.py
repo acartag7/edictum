@@ -275,7 +275,7 @@ class LangChainAdapter:
 
         envelope, span = pending
 
-        tool_success = self._check_tool_success(result)
+        tool_success = self._check_tool_success(envelope.tool_name, result)
 
         post_decision = await self._pipeline.post_execute(envelope, result, tool_success)
 
@@ -345,7 +345,9 @@ class LangChainAdapter:
             )
         )
 
-    def _check_tool_success(self, result: Any) -> bool:
+    def _check_tool_success(self, tool_name: str, result: Any) -> bool:
+        if self._guard._success_check is not None:
+            return self._guard._success_check(tool_name, result)
         if result is None:
             return True
         # Check for LangChain ToolMessage with error content
