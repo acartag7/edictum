@@ -9,7 +9,7 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from edictum import Edictum, Verdict, postcondition
+from edictum import Edictum, Verdict, postcondition, precondition
 from edictum.storage import MemoryBackend
 from tests.conftest import NullAuditSink
 
@@ -193,3 +193,151 @@ class TestCallbackArguments:
         assert callback.call_count >= 1
         args = callback.call_args
         assert len(args[0]) == 2, f"Callback received {len(args[0])} args, expected 2 (result, findings)"
+
+
+def _make_deny_guard(**kwargs):
+    """Create a guard with a precondition that always denies."""
+
+    @precondition("*")
+    def block_all(envelope):
+        return Verdict.fail("budget exceeded")
+
+    return Edictum(
+        environment="test",
+        contracts=[block_all],
+        audit_sink=NullAuditSink(),
+        backend=MemoryBackend(),
+        **kwargs,
+    )
+
+
+def _make_allow_guard(**kwargs):
+    """Create a guard with no contracts (everything allowed)."""
+    return Edictum(
+        environment="test",
+        contracts=[],
+        audit_sink=NullAuditSink(),
+        backend=MemoryBackend(),
+        **kwargs,
+    )
+
+
+class TestOnDenyCallback:
+    """on_deny must fire exactly once with correct args on precondition denial."""
+
+    async def test_on_deny_fires_exactly_once(self):
+        """on_deny fires once when a precondition denies in enforce mode."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        callback = MagicMock()
+        guard = _make_deny_guard(on_deny=callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
+        await adapter._before_hook(ctx)
+
+        assert callback.call_count == 1, f"on_deny called {callback.call_count} times, expected exactly 1."
+
+    async def test_on_deny_receives_correct_args(self):
+        """on_deny receives (envelope, reason_string, contract_name)."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        callback = MagicMock()
+        guard = _make_deny_guard(on_deny=callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={"k": "v"}, agent=None, task=None)
+        await adapter._before_hook(ctx)
+
+        args = callback.call_args[0]
+        assert len(args) == 3, f"on_deny received {len(args)} args, expected 3"
+        envelope, reason, contract_name = args
+        assert envelope.tool_name == "TestTool"
+        assert "budget exceeded" in reason
+        assert contract_name == "block_all"
+
+
+class TestOnAllowCallback:
+    """on_allow must fire exactly once when all checks pass."""
+
+    async def test_on_allow_fires_exactly_once(self):
+        """on_allow fires once when no contracts deny."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        callback = MagicMock()
+        guard = _make_allow_guard(on_allow=callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
+        await adapter._before_hook(ctx)
+
+        assert callback.call_count == 1, f"on_allow called {callback.call_count} times, expected exactly 1."
+
+    async def test_on_allow_receives_envelope(self):
+        """on_allow receives the ToolEnvelope as its sole argument."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        callback = MagicMock()
+        guard = _make_allow_guard(on_allow=callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={"k": "v"}, agent=None, task=None)
+        await adapter._before_hook(ctx)
+
+        args = callback.call_args[0]
+        assert len(args) == 1, f"on_allow received {len(args)} args, expected 1"
+        assert args[0].tool_name == "TestTool"
+
+
+class TestOnDenyNotInObserveMode:
+    """on_deny must NOT fire in observe mode (denials are shadow-only)."""
+
+    async def test_on_deny_skipped_in_observe_mode(self):
+        """Observe mode logs would-deny but must not invoke on_deny."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        callback = MagicMock()
+        guard = _make_deny_guard(on_deny=callback, mode="observe")
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
+        await adapter._before_hook(ctx)
+
+        assert callback.call_count == 0, f"on_deny fired {callback.call_count} times in observe mode, expected 0."
+
+
+class TestOnDenyCallbackError:
+    """Callback errors must be caught -- never crash the pipeline."""
+
+    async def test_on_deny_error_does_not_crash(self):
+        """A failing on_deny callback must not prevent denial from propagating."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        def bad_callback(envelope, reason, contract_name):
+            raise RuntimeError("callback exploded")
+
+        guard = _make_deny_guard(on_deny=bad_callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
+        # Must not raise -- the denial still propagates, callback error is swallowed
+        result = await adapter._before_hook(ctx)
+
+        assert isinstance(result, str), "Denial must still propagate despite callback error"
+        assert "budget exceeded" in result
+
+    async def test_on_allow_error_does_not_crash(self):
+        """A failing on_allow callback must not prevent the allow from proceeding."""
+        from edictum.adapters.crewai import CrewAIAdapter
+
+        def bad_callback(envelope):
+            raise RuntimeError("callback exploded")
+
+        guard = _make_allow_guard(on_allow=bad_callback)
+        adapter = CrewAIAdapter(guard)
+
+        ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
+        # Must not raise -- allow proceeds, callback error is swallowed
+        result = await adapter._before_hook(ctx)
+
+        assert result is None, "Allow must still proceed despite callback error"

@@ -127,6 +127,8 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         policy_version: str | None = None,
+        on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
+        on_allow: Callable[[ToolEnvelope], None] | None = None,
     ):
         self.environment = environment
         self.mode = mode
@@ -140,6 +142,8 @@ class Edictum:
         self.telemetry = GovernanceTelemetry()
         self._gov_tracer = get_tracer("edictum.governance")
         self.policy_version = policy_version
+        self._on_deny = on_deny
+        self._on_allow = on_allow
 
         # Build tool registry
         self.tool_registry = ToolRegistry()
@@ -180,6 +184,8 @@ class Edictum:
         backend: StorageBackend | None = None,
         environment: str = "production",
         return_report: bool = False,
+        on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
+        on_allow: Callable[[ToolEnvelope], None] | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -280,6 +286,8 @@ class Edictum:
             redaction=redaction,
             backend=backend,
             policy_version=policy_version,
+            on_deny=on_deny,
+            on_allow=on_allow,
         )
 
         if return_report:
@@ -297,6 +305,8 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
+        on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
+        on_allow: Callable[[ToolEnvelope], None] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -373,6 +383,8 @@ class Edictum:
             redaction=redaction,
             backend=backend,
             policy_version=policy_version,
+            on_deny=on_deny,
+            on_allow=on_allow,
         )
 
     @classmethod
@@ -387,6 +399,8 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
+        on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
+        on_allow: Callable[[ToolEnvelope], None] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a template.
 
@@ -425,6 +439,8 @@ class Edictum:
                     redaction=redaction,
                     backend=backend,
                     environment=environment,
+                    on_deny=on_deny,
+                    on_allow=on_allow,
                 )
 
         all_templates: set[str] = set()
@@ -507,6 +523,8 @@ class Edictum:
             redaction=first.redaction,
             backend=first.backend,
             policy_version=first.policy_version,
+            on_deny=first._on_deny,
+            on_allow=first._on_allow,
         )
         merged.tool_registry = first.tool_registry
 
@@ -825,6 +843,11 @@ class Edictum:
             await self._emit_run_pre_audit(envelope, session, audit_action, pre)
             self.telemetry.record_denial(envelope, pre.reason)
             if self.mode == "enforce":
+                if self._on_deny:
+                    try:
+                        self._on_deny(envelope, pre.reason or "", pre.decision_name)
+                    except Exception:
+                        logger.exception("on_deny callback raised")
                 span.set_attribute("governance.action", "denied")
                 span.set_attribute("governance.reason", pre.reason or "")
                 span.end()
@@ -860,6 +883,11 @@ class Edictum:
                     self._emit_otel_governance_span(observed_event)
             await self._emit_run_pre_audit(envelope, session, AuditAction.CALL_ALLOWED, pre)
             self.telemetry.record_allowed(envelope)
+            if self._on_allow:
+                try:
+                    self._on_allow(envelope)
+                except Exception:
+                    logger.exception("on_allow callback raised")
             span.set_attribute("governance.action", "allowed")
 
         # Emit shadow audit events (never affect the real decision)

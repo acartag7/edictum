@@ -124,6 +124,11 @@ class ClaudeAgentSDKAdapter:
         if decision.action == "deny":
             await self._emit_audit_pre(envelope, decision)
             self._guard.telemetry.record_denial(envelope, decision.reason)
+            if self._guard._on_deny:
+                try:
+                    self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                except Exception:
+                    logger.exception("on_deny callback raised")
             span.set_attribute("governance.action", "denied")
             span.end()
             self._pending.pop(tool_use_id, None)
@@ -155,6 +160,11 @@ class ClaudeAgentSDKAdapter:
 
         # Handle allow
         await self._emit_audit_pre(envelope, decision)
+        if self._guard._on_allow:
+            try:
+                self._guard._on_allow(envelope)
+            except Exception:
+                logger.exception("on_allow callback raised")
         span.set_attribute("governance.action", "allowed")
         self._pending[tool_use_id] = (envelope, span)
         return {}
