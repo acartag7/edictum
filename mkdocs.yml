@@ -83,11 +83,13 @@ nav:
   - Guides:
     - Writing Contracts: guides/writing-contracts.md
     - Testing Contracts: guides/testing-contracts.md
+    - Python Hooks: guides/python-hooks.md
     - Adapter Comparison: guides/adapter-comparison.md
     - Observability: guides/observability.md
     - Postcondition Design: guides/postcondition-design.md
     - Adversarial Testing: guides/adversarial.md
   - Reference:
+    - Dry-Run Evaluation: evaluation.md
     - Postcondition Findings: findings.md
     - Audit Sinks: audit/sinks.md
     - OpenTelemetry: audit/telemetry.md
