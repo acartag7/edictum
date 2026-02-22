@@ -128,7 +128,7 @@ middleware = adapter.as_middleware()
 
 ## Step 6: Review Audit Logs
 
-In observe mode, denied calls produce `CALL_WOULD_DENY` audit events. Review them to confirm the contract fires on the right calls and not on legitimate ones:
+In observe mode, denied calls produce `call_would_deny` audit events. Review them to confirm the contract fires on the right calls and not on legitimate ones:
 
 ```json
 {
