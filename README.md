@@ -170,6 +170,7 @@ pip install edictum              # core (zero deps)
 pip install edictum[yaml]        # + YAML contract parsing
 pip install edictum[otel]        # + OpenTelemetry span emission
 pip install edictum[cli]         # + validate/check/diff/replay CLI
+pip install edictum[server]      # + server SDK (approvals, audit, sessions via HTTP)
 pip install edictum[all]         # everything
 ```
 

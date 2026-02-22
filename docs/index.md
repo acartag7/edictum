@@ -114,7 +114,9 @@ Contracts are YAML. Enforcement is deterministic. The LLM cannot talk its way pa
 ## Install
 
 ```bash
-pip install edictum[yaml]
+pip install edictum[yaml]           # YAML contract parsing
+pip install edictum[server]         # server SDK (approval, audit, session via HTTP)
+pip install edictum[all]            # everything
 ```
 
 Requires Python 3.11+. Current version: **v0.9.0**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
@@ -136,6 +138,7 @@ See the [adapter overview](adapters/overview.md) for setup guides and known limi
 
 ## What's Coming
 
+- **Server SDK** (shipped) -- `pip install edictum[server]` connects agents to the edictum-server for centralized approvals, audit ingestion, distributed sessions, and SSE contract updates
 - **PII detection** -- Pluggable detectors for postcondition contracts (regex built-in, Presidio for enterprise)
 - **Production audit sinks** -- Webhook, Splunk HEC, and Datadog
 - **Central policy server** -- Agents pull contracts on startup with versioning, hot-reload, and dashboard

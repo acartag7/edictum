@@ -212,6 +212,41 @@ subsequent sinks do not receive the event.
 CompositeSink is about the structured event log, not observability traces. OTel
 spans operate independently and are complementary — use both in production.
 
+### ServerAuditSink (edictum[server])
+
+Batches audit events and sends them to the edictum-server via HTTP. Events are
+buffered in memory and flushed when the batch is full or after a timer interval.
+
+```bash
+pip install edictum[server]
+```
+
+```python
+from edictum.server import EdictumServerClient, ServerAuditSink
+
+client = EdictumServerClient("https://edictum.example.com", api_key="...", agent_id="my-agent")
+sink = ServerAuditSink(client, batch_size=50, flush_interval=5.0)
+
+guard = Edictum(audit_sink=sink)
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `client` | `EdictumServerClient` | (required) | Configured server client |
+| `batch_size` | `int` | `50` | Flush when this many events are buffered |
+| `flush_interval` | `float` | `5.0` | Seconds between automatic flushes |
+
+Events are mapped to the server's ingest format (`POST /api/v1/events`) with
+`call_id`, `agent_id`, `tool_name`, `verdict`, `mode`, `timestamp`, and a
+`payload` dict containing the full enforcement context. If a flush fails, events
+are retained in the buffer for the next attempt.
+
+Call `await sink.close()` to flush remaining events and stop the background timer.
+
+---
+
 ### OpenTelemetry Span Emission
 
 For production observability, Edictum emits `edictum.*` spans for every enforcement
