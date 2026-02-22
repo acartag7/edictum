@@ -1,6 +1,18 @@
-# Built-in Templates
+# Templates
 
-Edictum ships three built-in contract templates for common agent patterns. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point for your own contracts.
+Edictum ships three built-in contract templates for common agent patterns, and you can create your own. Templates are complete, production-ready YAML bundles that you can load directly or use as a starting point.
+
+## Use Cases
+
+**Team/org-specific contract libraries.** A platform team creates a `shared-contracts/` directory with templates like `support-agent`, `billing-agent`, `onboarding-agent`. Individual developers load them by name without knowing the YAML details — `from_template("support-agent", template_dirs=["shared-contracts/"])`.
+
+**Override built-in defaults per project.** A team that needs a stricter `file-agent` (e.g., blocking additional patterns like `terraform.tfvars`) can drop their custom `file-agent.yaml` into a project directory. The override is automatic — same `from_template("file-agent")` call, different behavior.
+
+**Template discovery for tooling and CI.** `list_templates()` lets CLI tools, dashboards, or CI scripts enumerate all available templates across directories. A CI job can validate all templates in a repo without hardcoding names.
+
+**Multi-repo contract sharing.** A monorepo or shared package can publish templates as YAML files. Consumer repos point `template_dirs` at the shared package's template directory.
+
+---
 
 ## Which Template?
 
@@ -22,7 +34,7 @@ Edictum ships three built-in contract templates for common agent patterns. Templ
 | Role-gated deploys | -- | -- | Yes |
 | Ticket requirements | -- | -- | Yes |
 
-All templates can be customized after loading. See [Customizing Templates](#customizing-templates) below.
+All templates can be customized after loading. See [Customizing Built-in Templates](#customizing-built-in-templates) below.
 
 ---
 
@@ -53,7 +65,7 @@ guard = Edictum.from_template(
 )
 ```
 
-Available template names:
+Available built-in template names:
 
 | Template | Target Use Case |
 |---|---|
@@ -321,18 +333,186 @@ contracts:
 
 ---
 
-## Customizing Templates
+## Custom Template Directories
 
-Templates are a starting point. To customize a template:
-
-1. Load the template and inspect the YAML source in `src/edictum/yaml_engine/templates/`.
-2. Copy the template to your project and modify it.
-3. Load your modified version with `Edictum.from_yaml()`:
+You can create your own templates and load them with the `template_dirs` parameter. User directories are searched first; built-in templates serve as a fallback.
 
 ```python
 from edictum import Edictum
 
-# Load your customized version
+# Load a custom template from your project
+guard = Edictum.from_template(
+    "support-agent",
+    template_dirs=["./contracts/templates"],
+)
+```
+
+Multiple directories are searched in order — the first match wins:
+
+```python
+guard = Edictum.from_template(
+    "my-agent",
+    template_dirs=["./team-contracts", "./shared-contracts"],
+)
+```
+
+A user template with the same name as a built-in overrides it:
+
+```python
+# If ./contracts/templates/file-agent.yaml exists,
+# it takes precedence over the built-in file-agent template
+guard = Edictum.from_template(
+    "file-agent",
+    template_dirs=["./contracts/templates"],
+)
+```
+
+Backward compatible — calling `from_template()` without `template_dirs` works exactly as before:
+
+```python
+guard = Edictum.from_template("file-agent")  # still loads the built-in
+```
+
+---
+
+## Creating a Template
+
+A template is a standard YAML contract bundle file (`.yaml`). Place it in a directory and pass that directory to `template_dirs`.
+
+### Template structure
+
+Every template follows the same YAML schema as any contract bundle:
+
+```yaml
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: support-agent
+  description: "Contracts for customer support agents."
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: block-ticket-leak
+    type: pre
+    tool: send_message
+    when:
+      args.body: { contains: "TICKET-" }
+    then:
+      effect: deny
+      message: "Internal ticket references must not appear in customer messages."
+      tags: [compliance, data-leak]
+
+  - id: session-limits
+    type: session
+    limits:
+      max_tool_calls: 30
+      max_attempts: 60
+    then:
+      effect: deny
+      message: "Session limit reached."
+      tags: [rate-limit]
+```
+
+### Project layout
+
+A typical project keeps templates alongside application code:
+
+```
+my-agent/
+├── contracts/
+│   └── templates/
+│       ├── support-agent.yaml
+│       └── billing-agent.yaml
+├── app.py
+└── pyproject.toml
+```
+
+```python
+# app.py
+from edictum import Edictum
+
+guard = Edictum.from_template(
+    "support-agent",
+    template_dirs=["./contracts/templates"],
+)
+```
+
+### Tips for writing templates
+
+- **Use descriptive contract IDs.** IDs like `block-ticket-leak` are searchable in audit logs. Avoid generic names like `rule-1`.
+- **Tag contracts.** Tags (`tags: [compliance, pii]`) make it easy to filter audit events by category.
+- **Set session limits.** Every production template should include a session contract to prevent runaway agents.
+- **Start in observe mode.** Use `mode: observe` in `defaults:` while developing, then switch to `enforce` after validating with `edictum test`.
+- **Validate before deploying.** Run `edictum validate contracts/templates/support-agent.yaml` to catch schema errors early.
+
+---
+
+## Discovering Templates
+
+Use `Edictum.list_templates()` to discover all available templates — both built-in and from custom directories:
+
+```python
+from edictum import Edictum
+
+# Built-in templates only
+for t in Edictum.list_templates():
+    print(f"{t.name} (built-in: {t.builtin})")
+```
+
+Output:
+
+```
+devops-agent (built-in: True)
+file-agent (built-in: True)
+research-agent (built-in: True)
+```
+
+With custom directories:
+
+```python
+templates = Edictum.list_templates(
+    template_dirs=["./contracts/templates"],
+)
+for t in templates:
+    source = "built-in" if t.builtin else str(t.path)
+    print(f"{t.name}: {source}")
+```
+
+Output:
+
+```
+support-agent: contracts/templates/support-agent.yaml
+devops-agent: built-in
+file-agent: built-in
+research-agent: built-in
+```
+
+Each entry is a `TemplateInfo` with three fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | `str` | Template name (filename without `.yaml`) |
+| `path` | `Path` | Absolute path to the YAML file |
+| `builtin` | `bool` | `True` for built-in templates, `False` for user templates |
+
+When a user template has the same name as a built-in, `list_templates()` returns only the user version — matching the search order of `from_template()`.
+
+---
+
+## Customizing Built-in Templates
+
+Built-in templates are a starting point. Two approaches:
+
+**Option 1: Override with `template_dirs`.** Copy a built-in template to your project directory, modify it, and load it by name. Your version takes priority automatically.
+
+**Option 2: Load directly with `from_yaml()`.** Copy the template, rename it, and load the modified version:
+
+```python
+from edictum import Edictum
+
 guard = Edictum.from_yaml("contracts/my-devops-policy.yaml")
 ```
 
