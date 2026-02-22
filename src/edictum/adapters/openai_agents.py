@@ -137,12 +137,6 @@ class OpenAIAgentsAdapter:
                 call_id = next(iter(adapter._pending))
                 post_result = await adapter._post(call_id, tool_output)
 
-            if post_result and not post_result.postconditions_passed and adapter._on_postcondition_warn:
-                try:
-                    adapter._on_postcondition_warn(post_result.result, post_result.findings)
-                except Exception:
-                    logger.exception("on_postcondition_warn callback raised")
-
             if post_result and post_result.output_suppressed:
                 return ToolGuardrailFunctionOutput.reject_content(str(post_result.result))
 
@@ -296,12 +290,22 @@ class OpenAIAgentsAdapter:
         span.end()
 
         findings = build_findings(post_decision)
-        return PostCallResult(
+        post_result = PostCallResult(
             result=effective_response,
             postconditions_passed=post_decision.postconditions_passed,
             findings=findings,
             output_suppressed=post_decision.output_suppressed,
         )
+
+        # Call callback for side effects
+        on_warn = getattr(self, "_on_postcondition_warn", None)
+        if not post_result.postconditions_passed and on_warn:
+            try:
+                on_warn(post_result.result, post_result.findings)
+            except Exception:
+                logger.exception("on_postcondition_warn callback raised")
+
+        return post_result
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
         if audit_action is None:
