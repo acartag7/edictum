@@ -162,9 +162,10 @@ kind: ContractBundle
 contracts:
   - id: tenant-query-limit
     type: session
-    tool: query_db
+    limits:
+      max_tool_calls: 100
     then:
-      max_executions: 100
+      effect: deny
       message: "Tenant has exceeded 100 queries per session."
 ```
 
