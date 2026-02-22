@@ -14,7 +14,7 @@ import json
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +91,17 @@ __all__ = [
     "EvaluationResult",
     "ContractResult",
     "CompositionReport",
+    "TemplateInfo",
 ]
+
+
+@dataclass(frozen=True)
+class TemplateInfo:
+    """Metadata about a discovered contract template."""
+
+    name: str
+    path: Path
+    builtin: bool
 
 
 class Edictum:
@@ -363,6 +373,7 @@ class Edictum:
         cls,
         name: str,
         *,
+        template_dirs: list[str | Path] | None = None,
         tools: dict[str, dict] | None = None,
         mode: str | None = None,
         audit_sink: AuditSink | None = None,
@@ -370,33 +381,92 @@ class Edictum:
         backend: StorageBackend | None = None,
         environment: str = "production",
     ) -> Edictum:
-        """Create a Edictum instance from a built-in template.
+        """Create an Edictum instance from a template.
+
+        Searches user-provided directories first, then built-in templates.
 
         Args:
-            name: Template name (e.g., "file-agent", "research-agent", "devops-agent").
+            name: Template name (e.g., "file-agent", "support-agent").
+            template_dirs: Directories to search before built-in templates.
+                User directories are searched in order; built-in templates
+                serve as a fallback.
             tools: Tool side-effect classifications. Forwarded to ``from_yaml()``.
+            mode: Override the template's default mode.
+            audit_sink: Custom audit sink.
+            redaction: Custom redaction policy.
+            backend: Custom storage backend.
+            environment: Environment name for envelope context.
 
         Returns:
             Configured Edictum instance.
 
         Raises:
-            EdictumConfigError: If the template does not exist.
+            EdictumConfigError: If the template is not found in any directory.
         """
-        templates_dir = Path(__file__).parent / "yaml_engine" / "templates"
-        template_path = templates_dir / f"{name}.yaml"
-        if not template_path.exists():
-            raise EdictumConfigError(
-                f"Template '{name}' not found. Available: {', '.join(p.stem for p in templates_dir.glob('*.yaml'))}"
-            )
-        return cls.from_yaml(
-            template_path,
-            tools=tools,
-            mode=mode,
-            audit_sink=audit_sink,
-            redaction=redaction,
-            backend=backend,
-            environment=environment,
-        )
+        builtin_dir = Path(__file__).parent / "yaml_engine" / "templates"
+
+        search_dirs = [Path(d) for d in (template_dirs or [])] + [builtin_dir]
+
+        for directory in search_dirs:
+            candidate = directory / f"{name}.yaml"
+            if candidate.exists():
+                return cls.from_yaml(
+                    candidate,
+                    tools=tools,
+                    mode=mode,
+                    audit_sink=audit_sink,
+                    redaction=redaction,
+                    backend=backend,
+                    environment=environment,
+                )
+
+        all_templates: set[str] = set()
+        for directory in search_dirs:
+            if directory.is_dir():
+                all_templates.update(p.stem for p in directory.glob("*.yaml"))
+
+        available = ", ".join(sorted(all_templates)) if all_templates else "none"
+        raise EdictumConfigError(f"Template '{name}' not found. Available: {available}")
+
+    @classmethod
+    def list_templates(
+        cls,
+        template_dirs: list[str | Path] | None = None,
+    ) -> list[TemplateInfo]:
+        """Discover available contract templates.
+
+        Returns templates from user-provided directories and built-in
+        templates. When a user template has the same name as a built-in,
+        the user template takes precedence (matching ``from_template()``
+        search order).
+
+        Args:
+            template_dirs: Additional directories to search for templates.
+
+        Returns:
+            List of :class:`TemplateInfo` with name, path, and builtin flag.
+        """
+        builtin_dir = Path(__file__).parent / "yaml_engine" / "templates"
+
+        seen: set[str] = set()
+        results: list[TemplateInfo] = []
+
+        for d in template_dirs or []:
+            directory = Path(d)
+            if not directory.is_dir():
+                continue
+            for p in sorted(directory.glob("*.yaml")):
+                if p.stem not in seen:
+                    seen.add(p.stem)
+                    results.append(TemplateInfo(name=p.stem, path=p, builtin=False))
+
+        if builtin_dir.is_dir():
+            for p in sorted(builtin_dir.glob("*.yaml")):
+                if p.stem not in seen:
+                    seen.add(p.stem)
+                    results.append(TemplateInfo(name=p.stem, path=p, builtin=True))
+
+        return results
 
     @classmethod
     def from_multiple(cls, guards: list[Edictum]) -> Edictum:
