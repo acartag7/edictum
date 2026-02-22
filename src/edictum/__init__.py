@@ -129,6 +129,7 @@ class Edictum:
         policy_version: str | None = None,
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
+        success_check: Callable[[str, Any], bool] | None = None,
     ):
         self.environment = environment
         self.mode = mode
@@ -144,6 +145,7 @@ class Edictum:
         self.policy_version = policy_version
         self._on_deny = on_deny
         self._on_allow = on_allow
+        self._success_check = success_check
 
         # Build tool registry
         self.tool_registry = ToolRegistry()
@@ -187,6 +189,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        success_check: Callable[[str, Any], bool] | None = None,
     ) -> Edictum | tuple[Edictum, CompositionReport]:
         """Create a Edictum instance from one or more YAML contract bundles.
 
@@ -296,6 +299,7 @@ class Edictum:
             policy_version=policy_version,
             on_deny=on_deny,
             on_allow=on_allow,
+            success_check=success_check,
         )
 
         if return_report:
@@ -316,6 +320,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        success_check: Callable[[str, Any], bool] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a YAML string or bytes.
 
@@ -401,6 +406,7 @@ class Edictum:
             policy_version=policy_version,
             on_deny=on_deny,
             on_allow=on_allow,
+            success_check=success_check,
         )
 
     @classmethod
@@ -418,6 +424,7 @@ class Edictum:
         on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
         on_allow: Callable[[ToolEnvelope], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
+        success_check: Callable[[str, Any], bool] | None = None,
     ) -> Edictum:
         """Create an Edictum instance from a template.
 
@@ -461,6 +468,7 @@ class Edictum:
                     on_deny=on_deny,
                     on_allow=on_allow,
                     custom_operators=custom_operators,
+                    success_check=success_check,
                 )
 
         all_templates: set[str] = set()
@@ -545,6 +553,7 @@ class Edictum:
             policy_version=first.policy_version,
             on_deny=first._on_deny,
             on_allow=first._on_allow,
+            success_check=first._success_check,
         )
         merged.tool_registry = first.tool_registry
 
@@ -936,7 +945,10 @@ class Edictum:
             result = tool_callable(**args)
             if asyncio.iscoroutine(result):
                 result = await result
-            tool_success = True
+            if self._success_check:
+                tool_success = self._success_check(tool_name, result)
+            else:
+                tool_success = True
         except Exception as e:
             result = str(e)
             tool_success = False

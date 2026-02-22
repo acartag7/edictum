@@ -200,7 +200,7 @@ class SemanticKernelAdapter:
 
         envelope, span = pending
 
-        tool_success = self._check_tool_success(tool_response)
+        tool_success = self._check_tool_success(envelope.tool_name, tool_response)
 
         post_decision = await self._pipeline.post_execute(envelope, tool_response, tool_success)
 
@@ -272,7 +272,9 @@ class SemanticKernelAdapter:
             )
         )
 
-    def _check_tool_success(self, tool_response: Any) -> bool:
+    def _check_tool_success(self, tool_name: str, tool_response: Any) -> bool:
+        if self._guard._success_check is not None:
+            return self._guard._success_check(tool_name, tool_response)
         if tool_response is None:
             return True
         if isinstance(tool_response, dict):

@@ -247,3 +247,64 @@ class TestParityOnAllow:
         await pre_fn(adapter)
 
         assert on_allow.call_count == 1, f"{name} fired on_allow {on_allow.call_count} times, expected 1"
+
+
+# --- Post helpers for all 6 adapters ---
+
+
+async def _claude_sdk_post(adapter, result="ok"):
+    return await adapter._post_tool_use(tool_use_id="tc-1", tool_response=result)
+
+
+async def _agno_post(adapter, result="ok"):
+    return await adapter._post("call-1", result)
+
+
+async def _sk_post(adapter, result="ok"):
+    return await adapter._post("call-1", result)
+
+
+def _all_adapter_pre_post_configs():
+    from edictum.adapters.agno import AgnoAdapter
+    from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
+    from edictum.adapters.crewai import CrewAIAdapter
+    from edictum.adapters.langchain import LangChainAdapter
+    from edictum.adapters.openai_agents import OpenAIAgentsAdapter
+    from edictum.adapters.semantic_kernel import SemanticKernelAdapter
+
+    return [
+        ("CrewAI", CrewAIAdapter, _crewai_pre, _crewai_post),
+        ("OpenAI", OpenAIAgentsAdapter, _openai_pre, _openai_post),
+        ("LangChain", LangChainAdapter, _langchain_pre, _langchain_post),
+        ("ClaudeSDK", ClaudeAgentSDKAdapter, _claude_sdk_pre, _claude_sdk_post),
+        ("Agno", AgnoAdapter, _agno_pre, _agno_post),
+        ("SK", SemanticKernelAdapter, _sk_pre, _sk_post),
+    ]
+
+
+ALL_PRE_POST_CONFIGS = _all_adapter_pre_post_configs()
+ALL_PRE_POST_IDS = [c[0] for c in ALL_PRE_POST_CONFIGS]
+
+
+class TestParitySuccessCheck:
+    """All adapters must respect custom success_check."""
+
+    @pytest.mark.parametrize("name,cls,pre_fn,post_fn", ALL_PRE_POST_CONFIGS, ids=ALL_PRE_POST_IDS)
+    async def test_custom_success_check_marks_failure(self, name, cls, pre_fn, post_fn):
+        """Custom success_check returning False must produce CALL_FAILED audit."""
+
+        def always_fail(tool_name, result):
+            return False
+
+        sink = NullAuditSink()
+        guard = _make_guard(success_check=always_fail, audit_sink=sink)
+        adapter = cls(guard)
+
+        await pre_fn(adapter)
+        await post_fn(adapter, result="looks fine")
+
+        failed_events = [e for e in sink.events if e.action == AuditAction.CALL_FAILED]
+        assert len(failed_events) == 1, (
+            f"{name} did not emit CALL_FAILED with custom success_check. "
+            f"Events: {[e.action.value for e in sink.events]}"
+        )

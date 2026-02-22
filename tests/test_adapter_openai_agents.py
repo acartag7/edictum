@@ -131,10 +131,10 @@ class TestOpenAIAgentsAdapter:
         guard = make_guard()
         adapter = OpenAIAgentsAdapter(guard)
 
-        assert adapter._check_tool_success(None) is True
-        assert adapter._check_tool_success("ok") is True
-        assert adapter._check_tool_success("Error: something failed") is False
-        assert adapter._check_tool_success("fatal: not a git repo") is False
+        assert adapter._check_tool_success("TestTool", None) is True
+        assert adapter._check_tool_success("TestTool", "ok") is True
+        assert adapter._check_tool_success("TestTool", "Error: something failed") is False
+        assert adapter._check_tool_success("TestTool", "fatal: not a git repo") is False
 
     async def test_public_api_returns_framework_native(self):
         """as_guardrails() returns a tuple of 2 callables (without importing framework)."""

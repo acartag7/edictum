@@ -110,7 +110,10 @@ class AgnoAdapter:
             result = function_call(**arguments)
             if asyncio.iscoroutine(result):
                 result = await result
-            tool_success = True
+            if self._guard._success_check is not None:
+                tool_success = self._guard._success_check(function_name, result)
+            else:
+                tool_success = True
         except Exception as exc:
             result = f"Error: {exc}"
             tool_success = False
@@ -220,7 +223,7 @@ class AgnoAdapter:
 
         # Derive tool_success from response if not explicitly provided
         if tool_success is None:
-            tool_success = self._check_tool_success(tool_response)
+            tool_success = self._check_tool_success(envelope.tool_name, tool_response)
 
         # Run pipeline
         post_decision = await self._pipeline.post_execute(envelope, tool_response, tool_success)
@@ -296,7 +299,9 @@ class AgnoAdapter:
             )
         )
 
-    def _check_tool_success(self, tool_response) -> bool:
+    def _check_tool_success(self, tool_name: str, tool_response: Any) -> bool:
+        if self._guard._success_check is not None:
+            return self._guard._success_check(tool_name, tool_response)
         if tool_response is None:
             return True
         if isinstance(tool_response, dict):

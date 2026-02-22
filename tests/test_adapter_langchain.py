@@ -142,19 +142,19 @@ class TestLangChainAdapter:
         guard = make_guard()
         adapter = LangChainAdapter(guard)
 
-        assert adapter._check_tool_success(None) is True
-        assert adapter._check_tool_success("ok") is True
-        assert adapter._check_tool_success({"result": "good"}) is True
-        assert adapter._check_tool_success({"is_error": True}) is False
-        assert adapter._check_tool_success("Error: something failed") is False
-        assert adapter._check_tool_success("fatal: not a git repo") is False
+        assert adapter._check_tool_success("TestTool", None) is True
+        assert adapter._check_tool_success("TestTool", "ok") is True
+        assert adapter._check_tool_success("TestTool", {"result": "good"}) is True
+        assert adapter._check_tool_success("TestTool", {"is_error": True}) is False
+        assert adapter._check_tool_success("TestTool", "Error: something failed") is False
+        assert adapter._check_tool_success("TestTool", "fatal: not a git repo") is False
 
         # LangChain ToolMessage-style result
         ok_msg = FakeToolMessage(content="success", tool_call_id="tc-1")
-        assert adapter._check_tool_success(ok_msg) is True
+        assert adapter._check_tool_success("TestTool", ok_msg) is True
 
         err_msg = FakeToolMessage(content="Error: bad request", tool_call_id="tc-1")
-        assert adapter._check_tool_success(err_msg) is False
+        assert adapter._check_tool_success("TestTool", err_msg) is False
 
     async def test_public_api_returns_framework_native(self):
         """as_middleware() imports from langchain — test the adapter's internal methods instead."""

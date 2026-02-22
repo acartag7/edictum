@@ -433,20 +433,20 @@ class TestFix13CheckToolSuccess:
 
         for adapter in adapters:
             assert (
-                adapter._check_tool_success({"is_error": True}) is False
+                adapter._check_tool_success("TestTool", {"is_error": True}) is False
             ), f"{type(adapter).__name__} failed dict is_error check"
 
     def test_crewai_checks_dict_is_error(self):
         sink = NullSink()
         guard = _guard(audit_sink=sink)
         adapter = CrewAIAdapter(guard)
-        assert adapter._check_tool_success({"is_error": True}) is False
+        assert adapter._check_tool_success("TestTool", {"is_error": True}) is False
 
     def test_openai_agents_checks_dict_is_error(self):
         sink = NullSink()
         guard = _guard(audit_sink=sink)
         adapter = OpenAIAgentsAdapter(guard)
-        assert adapter._check_tool_success({"is_error": True}) is False
+        assert adapter._check_tool_success("TestTool", {"is_error": True}) is False
 
 
 # ── Fix 14: OpenAI Agents FIFO correlation ──

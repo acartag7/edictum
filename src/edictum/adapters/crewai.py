@@ -243,7 +243,7 @@ class CrewAIAdapter:
 
         # Derive tool_success from context
         tool_result = getattr(context, "tool_result", None)
-        tool_success = self._check_tool_success(tool_result)
+        tool_success = self._check_tool_success(envelope.tool_name, tool_result)
 
         # Run pipeline
         post_decision = await self._pipeline.post_execute(envelope, tool_result, tool_success)
@@ -330,7 +330,9 @@ class CrewAIAdapter:
             )
         )
 
-    def _check_tool_success(self, tool_result: Any) -> bool:
+    def _check_tool_success(self, tool_name: str, tool_result: Any) -> bool:
+        if self._guard._success_check is not None:
+            return self._guard._success_check(tool_name, tool_result)
         if tool_result is None:
             return True
         if isinstance(tool_result, dict):
