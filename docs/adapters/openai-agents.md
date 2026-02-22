@@ -7,10 +7,7 @@ tools via `@function_tool`.
 
 ## When to use this
 
-- **You are building with the OpenAI Agents SDK and need per-tool contract enforcement.** You have `@function_tool`-decorated functions and want preconditions evaluated before execution and postconditions evaluated after. The adapter returns `(ToolInputGuardrail, ToolOutputGuardrail)` from `as_guardrails()` that attach directly to the decorator via `tool_input_guardrails` and `tool_output_guardrails`.
-- **You need to deny tool calls that violate contracts.** The input guardrail calls `reject_content(reason)` when a precondition fails, preventing the tool from executing. The output guardrail enforces `effect: deny` postconditions the same way.
-- **You want audit and session tracking alongside SDK guardrails.** Each guardrail evaluation emits a structured `AuditEvent` and increments session counters, giving you a complete trace of every tool call — allowed, denied, or observed.
-- **You need to validate contracts in production without blocking.** Deploy with `mode="observe"` to log what would be denied, then switch to `mode="enforce"` when ready. Note that `effect: redact` postconditions require the wrapper integration path — native guardrails cannot transform tool results.
+Add Edictum to your OpenAI Agents SDK project when your `@function_tool` functions need precondition and postcondition enforcement. The `as_guardrails()` method returns a `(ToolInputGuardrail, ToolOutputGuardrail)` pair that you attach directly to the `@function_tool` decorator. Native guardrails can deny tool calls and enforce `effect: deny` postconditions via `reject_content`, but they cannot transform tool results, so `effect: redact` postconditions are not supported with this adapter.
 
 ## Installation
 
@@ -51,7 +48,7 @@ postconditions and records the execution in the session. Postconditions with
 `ToolGuardrailFunctionOutput.reject_content(reason)` to deny the output.
 All other postcondition results return `ToolGuardrailFunctionOutput.allow()`.
 The SDK does not support transforming the tool result from an output guardrail,
-so `effect: redact` requires the wrapper integration path.
+so `effect: redact` postconditions are not supported with this adapter.
 
 ## PII Redaction Callback
 

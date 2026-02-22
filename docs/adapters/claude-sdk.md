@@ -6,10 +6,7 @@ and `post_tool_use` async functions.
 
 ## When to use this
 
-- **You are building with Anthropic's Claude Agent SDK and need contract enforcement.** The `to_hook_callables()` method returns `pre_tool_use` and `post_tool_use` async functions that plug into your agent loop. Preconditions return a deny dict with `permissionDecision: "deny"` that the SDK interprets natively; postconditions return findings as `additionalContext` for the model.
-- **You want to keep Edictum decoupled from the SDK's pre-1.0 types.** The adapter uses Edictum's own calling convention rather than importing `claude-agent-sdk` types directly. A small bridge recipe (shown below) wraps the callables into `ClaudeAgentOptions(hooks=...)` format — the bridge lives in your code, not in Edictum.
-- **You need audit and session tracking for Claude tool calls.** Every pre/post evaluation emits a structured `AuditEvent` and updates session counters. This gives you a complete governance trail even though the SDK's native hook system has no built-in audit mechanism.
-- **You are validating contracts before enforcing them.** Deploy with `mode="observe"` to emit `CALL_WOULD_DENY` audit events without blocking any tool calls. The OTel span records `governance.action = "would_deny"` with the reason so you can query enforcement behavior in your observability backend.
+Add Edictum to your Claude Agent SDK project when you need contract enforcement on tool calls in a manual agent loop. The `to_hook_callables()` method returns `pre_tool_use` and `post_tool_use` async functions that use Edictum's own calling convention, keeping the adapter decoupled from the SDK's pre-1.0 types. Preconditions return a deny dict with `permissionDecision: "deny"` that the SDK interprets natively; postconditions return warning strings as `additionalContext` for the model. A bridge recipe (shown below) wraps these callables into `ClaudeAgentOptions(hooks=...)` format.
 
 ## Installation
 
@@ -146,7 +143,7 @@ The post-hook runs after tool execution to evaluate postconditions:
 async def post_tool_use(tool_use_id: str, tool_response: Any = None, **kwargs) -> dict
 ```
 
-If postconditions produce findings, they are returned as additional context:
+If postconditions produce warnings, they are returned as additional context:
 
 ```python
 {
@@ -157,7 +154,7 @@ If postconditions produce findings, they are returned as additional context:
 }
 ```
 
-If no findings are raised, the post-hook returns `{}`.
+If no warnings are raised, the post-hook returns `{}`.
 
 ## Known Limitations
 
@@ -184,7 +181,7 @@ denied. This is useful for validating contracts in production before switching
 to `mode="enforce"`.
 
 The pre-hook returns `{}` (allow) even for denied calls, and the OTel span
-records `edictum.verdict = "would_deny"` with the reason.
+records `governance.action = "would_deny"` with the reason.
 
 ## Audit and Observability
 

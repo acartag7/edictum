@@ -6,10 +6,7 @@ tool call and enforces Edictum contracts around it.
 
 ## When to use this
 
-- **You are using Semantic Kernel and need contract enforcement on auto-invoked functions.** The `register(kernel)` method installs an `AUTO_FUNCTION_INVOCATION` filter. Every function the kernel auto-invokes — plugin methods, tool calls, planner steps — passes through Edictum contract evaluation without any per-function wiring.
-- **You need to redact tool output before the LLM sees it.** The filter has access to `context.function_result` and can replace it. The `on_postcondition_warn` callback's return value overwrites the function result, making this adapter suitable for PII interception.
-- **You want configurable termination behavior on denial.** By default, `terminate_on_deny=True` stops all remaining auto-invocations when one tool is denied. Set `terminate_on_deny=False` to let the kernel continue with other tool calls — useful when tools are independent and one denied call should not block the rest.
-- **You are deploying SK agents in an enterprise environment.** Attach a `Principal` with role, department, and ticket reference to every audit event. Combine with `FileAuditSink` or OTel spans for a complete governance trail that maps to your organization's compliance requirements.
+Add Edictum to your Semantic Kernel project when you need contract enforcement on auto-invoked functions. The `register(kernel)` method installs an `AUTO_FUNCTION_INVOCATION` filter that evaluates every tool call the kernel makes -- plugin methods, planner steps, any auto-invoked function -- without per-function wiring. The filter can replace `context.function_result`, so the `on_postcondition_warn` callback supports PII redaction. By default, denied calls terminate the current turn (`terminate_on_deny=True`), but you can set `terminate_on_deny=False` to let remaining tool calls proceed.
 
 ## Installation
 

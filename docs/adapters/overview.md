@@ -11,10 +11,7 @@ your contracts.
 
 ## When to use this
 
-- **You need to choose an adapter.** You have an existing agent project and want to understand which adapter fits your framework. Start here, then follow the link to the specific adapter page.
-- **You want framework-agnostic contracts.** You are evaluating Edictum and need to understand how the same contract bundle works across LangChain, CrewAI, Agno, Semantic Kernel, OpenAI Agents, and Claude SDK without modification.
-- **Your framework is not listed.** You built a custom agent loop and need to call the pipeline directly with `Edictum.run()` instead of using an adapter.
-- **You need to compare adapter capabilities.** Some adapters can redact tool results before the LLM sees them (LangChain, Agno, Semantic Kernel), while others are side-effect only (CrewAI, Claude SDK). See the [adapter comparison guide](../guides/adapter-comparison.md) for a full breakdown.
+Start here if you are new to Edictum's adapter system and need to understand which adapter fits your framework. The comparison table below shows the integration method and capabilities for each adapter. If you already know your framework, go directly to its adapter page; if your framework is not listed, use `Edictum.run()` directly. For a deeper side-by-side comparison of tradeoffs and limitations, see the [adapter comparison guide](../guides/adapter-comparison.md).
 
 ## The Common Pattern
 

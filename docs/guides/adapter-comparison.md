@@ -4,9 +4,7 @@ Edictum ships six framework adapters. This guide helps you choose the right one 
 
 ## When to use this
 
-- **You are evaluating which agent framework to use and want to understand governance tradeoffs.** Each framework handles tool call interception differently — some adapters can redact results before the LLM sees them, others can only deny or log. This page breaks down the capabilities so you can choose the framework that fits your compliance requirements.
-- **You are migrating from one framework to another.** Your contracts stay the same — only the adapter wiring changes. Use this comparison to understand what behavioral differences to expect (e.g., moving from LangChain's wrap-around pattern to OpenAI's separate input/output guardrails).
-- **You need to understand the postcondition enforcement story per adapter.** Some adapters support `effect: redact` natively (LangChain, Agno, Semantic Kernel), while others require a wrapper integration path or are limited to side-effect callbacks. This page maps which effects work where.
+Read this page if you are choosing between agent frameworks, migrating from one to another, or need to understand which postcondition effects each adapter supports. If you already know your framework, go directly to its adapter page. The comparison table and per-adapter notes below cover the capability differences that matter most: whether an adapter can redact tool results before the LLM sees them, how denial is communicated, and which postcondition effects are supported.
 
 ---
 
@@ -141,4 +139,4 @@ hooks = adapter.to_hook_callables()
 
 ### OpenAI Agents (postcondition enforcement)
 
-- The output guardrail can `.allow()` or `.reject_content()` but cannot substitute the tool result. Postcondition `effect: deny` on pure/read tools returns `.reject_content()`, fully enforcing the denial. Postcondition `effect: redact` requires the wrapper integration path since the guardrail cannot transform the result. A warning is logged at adapter construction when postconditions declare `effect: redact`.
+- The output guardrail can `.allow()` or `.reject_content()` but cannot substitute the tool result. Postcondition `effect: deny` on pure/read tools returns `.reject_content()`, fully enforcing the denial. Postcondition `effect: redact` is not supported because native guardrails cannot transform tool results. A warning is logged at adapter construction when postconditions declare `effect: redact`.
