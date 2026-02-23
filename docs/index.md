@@ -119,7 +119,7 @@ pip install edictum[server]         # server SDK (approval, audit, session via H
 pip install edictum[all]            # everything
 ```
 
-Requires Python 3.11+. Current version: **v0.9.0**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
+Requires Python 3.11+. Current version: **v0.10.0**. See the [quickstart](quickstart.md) to write your first contract and deny a dangerous call in five minutes.
 
 ## Framework Support
 
