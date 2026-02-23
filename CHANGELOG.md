@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+- **Human-in-the-loop approval workflows** — `ApprovalBackend` protocol, `ApprovalRequest`/`ApprovalDecision` frozen dataclasses, `ApprovalStatus` enum, and `LocalApprovalBackend` for CLI-based approval during development
+- **Pipeline approval gates** — preconditions with `effect: approve` pause the pipeline, request human approval via the configured `ApprovalBackend`, and emit HITL audit actions (`CALL_APPROVAL_REQUESTED`, `CALL_APPROVAL_GRANTED`, `CALL_APPROVAL_DENIED`, `CALL_APPROVAL_TIMEOUT`)
+- **Wildcard tool matching** — tool selectors upgraded from exact-match to glob patterns via `fnmatch`, enabling `tool: "mcp_*"` in YAML contracts
+- **Nanobot adapter** — 7th framework adapter with `GovernedToolRegistry` drop-in replacement for nanobot's `ToolRegistry`, including approval workflows, observe mode, sub-agent propagation (`for_subagent()`), and `principal_from_message()` for multi-channel identity
+- **`nanobot-agent` contract template** — approval gates for high-risk operations (exec, spawn, cron, MCP), workspace path restrictions, sensitive file protection, and session limits
+- **Server SDK package** (`edictum[server]`) — 5 async client components for the edictum-server control plane: `EdictumServerClient`, `ServerApprovalBackend`, `ServerAuditSink`, `ServerBackend`, `ServerContractSource`
+- 4 new HITL audit actions: `CALL_APPROVAL_REQUESTED`, `CALL_APPROVAL_GRANTED`, `CALL_APPROVAL_DENIED`, `CALL_APPROVAL_TIMEOUT`
+- `approval_backend` parameter on `Edictum()`, `from_yaml()`, and `from_yaml_string()`
+- YAML schema: `effect: approve`, `timeout`, and `timeout_effect` on preconditions
+
 ## 0.9.0
 
 ### Added
