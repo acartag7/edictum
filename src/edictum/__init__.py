@@ -183,6 +183,8 @@ class Edictum:
         self._shadow_preconditions: list = []
         self._shadow_postconditions: list = []
         self._shadow_session_contracts: list = []
+        self._sandbox_contracts: list = []
+        self._shadow_sandbox_contracts: list = []
         self._before_hooks: list[HookRegistration] = []
         self._after_hooks: list[HookRegistration] = []
 
@@ -317,7 +319,9 @@ class Edictum:
                 audit_sink = _NullSink()
 
         effective_mode = mode or compiled.default_mode
-        all_contracts = compiled.preconditions + compiled.postconditions + compiled.session_contracts
+        all_contracts = (
+            compiled.preconditions + compiled.postconditions + compiled.session_contracts + compiled.sandbox_contracts
+        )
 
         # Merge YAML tools with parameter tools (parameter wins on conflict)
         yaml_tools = compiled.tools
@@ -442,7 +446,9 @@ class Edictum:
                 audit_sink = _NullSink()
 
         effective_mode = mode or compiled.default_mode
-        all_contracts = compiled.preconditions + compiled.postconditions + compiled.session_contracts
+        all_contracts = (
+            compiled.preconditions + compiled.postconditions + compiled.session_contracts + compiled.sandbox_contracts
+        )
 
         # Merge YAML tools with parameter tools (parameter wins on conflict)
         yaml_tools = compiled.tools
@@ -661,6 +667,15 @@ class Edictum:
                     seen_ids.add(cid)
                 merged._session_contracts.append(contract)
 
+            for contract in guard._sandbox_contracts:
+                cid = getattr(contract, "_edictum_id", None)
+                if cid and cid in seen_ids:
+                    logger.warning("Duplicate contract id '%s' in from_multiple() — first wins", cid)
+                    continue
+                if cid:
+                    seen_ids.add(cid)
+                merged._sandbox_contracts.append(contract)
+
         return merged
 
     def set_principal(self, principal: Principal) -> None:
@@ -692,12 +707,16 @@ class Edictum:
                 self._shadow_postconditions.append(item)
             elif contract_type == "session_contract":
                 self._shadow_session_contracts.append(item)
+            elif contract_type == "sandbox":
+                self._shadow_sandbox_contracts.append(item)
         elif contract_type == "precondition":
             self._preconditions.append(item)
         elif contract_type == "postcondition":
             self._postconditions.append(item)
         elif contract_type == "session_contract":
             self._session_contracts.append(item)
+        elif contract_type == "sandbox":
+            self._sandbox_contracts.append(item)
 
     def _register_hook(self, item: Any) -> None:
         if isinstance(item, HookRegistration):
@@ -761,6 +780,22 @@ class Edictum:
             result.append(p)
         return result
 
+    def get_sandbox_contracts(self, envelope: ToolEnvelope) -> list:
+        result = []
+        for s in self._sandbox_contracts:
+            tools = getattr(s, "_edictum_tools", ["*"])
+            if any(fnmatch(envelope.tool_name, p) for p in tools):
+                result.append(s)
+        return result
+
+    def get_shadow_sandbox_contracts(self, envelope: ToolEnvelope) -> list:
+        result = []
+        for s in self._shadow_sandbox_contracts:
+            tools = getattr(s, "_edictum_tools", ["*"])
+            if any(fnmatch(envelope.tool_name, p) for p in tools):
+                result.append(s)
+        return result
+
     def get_shadow_session_contracts(self) -> list:
         return self._shadow_session_contracts
 
@@ -816,6 +851,41 @@ class Edictum:
             contract_result = ContractResult(
                 contract_id=contract_id,
                 contract_type="precondition",
+                passed=verdict.passed,
+                message=verdict.message,
+                tags=tags,
+                observed=is_observed,
+                policy_error=pe,
+            )
+            contracts.append(contract_result)
+
+            if not verdict.passed and not is_observed:
+                deny_reasons.append(verdict.message or "")
+
+        # Evaluate sandbox contracts (exhaustive, no short-circuit)
+        for contract in self.get_sandbox_contracts(envelope):
+            contract_id = getattr(contract, "_edictum_id", None) or getattr(contract, "__name__", "unknown")
+            try:
+                verdict = contract(envelope)
+            except Exception as exc:
+                contract_result = ContractResult(
+                    contract_id=contract_id,
+                    contract_type="sandbox",
+                    passed=False,
+                    message=f"Sandbox error: {exc}",
+                    policy_error=True,
+                )
+                contracts.append(contract_result)
+                deny_reasons.append(contract_result.message)
+                continue
+
+            tags = verdict.metadata.get("tags", []) if verdict.metadata else []
+            is_observed = getattr(contract, "_edictum_mode", None) == "observe" and not verdict.passed
+            pe = verdict.metadata.get("policy_error", False) if verdict.metadata else False
+
+            contract_result = ContractResult(
+                contract_id=contract_id,
+                contract_type="sandbox",
                 passed=verdict.passed,
                 message=verdict.message,
                 tags=tags,

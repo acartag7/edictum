@@ -10,7 +10,7 @@ class ContractResult:
     """Result of evaluating a single contract."""
 
     contract_id: str
-    contract_type: str  # "precondition" | "postcondition"
+    contract_type: str  # "precondition" | "postcondition" | "sandbox"
     passed: bool
     message: str | None = None
     tags: list[str] = field(default_factory=list)

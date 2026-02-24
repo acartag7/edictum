@@ -104,6 +104,40 @@ def _evaluate_preconditions(
     return "allowed", None, None, evaluated
 
 
+def _evaluate_sandbox_contracts(
+    compiled: Any,
+    envelope: ToolEnvelope,
+) -> tuple[str, str | None, str | None, list[dict]]:
+    """Evaluate compiled sandbox contracts against an envelope.
+
+    Returns (verdict, contract_id, message, evaluated_records).
+    verdict is "denied" or "allowed".
+    """
+    from fnmatch import fnmatch
+
+    evaluated: list[dict] = []
+
+    for fn in compiled.sandbox_contracts:
+        tools = getattr(fn, "_edictum_tools", ["*"])
+        if not any(fnmatch(envelope.tool_name, p) for p in tools):
+            continue
+
+        verdict = fn(envelope)
+        record = {
+            "id": getattr(fn, "_edictum_id", "unknown"),
+            "passed": verdict.passed,
+            "message": verdict.message,
+        }
+        if verdict.metadata:
+            record["metadata"] = verdict.metadata
+        evaluated.append(record)
+
+        if not verdict.passed:
+            return "denied", record["id"], verdict.message, evaluated
+
+    return "allowed", None, None, evaluated
+
+
 # ---------------------------------------------------------------------------
 # CLI group
 # ---------------------------------------------------------------------------
@@ -314,6 +348,11 @@ def check(
 
     # Evaluate
     verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+    if verdict == "allowed":
+        sb_verdict, sb_id, sb_msg, sb_evaluated = _evaluate_sandbox_contracts(compiled, envelope)
+        evaluated.extend(sb_evaluated)
+        if sb_verdict == "denied":
+            verdict, contract_id, message = sb_verdict, sb_id, sb_msg
 
     n_evaluated = len(evaluated)
     verdict_label = "deny" if verdict == "denied" else "allow"
@@ -539,6 +578,11 @@ def replay(file: str, audit_log: str, output: str | None) -> None:
         # Build envelope and evaluate
         envelope = _build_envelope(tool_name, tool_args, environment, principal)
         new_verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+        if new_verdict == "allowed":
+            sb_verdict, sb_id, sb_msg, sb_evaluated = _evaluate_sandbox_contracts(compiled, envelope)
+            evaluated.extend(sb_evaluated)
+            if sb_verdict == "denied":
+                new_verdict, contract_id, message = sb_verdict, sb_id, sb_msg
 
         # Map to action strings for comparison
         new_action = "call_denied" if new_verdict == "denied" else "call_allowed"
@@ -660,6 +704,11 @@ def _run_cases(file: str, cases: str, environment: str = "production") -> None:
         case_env = tc.get("environment", environment)
         envelope = _build_envelope(tool, args, environment=case_env, principal=principal)
         verdict, contract_id, message, evaluated = _evaluate_preconditions(compiled, envelope)
+        if verdict == "allowed":
+            sb_verdict, sb_id, _sb_msg, sb_evaluated = _evaluate_sandbox_contracts(compiled, envelope)
+            evaluated.extend(sb_evaluated)
+            if sb_verdict == "denied":
+                verdict, contract_id = sb_verdict, sb_id
 
         # Map verdict to expected format
         actual = "deny" if verdict == "denied" else "allow"

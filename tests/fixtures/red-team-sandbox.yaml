@@ -1,0 +1,73 @@
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: red-team-sandbox
+  description: "L2 sandbox contract derived from red team session"
+
+defaults:
+  mode: enforce
+
+contracts:
+  - id: file-sandbox
+    type: sandbox
+    tools: [read_file, write_file, edit_file, list_dir]
+    within:
+      - /root/.nanobot/workspace
+      - /tmp
+    not_within:
+      - /root/.nanobot/workspace/.git
+    outside: deny
+    message: "File access outside workspace: {args.path}"
+
+  - id: exec-sandbox
+    type: sandbox
+    tools: [exec]
+    allows:
+      commands: [ls, pwd, echo, cat, head, tail, grep, find, sort,
+                 wc, date, uname, whoami, id, df, du, ps, tree,
+                 git, pip, python, python3, node, npm, curl, wget,
+                 mkdir, touch, cp, mv, tar, gzip, unzip, diff,
+                 docker, jq, yq, file, stat, which]
+    within:
+      - /root/.nanobot/workspace
+      - /tmp
+    not_within:
+      - /etc
+      - /proc
+      - /sys
+      - /root/.ssh
+      - /root/.git-credentials
+    outside: approve
+    message: "Command outside sandbox: {args.command}"
+
+  - id: web-sandbox
+    type: sandbox
+    tools: [web_fetch]
+    allows:
+      domains: ['*']
+    not_allows:
+      domains: [169.254.169.254, metadata.google.internal,
+                webhook.site, requestbin.com, burpcollaborator.net]
+    outside: deny
+    message: "Denied endpoint: {args.url}"
+
+  - id: deny-destructive
+    type: pre
+    tool: exec
+    when:
+      args.command:
+        matches: '.*(rm\s+-rf\s+/|mkfs|dd\s+if=/dev/|shutdown|reboot).*'
+    then:
+      effect: deny
+      message: "Destructive: {args.command}"
+
+  - id: deny-shells
+    type: pre
+    tool: exec
+    when:
+      args.command:
+        matches: '.*(nc\s+.*-e|bash\s+-i|/dev/tcp/|socat.*exec).*'
+    then:
+      effect: deny
+      message: "Shell attack: {args.command}"
