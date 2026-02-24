@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0
+
+### Added
+- **Sandbox contracts** (`type: sandbox`) — allowlist-based governance that defines what agents CAN do, replacing open-ended deny-lists. Sandbox contracts check file paths (`within`/`not_within`), command allowlists (`allows.commands`), and domain allowlists (`allows.domains`/`not_allows.domains`). The `outside` field controls the effect when a tool call falls outside the sandbox (`deny` or `approve` for HITL approval).
+- **Multi-tool matching for sandbox** — `tools: [read_file, write_file, edit_file]` applies one sandbox contract to multiple tools
+- **Pipeline sandbox stage** — sandbox evaluates after preconditions (deny) and before session contracts, creating a deny-then-allowlist evaluation order
+- **Sandbox in CLI** — `edictum check` and `edictum test` evaluate sandbox contracts alongside preconditions
+- **Sandbox in dry-run evaluation** — `evaluate()` and `evaluate_batch()` include sandbox `ContractResult` entries with `contract_type="sandbox"`
+- **Sandbox composition** — `from_multiple()` merges sandbox contracts across bundles with duplicate ID detection
+- **Sandbox observe mode** — per-contract `mode: observe` logs sandbox denials without enforcing them
+- **Loader validation** — `not_within` requires `within`, `not_allows` requires `allows` (caught at load time)
+- JSON Schema: `SandboxContract`, `SandboxAllows`, `SandboxNotAllows` definitions in `edictum-v1.schema.json`
+
 ## 0.10.0
 
 ### Added

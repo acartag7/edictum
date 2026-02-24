@@ -169,6 +169,61 @@ class GovernancePipeline:
                     policy_error=pe,
                 )
 
+        # 3.5. Sandbox contracts
+        for contract in self._guard.get_sandbox_contracts(envelope):
+            try:
+                verdict = contract(envelope)
+                if asyncio.iscoroutine(verdict):
+                    verdict = await verdict
+            except Exception as exc:
+                logger.exception("Sandbox contract %s raised", getattr(contract, "__name__", "anonymous"))
+                verdict = Verdict.fail(f"Sandbox contract error: {exc}", policy_error=True)
+
+            contract_mode = getattr(contract, "_edictum_mode", None)
+            contract_record = {
+                "name": getattr(contract, "__name__", "anonymous"),
+                "type": "sandbox",
+                "passed": verdict.passed,
+                "message": verdict.message,
+            }
+            if verdict.metadata:
+                contract_record["metadata"] = verdict.metadata
+            contracts_evaluated.append(contract_record)
+
+            if not verdict.passed:
+                if contract_mode == "observe":
+                    contract_record["observed"] = True
+                    has_observed_deny = True
+                    continue
+
+                source = getattr(contract, "_edictum_source", "yaml_sandbox")
+                pe = any(c.get("metadata", {}).get("policy_error") for c in contracts_evaluated)
+
+                effect = getattr(contract, "_edictum_effect", "deny")
+                if effect == "approve":
+                    return PreDecision(
+                        action="pending_approval",
+                        reason=verdict.message,
+                        decision_source=source,
+                        decision_name=contract_record["name"],
+                        hooks_evaluated=hooks_evaluated,
+                        contracts_evaluated=contracts_evaluated,
+                        policy_error=pe,
+                        approval_timeout=getattr(contract, "_edictum_timeout", 300),
+                        approval_timeout_effect=getattr(contract, "_edictum_timeout_effect", "deny"),
+                        approval_message=verdict.message,
+                    )
+
+                return PreDecision(
+                    action="deny",
+                    reason=verdict.message,
+                    decision_source=source,
+                    decision_name=contract_record["name"],
+                    hooks_evaluated=hooks_evaluated,
+                    contracts_evaluated=contracts_evaluated,
+                    policy_error=pe,
+                )
+
         # 4. Session contracts (Fix 5: catch exceptions)
         for contract in self._guard.get_session_contracts():
             try:
@@ -372,6 +427,26 @@ class GovernancePipeline:
                     "passed": verdict.passed,
                     "message": verdict.message,
                     "source": getattr(contract, "_edictum_source", "yaml_precondition"),
+                }
+            )
+
+        # Shadow sandbox contracts
+        for contract in self._guard.get_shadow_sandbox_contracts(envelope):
+            try:
+                verdict = contract(envelope)
+                if asyncio.iscoroutine(verdict):
+                    verdict = await verdict
+            except Exception as exc:
+                logger.exception("Shadow sandbox %s raised", getattr(contract, "__name__", "anonymous"))
+                verdict = Verdict.fail(f"Shadow sandbox error: {exc}", policy_error=True)
+
+            results.append(
+                {
+                    "name": getattr(contract, "__name__", "anonymous"),
+                    "type": "sandbox",
+                    "passed": verdict.passed,
+                    "message": verdict.message,
+                    "source": getattr(contract, "_edictum_source", "yaml_sandbox"),
                 }
             )
 

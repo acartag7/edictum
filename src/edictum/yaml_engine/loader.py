@@ -151,6 +151,26 @@ def _try_compile_regex(pattern: str) -> None:
         raise EdictumConfigError(f"Invalid regex pattern '{pattern}': {e}") from e
 
 
+def _validate_sandbox_contracts(data: dict) -> None:
+    """Validate sandbox contract field dependencies."""
+    from edictum import EdictumConfigError
+
+    for contract in data.get("contracts", []):
+        if contract.get("type") != "sandbox":
+            continue
+        cid = contract.get("id", "?")
+        # not_within requires within
+        if "not_within" in contract and "within" not in contract:
+            raise EdictumConfigError(f"Contract '{cid}': not_within requires within to also be set")
+        # not_allows requires allows
+        if "not_allows" in contract and "allows" not in contract:
+            raise EdictumConfigError(f"Contract '{cid}': not_allows requires allows to also be set")
+        # not_allows.domains requires allows.domains
+        if "not_allows" in contract and "domains" in contract.get("not_allows", {}):
+            if "domains" not in contract.get("allows", {}):
+                raise EdictumConfigError(f"Contract '{cid}': not_allows.domains requires allows.domains to also be set")
+
+
 def load_bundle(source: str | Path) -> tuple[dict, BundleHash]:
     """Load and validate a YAML contract bundle.
 
@@ -188,6 +208,7 @@ def load_bundle(source: str | Path) -> tuple[dict, BundleHash]:
     _validate_unique_ids(data)
     _validate_regexes(data)
     _validate_pre_selectors(data)
+    _validate_sandbox_contracts(data)
 
     return data, bundle_hash
 
@@ -233,5 +254,6 @@ def load_bundle_string(content: str | bytes) -> tuple[dict, BundleHash]:
     _validate_unique_ids(data)
     _validate_regexes(data)
     _validate_pre_selectors(data)
+    _validate_sandbox_contracts(data)
 
     return data, bundle_hash
