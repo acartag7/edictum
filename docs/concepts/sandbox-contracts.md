@@ -100,7 +100,7 @@ The deny-list grew from 3 rules to 19 rules (120 lines) over two red team sessio
 ## When to use this
 
 - **Your agent has shell access and you cannot enumerate every dangerous command.** There are infinite ways to exfiltrate data (`curl`, `wget`, `nc`, `python -c`, `base64 | bash`). Instead of chasing variants, use `allows.commands` to list the commands you actually need.
-- **Your agent reads and writes files and you need path boundaries.** Deny-list patterns like `contains: ".env"` miss creative paths (`../.env`, symlinks). Use `within`/`not_within` to confine the agent to specific directories.
+- **Your agent reads and writes files and you need path boundaries.** Deny-list patterns like `contains: ".env"` miss creative paths (`../.env`, variable interpolation). Use `within`/`not_within` to confine the agent to specific directories. Symlinks inside allowed directories pointing outside are resolved and denied.
 - **Your agent fetches URLs and you need domain restrictions.** Use `allows.domains` and `not_allows.domains` to restrict which hosts the agent can contact.
 - **You are running red team tests and deny-list bypasses keep appearing.** Every bypass you patch reveals three more. Sandbox contracts eliminate the category: if it is not in the allowlist, it is denied.
 
@@ -116,7 +116,7 @@ When the pipeline encounters a sandbox contract, it runs through these steps in 
 
 **1. Tool match.** The pipeline checks whether the current tool name matches the sandbox's `tool` or `tools` patterns using `fnmatch`. If the tool does not match, the sandbox contract is skipped entirely.
 
-**2. Path check.** The pipeline extracts file paths from the envelope args -- keys named `path`, `file_path`, `directory`, any arg value starting with `/`, and tokens parsed from command strings. Each extracted path is normalized with `os.path.normpath()` before comparison, which resolves `..` and `.` segments and collapses redundant slashes. For example, `/tmp/../etc/shadow` becomes `/etc/shadow`. The `within` and `not_within` boundaries are also normalized at compile time. For each normalized path:
+**2. Path check.** The pipeline extracts file paths from the envelope args -- keys named `path`, `file_path`, `directory`, any arg value starting with `/`, and tokens parsed from command strings. Each extracted path is resolved with `os.path.realpath()` before comparison, which resolves `..` and `.` segments, collapses redundant slashes, and resolves symlinks to their real target. For example, `/tmp/../etc/shadow` becomes `/etc/shadow`, and a symlink `/tmp/escape -> /etc` resolves to `/etc`. The `within` and `not_within` boundaries are also resolved at compile time. For each resolved path:
 
 - Check `not_within` first. If the path matches any exclusion prefix, the call is denied (or sent for approval).
 - Check `within`. If the path matches any allowed prefix, it passes.
@@ -223,15 +223,17 @@ Most sandbox features work with just `pip install edictum`. The server (`edictum
 
 ## Known Limitations
 
-Sandbox contracts normalize path traversal sequences (`..`, `.`, `//`) before evaluation using `os.path.normpath()`. This means `/tmp/../etc/shadow` is correctly resolved to `/etc/shadow` and denied by a `within: [/tmp]` boundary. However, `normpath` is a pure string operation -- it does not access the filesystem. Several patterns remain outside its reach:
+Sandbox contracts resolve paths with `os.path.realpath()` before evaluation. This handles `..` traversals, `.` segments, redundant slashes, and symlinks. For example, `/tmp/../etc/shadow` resolves to `/etc/shadow` and is denied by `within: [/tmp]`. A symlink `/tmp/escape -> /etc` resolves to `/etc` and is also denied.
 
-- **Symlinks:** `ln -s /etc/shadow /tmp/evil && cat /tmp/evil` -- the sandbox sees `/tmp/evil`, which passes `within: [/tmp]`, but the file resolves to `/etc/shadow`. Symlink attacks require write access to an allowed directory (which the sandbox itself restricts) and a command that follows symlinks.
+However, `realpath()` operates at evaluation time. Several patterns remain outside its reach:
+
+- **TOCTOU (time-of-check/time-of-use):** A symlink created after Edictum evaluates the path but before the tool actually executes could point to a different target. This race window is inherent to application-level enforcement.
 - **Tilde expansion:** `cat ~/secrets` -- the sandbox sees `~/secrets`, not `/home/user/secrets`.
 - **Environment variables:** `cat "$HOME/.ssh/id_rsa"` -- the sandbox sees `$HOME/.ssh/id_rsa`, not the resolved path.
 - **Variable interpolation:** `x=/etc; cat $x/shadow` -- the sandbox sees `$x/shadow`.
 - **Relative paths without leading `/`:** `cat ../../etc/shadow` from a working directory inside `/workspace` -- the sandbox sees the relative path, not the resolved absolute path.
 
-These are inherent to string-level enforcement. For full path resolution (including symlinks), you need OS-level sandboxing (containers, seccomp, AppArmor) as a complementary layer. Edictum's sandbox contracts provide application-level defense -- they catch the common case and raise the bar, but they are not a substitute for OS-level isolation when the threat model requires it.
+These are inherent to application-level enforcement. For full isolation (including TOCTOU protection), use OS-level sandboxing (containers, seccomp, AppArmor) as a complementary layer. Edictum's sandbox contracts provide defense in depth -- they catch the common case and raise the bar, but they are not a substitute for OS-level isolation when the threat model requires it.
 
 ## Next Steps
 

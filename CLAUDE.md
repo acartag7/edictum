@@ -134,6 +134,17 @@ Before adding any new public API (function, method, parameter, class), verify AL
 - **All adapters handle the new feature.** Run `pytest tests/test_adapter_parity.py -v` after any adapter change.
 - **No ghost features.** If you add it to CLAUDE.md, architecture.md, or any doc page, the code must exist. Run `pytest tests/test_docs_sync.py -v`.
 
+## Security Review Checklist
+
+Before merging ANY code that touches these areas, verify:
+
+- **Path handling**: Uses `os.path.realpath()` not just `normpath()`. Test with symlinks.
+- **Shell command classification**: All shell metacharacters enumerated. Test with: \n, \r, |, ;, &&, ||, $(), \`\`, ${}, <(), <<, >, >>
+- **Error handling in backends**: `get()` and `increment()` fail-closed. Network errors propagate, only 404 returns None.
+- **Audit action accuracy**: Audit events reflect what actually happened, not just the final decision. Timeouts emit TIMEOUT, not GRANTED.
+- **Input validation**: tool_name, session_id, any string used in storage keys or log messages validated for control characters.
+- **Concurrency**: Read-modify-write operations use `asyncio.Lock`. Single dict operations are safe without locks.
+
 ## Behavior Test Requirement
 
 Every public API parameter MUST have a behavior test in `tests/test_behavior/`.
@@ -144,6 +155,17 @@ A behavior test answers: "What observable effect does this parameter have?"
 - Asserts a concrete difference between passing and not passing the parameter
 - Lives in `tests/test_behavior/test_{module}_behavior.py`
 - Keep test files focused: one file per module, under 200 lines
+
+## Negative Security Test Requirement
+
+Every security boundary MUST have bypass tests — tests that attempt to circumvent the boundary and verify the attempt is caught. These go in `tests/test_behavior/` alongside the positive tests, marked with `@pytest.mark.security`.
+
+Examples:
+- Sandbox: symlink escape, double-encoding, null byte injection
+- BashClassifier: every shell metacharacter individually
+- Session limits: concurrent access, counter reset on backend failure
+- Approval: timeout edge cases, status/approved flag combinations
+- Input validation: null bytes, control characters, path separators in tool_name
 
 ## Pre-Merge Verification
 

@@ -189,7 +189,7 @@ Adapters never contain enforcement logic. They translate formats. If you need to
 
 `ToolEnvelope` is a frozen dataclass. Once created, no field can be modified.
 
-This is enforced at two levels: `@dataclass(frozen=True)` raises `FrozenInstanceError` on assignment, and `create_envelope()` deep-copies `args` and `metadata` via `json.loads(json.dumps(...))` so the caller cannot mutate the original dicts.
+This is enforced at two levels: `@dataclass(frozen=True)` raises `FrozenInstanceError` on assignment, and `create_envelope()` deep-copies `args` and `metadata` via `json.loads(json.dumps(...))` so the caller cannot mutate the original dicts. `create_envelope()` also validates `tool_name` -- rejecting empty strings, null bytes, newlines, and path separators that could corrupt session keys or audit records.
 
 Always create envelopes through `create_envelope()`, never by constructing `ToolEnvelope(...)` directly. The `Principal` dataclass is also frozen.
 
