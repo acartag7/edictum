@@ -125,6 +125,7 @@ class ServerContractSource:
             else:
                 # Stream ended cleanly — full reset so any subsequent
                 # failure is treated as a new sequence.
+                self._connected = False
                 connected_at = None
                 delay = self._reconnect_delay
                 consecutive_failures = 0

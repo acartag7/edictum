@@ -449,6 +449,43 @@ class TestServerContractSource:
         assert connected_during_sleep == [False]
 
     @pytest.mark.asyncio
+    async def test_watch_connected_flag_false_after_clean_exit(self):
+        """_connected must be False between a clean stream exit and the next connection."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0)
+
+        attempt = 0
+        connected_between_iterations: list[bool] = []
+
+        @asynccontextmanager
+        async def sse_clean_then_check(http_client, method, url, *, params=None):
+            nonlocal attempt
+            attempt += 1
+
+            if attempt == 2:
+                # On the second connect, capture _connected before it's set True
+                connected_between_iterations.append(source._connected)
+                await source.close()
+
+            source_mock = MagicMock()
+
+            async def aiter():
+                return
+                yield  # noqa: RET503
+
+            source_mock.aiter_sse = aiter
+            yield source_mock
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = sse_clean_then_check  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        async for _bundle in source.watch():
+            pass
+
+        assert connected_between_iterations == [False]
+
+    @pytest.mark.asyncio
     async def test_watch_clean_exit_resets_backoff_after_prior_failures(self, caplog):
         """Prior failures → clean stream exit → next failure starts fresh (delay=1.0, WARNING)."""
         client = _make_client()
