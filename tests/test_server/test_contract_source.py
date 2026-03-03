@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from contextlib import asynccontextmanager
 from types import ModuleType
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from edictum.server.client import EdictumServerClient
-from edictum.server.contract_source import ServerContractSource
+from edictum.server.contract_source import _STABLE_CONNECTION_SECS, ServerContractSource
 
 
 def _make_client(*, env: str = "production", bundle_name: str = "default") -> EdictumServerClient:
@@ -63,7 +64,6 @@ class TestServerContractSource:
         assert source._reconnect_delay == 1.0
         assert source._max_reconnect_delay == 60.0
         assert source._current_revision is None
-        assert source._last_public_key is None
 
     @pytest.mark.asyncio
     async def test_connect(self):
@@ -131,8 +131,35 @@ class TestServerContractSource:
         assert source._current_revision == "rev-def"
 
     @pytest.mark.asyncio
-    async def test_watch_stores_public_key(self):
-        """contract_update with public_key stores it for future verification."""
+    async def test_watch_skips_non_dict_json_payload(self, caplog):
+        """Non-dict JSON payloads are logged and skipped, not yielded."""
+        client = _make_client()
+        source = ServerContractSource(client)
+
+        # Server sends a JSON array instead of an object
+        bad_event = MagicMock()
+        bad_event.event = "contract_update"
+        bad_event.data = json.dumps([1, 2, 3])
+
+        good_event = _make_sse_event({"yaml": "v1", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([bad_event, good_event], captured)
+
+        received = []
+        with caplog.at_level(logging.WARNING, logger="edictum.server.contract_source"):
+            async for bundle in source.watch():
+                received.append(bundle)
+                await source.close()
+
+        # Only the valid dict bundle was yielded
+        assert len(received) == 1
+        assert received[0]["yaml"] == "v1"
+        assert any("not an object" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    @pytest.mark.security
+    async def test_watch_does_not_store_public_key_from_stream(self):
+        """Public keys must NOT come from the same SSE channel as contract data."""
         client = _make_client()
         source = ServerContractSource(client)
 
@@ -140,13 +167,188 @@ class TestServerContractSource:
             {
                 "yaml": "test",
                 "revision_hash": "abc",
-                "public_key": "ed25519-pub-hex-123",
+                "public_key": "attacker-injected-key",
             }
         )
         captured: list[dict] = []
         _install_fake_httpx_sse([event], captured)
 
-        async for _bundle in source.watch():
+        async for bundle in source.watch():
+            # Bundle is yielded as-is — caller can inspect but source doesn't trust it
+            assert "public_key" in bundle
+            assert not hasattr(source, "_last_public_key")
             await source.close()
 
-        assert source._last_public_key == "ed25519-pub-hex-123"
+    @pytest.mark.asyncio
+    @pytest.mark.security
+    async def test_watch_programming_error_propagates(self):
+        """Programming errors (TypeError etc.) must NOT be swallowed as reconnects."""
+        client = _make_client()
+        source = ServerContractSource(client)
+
+        @asynccontextmanager
+        async def buggy_sse(http_client, method, url, *, params=None):
+            source_mock = MagicMock()
+
+            async def aiter():
+                raise TypeError("unexpected type in event processing")
+                yield  # noqa: RET503
+
+            source_mock.aiter_sse = aiter
+            yield source_mock
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = buggy_sse  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        with pytest.raises(TypeError, match="unexpected type"):
+            async for _bundle in source.watch():
+                pass
+
+    @pytest.mark.asyncio
+    async def test_watch_backoff_escalates_on_short_lived_connections(self):
+        """Backoff escalates when connections drop before the stable threshold."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0, max_reconnect_delay=60.0)
+
+        call_count = 0
+        sleep_delays: list[float] = []
+
+        @asynccontextmanager
+        async def failing_sse(http_client, method, url, *, params=None):
+            nonlocal call_count
+            call_count += 1
+            # Simulate connection established then immediate drop
+            source_mock = MagicMock()
+
+            async def aiter():
+                raise ConnectionError("proxy dropped connection")
+                yield  # noqa: RET503 — make this an async generator
+
+            source_mock.aiter_sse = aiter
+            yield source_mock
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = failing_sse  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        async def capture_sleep(delay):
+            sleep_delays.append(delay)
+            if len(sleep_delays) >= 3:
+                await source.close()
+
+        with patch("asyncio.sleep", side_effect=capture_sleep):
+            with patch("time.monotonic", side_effect=[0.0, 5.0, 5.0, 10.0, 10.0, 15.0]):
+                async for _bundle in source.watch():
+                    pass
+
+        assert sleep_delays == [1.0, 2.0, 4.0]
+
+    @pytest.mark.asyncio
+    async def test_watch_backoff_resets_after_stable_connection(self):
+        """Backoff resets to initial delay after a connection survives past the stable threshold."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0, max_reconnect_delay=60.0)
+
+        sleep_delays: list[float] = []
+
+        @asynccontextmanager
+        async def sse_with_stable_then_drop(http_client, method, url, *, params=None):
+            source_mock = MagicMock()
+
+            async def aiter():
+                raise ConnectionError("dropped")
+                yield  # noqa: RET503
+
+            source_mock.aiter_sse = aiter
+            yield source_mock
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = sse_with_stable_then_drop  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        # Sequence: connect at t=0, fail at t=0+stable+1 (stable), then connect at t2, fail at t2+1 (short)
+        monotonic_values = [
+            0.0,
+            _STABLE_CONNECTION_SECS + 1,  # attempt 1: connected_at=0, elapsed=31 → stable → reset
+            _STABLE_CONNECTION_SECS + 2,
+            _STABLE_CONNECTION_SECS + 3,  # attempt 2: short → escalate
+        ]
+
+        async def capture_sleep(delay):
+            sleep_delays.append(delay)
+            if len(sleep_delays) >= 2:
+                await source.close()
+
+        with patch("asyncio.sleep", side_effect=capture_sleep):
+            with patch("time.monotonic", side_effect=monotonic_values):
+                async for _bundle in source.watch():
+                    pass
+
+        # First failure after stable connection: delay resets to 1.0
+        # Second failure after short connection: delay escalates to 2.0
+        assert sleep_delays == [1.0, 2.0]
+
+    @pytest.mark.asyncio
+    async def test_watch_logs_exception_on_first_failure(self, caplog):
+        """First reconnect logs at WARNING level and includes the exception."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0)
+
+        @asynccontextmanager
+        async def failing_sse(http_client, method, url, *, params=None):
+            raise ConnectionError("server unreachable")
+            yield  # noqa: RET503
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = failing_sse  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        async def stop_after_one(delay):
+            await source.close()
+
+        with patch("asyncio.sleep", side_effect=stop_after_one):
+            with caplog.at_level(logging.DEBUG, logger="edictum.server.contract_source"):
+                async for _bundle in source.watch():
+                    pass
+
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warning_records) == 1
+        assert "server unreachable" in warning_records[0].message
+        assert "reconnecting in" in warning_records[0].message
+
+    @pytest.mark.asyncio
+    async def test_watch_demotes_log_level_after_repeated_failures(self, caplog):
+        """Log level: attempt 1=WARNING, 2-3=INFO, 4+=DEBUG."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0)
+
+        @asynccontextmanager
+        async def failing_sse(http_client, method, url, *, params=None):
+            raise ConnectionError("timeout")
+            yield  # noqa: RET503
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = failing_sse  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        call_count = 0
+
+        async def capture_sleep(delay):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 5:
+                await source.close()
+
+        with patch("asyncio.sleep", side_effect=capture_sleep):
+            with caplog.at_level(logging.DEBUG, logger="edictum.server.contract_source"):
+                async for _bundle in source.watch():
+                    pass
+
+        sse_records = [r for r in caplog.records if "SSE" in r.message and "reconnect" in r.message.lower()]
+        assert len(sse_records) == 5
+        assert sse_records[0].levelno == logging.WARNING  # attempt 1
+        assert sse_records[1].levelno == logging.INFO  # attempt 2
+        assert sse_records[2].levelno == logging.INFO  # attempt 3
+        assert sse_records[3].levelno == logging.DEBUG  # attempt 4
+        assert sse_records[4].levelno == logging.DEBUG  # attempt 5
