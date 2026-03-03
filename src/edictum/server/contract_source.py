@@ -123,9 +123,11 @@ class ServerContractSource:
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self._max_reconnect_delay)
             else:
-                # Stream ended cleanly — reset so next failure isn't
-                # measured against this now-closed connection's timestamp.
+                # Stream ended cleanly — full reset so any subsequent
+                # failure is treated as a new sequence.
                 connected_at = None
+                delay = self._reconnect_delay
+                consecutive_failures = 0
 
     async def close(self) -> None:
         """Stop watching for updates."""

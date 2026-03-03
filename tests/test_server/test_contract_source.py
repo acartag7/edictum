@@ -447,3 +447,81 @@ class TestServerContractSource:
                     pass
 
         assert connected_during_sleep == [False]
+
+    @pytest.mark.asyncio
+    async def test_watch_clean_exit_resets_backoff_after_prior_failures(self, caplog):
+        """Prior failures → clean stream exit → next failure starts fresh (delay=1.0, WARNING)."""
+        client = _make_client()
+        source = ServerContractSource(client, reconnect_delay=1.0, max_reconnect_delay=60.0)
+
+        attempt = 0
+        sleep_delays: list[float] = []
+
+        @asynccontextmanager
+        async def mixed_sse(http_client, method, url, *, params=None):
+            nonlocal attempt
+            attempt += 1
+            source_mock = MagicMock()
+
+            if attempt <= 2:
+                # Attempts 1-2: connection established then immediate failure
+                async def aiter_fail():
+                    raise ConnectionError("refused")
+                    yield  # noqa: RET503
+
+                source_mock.aiter_sse = aiter_fail
+                yield source_mock
+            elif attempt == 3:
+                # Attempt 3: clean stream that ends normally
+                async def aiter_clean():
+                    return
+                    yield  # noqa: RET503
+
+                source_mock.aiter_sse = aiter_clean
+                yield source_mock
+            else:
+                # Attempt 4: another failure — should be treated as fresh
+                async def aiter_fail_again():
+                    raise ConnectionError("refused again")
+                    yield  # noqa: RET503
+
+                source_mock.aiter_sse = aiter_fail_again
+                yield source_mock
+
+        mod = ModuleType("httpx_sse")
+        mod.aconnect_sse = mixed_sse  # type: ignore[attr-defined]
+        sys.modules["httpx_sse"] = mod
+
+        # attempts 1,2: short connections (connected_at set, fail immediately)
+        # attempt 3: clean exit (no monotonic calls in except)
+        # attempt 4: short connection, fail
+        monotonic_values = [
+            0.0,
+            1.0,  # attempt 1: connected_at=0, elapsed=1 (short)
+            2.0,
+            3.0,  # attempt 2: connected_at=2, elapsed=1 (short)
+            # attempt 3: clean exit — connected_at set then else resets it
+            4.0,
+            5.0,
+            6.0,  # attempt 4: connected_at=5, elapsed=1 (short)
+        ]
+
+        async def capture_sleep(delay):
+            sleep_delays.append(delay)
+            if len(sleep_delays) >= 3:
+                await source.close()
+
+        with patch("asyncio.sleep", side_effect=capture_sleep):
+            with patch("time.monotonic", side_effect=monotonic_values):
+                with caplog.at_level(logging.DEBUG, logger="edictum.server.contract_source"):
+                    async for _bundle in source.watch():
+                        pass
+
+        # Attempts 1-2 escalate: 1.0, 2.0
+        # Attempt 3 clean exit resets everything
+        # Attempt 4 starts fresh: 1.0
+        assert sleep_delays == [1.0, 2.0, 1.0]
+
+        # Attempt 4 should log at WARNING (fresh sequence), not INFO/DEBUG
+        sse_records = [r for r in caplog.records if "SSE" in r.message and "reconnect" in r.message.lower()]
+        assert sse_records[-1].levelno == logging.WARNING
