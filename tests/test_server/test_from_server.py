@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -83,6 +84,7 @@ class TestFromServer:
                 "https://console.edictum.dev",
                 "test-api-key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=False,
             )
 
@@ -96,6 +98,7 @@ class TestFromServer:
                 agent_id="agent-1",
                 env="production",
                 bundle_name="default",
+                tags=None,
             )
             client.get.assert_called_once_with(
                 "/api/v1/bundles/default/current",
@@ -119,6 +122,7 @@ class TestFromServer:
                 "key",
                 "agent-1",
                 env="staging",
+                bundle_name="default",
                 auto_watch=False,
             )
 
@@ -143,6 +147,7 @@ class TestFromServer:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 audit_sink=custom_sink,
                 auto_watch=False,
             )
@@ -158,7 +163,12 @@ class TestFromServer:
             mock_cls.return_value = client
 
             with pytest.raises(EdictumConfigError, match="Failed to fetch contracts"):
-                await Edictum.from_server("https://unreachable.example.com", "key", "agent-1")
+                await Edictum.from_server(
+                    "https://unreachable.example.com",
+                    "key",
+                    "agent-1",
+                    bundle_name="default",
+                )
 
             client.close.assert_called_once()
 
@@ -170,7 +180,12 @@ class TestFromServer:
             mock_cls.return_value = client
 
             with pytest.raises(EdictumConfigError, match="Failed to parse server contracts"):
-                await Edictum.from_server("https://example.com", "key", "agent-1")
+                await Edictum.from_server(
+                    "https://example.com",
+                    "key",
+                    "agent-1",
+                    bundle_name="default",
+                )
 
             client.close.assert_called_once()
 
@@ -198,9 +213,137 @@ class TestFromServer:
                 agent_id="agent-1",
                 env="production",
                 bundle_name="devops-agent",
+                tags=None,
             )
             client.get.assert_called_once_with(
                 "/api/v1/bundles/devops-agent/current",
+                env="production",
+            )
+            await guard.close()
+
+    @pytest.mark.asyncio
+    async def test_bundle_name_none_requires_auto_watch(self):
+        """Server-assigned mode: bundle_name=None with auto_watch=False raises ValueError."""
+        with pytest.raises(ValueError, match="auto_watch must be True"):
+            await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name=None,
+                auto_watch=False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_bundle_name_none_waits_for_sse_push(self):
+        """Server-assigned mode: from_server() blocks until SSE pushes a bundle."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = _make_client_mock()
+            client.bundle_name = None
+            mock_cls.return_value = client
+
+            async def mock_watch():
+                yield {"yaml_bytes": _b64_yaml()}
+
+            source = _make_source_mock()
+            source.watch = mock_watch
+            mock_src_cls.return_value = source
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name=None,
+            )
+
+            assert isinstance(guard, Edictum)
+            assert len(guard._preconditions) == 1
+            # Initial fetch should NOT have been called — bundle comes from SSE
+            client.get.assert_not_called()
+
+            await guard.close()
+
+    @pytest.mark.asyncio
+    async def test_bundle_name_none_timeout_raises_config_error(self):
+        """Server-assigned mode: times out if server never pushes a bundle."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = _make_client_mock()
+            client.bundle_name = None
+            mock_cls.return_value = client
+
+            async def mock_watch():
+                # Never yield — simulate server not pushing a bundle
+                await asyncio.sleep(9999)
+                return
+                yield  # noqa: RET503
+
+            source = _make_source_mock()
+            source.watch = mock_watch
+            mock_src_cls.return_value = source
+
+            # Patch timeout to 0.1s so the test doesn't wait 30 real seconds
+            with patch("edictum._ASSIGNMENT_TIMEOUT_SECS", 0.1):
+                with pytest.raises(EdictumConfigError, match="did not push a bundle assignment"):
+                    await Edictum.from_server(
+                        "https://example.com",
+                        "key",
+                        "agent-1",
+                        bundle_name=None,
+                    )
+
+            client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_tags_forwarded_to_client(self):
+        """tags parameter is forwarded to EdictumServerClient."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = _make_client_mock()
+            mock_cls.return_value = client
+            mock_src_cls.return_value = _make_source_mock()
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name="default",
+                tags={"role": "finance"},
+                auto_watch=False,
+            )
+
+            mock_cls.assert_called_once_with(
+                "https://example.com",
+                "key",
+                agent_id="agent-1",
+                env="production",
+                bundle_name="default",
+                tags={"role": "finance"},
+            )
+            await guard.close()
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_bundle_name_provided(self):
+        """When bundle_name IS provided, behavior is identical to before."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = _make_client_mock()
+            client.bundle_name = "my-bundle"
+            mock_cls.return_value = client
+            mock_src_cls.return_value = _make_source_mock()
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name="my-bundle",
+                auto_watch=False,
+            )
+
+            assert isinstance(guard, Edictum)
+            assert len(guard._preconditions) == 1
+            client.get.assert_called_once_with(
+                "/api/v1/bundles/my-bundle/current",
                 env="production",
             )
             await guard.close()
@@ -217,6 +360,7 @@ class TestFromServer:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=False,
             )
 

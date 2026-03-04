@@ -189,7 +189,7 @@ class TestEdictumServerClient:
 
     def test_default_bundle_name(self):
         client = EdictumServerClient("https://example.com", "key")
-        assert client.bundle_name == "default"
+        assert client.bundle_name is None
 
     @pytest.mark.asyncio
     async def test_close_when_no_client(self):
@@ -245,8 +245,44 @@ class TestClientInputValidation:
             "key",
             agent_id=value,
             env=value,
-            bundle_name=value,
+            bundle_name=value,  # explicit — default is now None
         )
         assert client.agent_id == value
         assert client.env == value
         assert client.bundle_name == value
+
+
+class TestClientBundleNameOptional:
+    """Tests for bundle_name=None (server-assigned) and tags parameter."""
+
+    def test_bundle_name_none_is_valid(self):
+        client = EdictumServerClient("http://localhost", "key", bundle_name=None)
+        assert client.bundle_name is None
+
+    def test_bundle_name_default_is_none(self):
+        client = EdictumServerClient("http://localhost", "key")
+        assert client.bundle_name is None
+
+    def test_bundle_name_provided_still_validated(self):
+        with pytest.raises(ValueError, match="Invalid bundle_name"):
+            EdictumServerClient("http://localhost", "key", bundle_name="has spaces!")
+
+    def test_tags_stored_on_client(self):
+        client = EdictumServerClient("http://localhost", "key", tags={"role": "finance"})
+        assert client.tags == {"role": "finance"}
+
+    def test_tags_none_by_default(self):
+        client = EdictumServerClient("http://localhost", "key")
+        assert client.tags is None
+
+    def test_tags_validates_string_types(self):
+        with pytest.raises(ValueError, match="strings"):
+            EdictumServerClient("http://localhost", "key", tags={"role": 123})
+
+    def test_tags_validates_key_length(self):
+        with pytest.raises(ValueError, match="128"):
+            EdictumServerClient("http://localhost", "key", tags={"x" * 129: "val"})
+
+    def test_tags_validates_value_length(self):
+        with pytest.raises(ValueError, match="256"):
+            EdictumServerClient("http://localhost", "key", tags={"role": "x" * 257})

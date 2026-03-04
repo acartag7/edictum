@@ -562,3 +562,141 @@ class TestServerContractSource:
         # Attempt 4 should log at WARNING (fresh sequence), not INFO/DEBUG
         sse_records = [r for r in caplog.records if "SSE" in r.message and "reconnect" in r.message.lower()]
         assert sse_records[-1].levelno == logging.WARNING
+
+    @pytest.mark.asyncio
+    async def test_watch_sends_tags_in_sse_params(self):
+        """SSE connection includes JSON-encoded tags query param."""
+        client = _make_client(env="production", bundle_name="default")
+        client.tags = {"role": "finance", "team": "accounting"}
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"yaml": "test", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        async for _bundle in source.watch():
+            await source.close()
+
+        assert len(captured) == 1
+        assert "tags" in captured[0]
+        assert json.loads(captured[0]["tags"]) == {"role": "finance", "team": "accounting"}
+
+    @pytest.mark.asyncio
+    async def test_watch_no_tags_when_none(self):
+        """SSE connection omits tags param when tags is None."""
+        client = _make_client(env="production", bundle_name="default")
+        client.tags = None
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"yaml": "test", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        async for _bundle in source.watch():
+            await source.close()
+
+        assert len(captured) == 1
+        assert "tags" not in captured[0]
+
+    @pytest.mark.asyncio
+    async def test_watch_handles_assignment_changed_event(self):
+        """assignment_changed event yields dict with _assignment_changed and updates client.bundle_name."""
+        client = _make_client(env="production", bundle_name="old-bundle")
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"bundle_name": "new-bundle"}, event_type="assignment_changed")
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        received = []
+        async for bundle in source.watch():
+            received.append(bundle)
+            await source.close()
+
+        assert len(received) == 1
+        assert received[0].get("_assignment_changed") is True
+        assert received[0]["bundle_name"] == "new-bundle"
+        assert client.bundle_name == "new-bundle"
+
+    @pytest.mark.asyncio
+    async def test_watch_ignores_assignment_changed_same_bundle(self):
+        """assignment_changed with same bundle_name is ignored."""
+        client = _make_client(env="production", bundle_name="same-bundle")
+        source = ServerContractSource(client)
+
+        same_event = _make_sse_event({"bundle_name": "same-bundle"}, event_type="assignment_changed")
+        normal_event = _make_sse_event({"yaml": "v1", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([same_event, normal_event], captured)
+
+        received = []
+        async for bundle in source.watch():
+            received.append(bundle)
+            await source.close()
+
+        # Only the normal contract_update event should be yielded
+        assert len(received) == 1
+        assert received[0]["yaml"] == "v1"
+
+    @pytest.mark.asyncio
+    async def test_watch_no_bundle_name_omits_param(self):
+        """When bundle_name is None, it is not included in SSE params."""
+        client = _make_client(env="production", bundle_name="default")
+        client.bundle_name = None  # Override for server-assigned mode
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"yaml": "test", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        async for _bundle in source.watch():
+            await source.close()
+
+        assert len(captured) == 1
+        assert "bundle_name" not in captured[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.security
+    async def test_watch_rejects_assignment_changed_path_traversal(self):
+        """assignment_changed with path traversal bundle_name is rejected."""
+        client = _make_client(env="production", bundle_name="old-bundle")
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"bundle_name": "../../admin/secrets"}, event_type="assignment_changed")
+        normal_event = _make_sse_event({"yaml": "v1", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event, normal_event], captured)
+
+        received = []
+        async for bundle in source.watch():
+            received.append(bundle)
+            await source.close()
+
+        # Path traversal should be rejected; only the normal event yielded
+        assert len(received) == 1
+        assert received[0]["yaml"] == "v1"
+        # Client's bundle_name should NOT have been updated
+        assert client.bundle_name == "old-bundle"
+
+    @pytest.mark.asyncio
+    @pytest.mark.security
+    async def test_watch_rejects_assignment_changed_non_dict(self):
+        """assignment_changed with non-dict payload is ignored."""
+        client = _make_client(env="production", bundle_name="old-bundle")
+        source = ServerContractSource(client)
+
+        bad_event = MagicMock()
+        bad_event.event = "assignment_changed"
+        bad_event.data = json.dumps([1, 2, 3])
+
+        normal_event = _make_sse_event({"yaml": "v1", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([bad_event, normal_event], captured)
+
+        received = []
+        async for bundle in source.watch():
+            received.append(bundle)
+            await source.close()
+
+        assert len(received) == 1
+        assert received[0]["yaml"] == "v1"

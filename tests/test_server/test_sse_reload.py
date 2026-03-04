@@ -103,6 +103,7 @@ class TestSSEReload:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=True,
             )
 
@@ -144,6 +145,7 @@ class TestSSEReload:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=True,
             )
 
@@ -185,6 +187,7 @@ class TestSSEReload:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=True,
             )
 
@@ -224,6 +227,7 @@ class TestSSEReload:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=True,
             )
 
@@ -241,6 +245,62 @@ class TestSSEReload:
         """close() is a no-op on instances created without from_server()."""
         guard = Edictum.from_yaml_string(BUNDLE_V1)
         await guard.close()
+
+    @pytest.mark.asyncio
+    async def test_assignment_changed_triggers_fetch_and_reload(self):
+        """assignment_changed event causes the watcher to fetch the new bundle and reload."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = MagicMock()
+            client.bundle_name = "old-bundle"
+            client.env = "production"
+            # Initial fetch returns V1
+            client.get = AsyncMock(
+                side_effect=[
+                    {"yaml_bytes": _b64(BUNDLE_V1)},  # initial fetch
+                    {"yaml_bytes": _b64(BUNDLE_V2)},  # fetch after assignment change
+                ]
+            )
+            client.close = AsyncMock()
+            mock_cls.return_value = client
+
+            update_received = asyncio.Event()
+
+            async def mock_watch():
+                # Emit assignment_changed event with new bundle
+                yield {"_assignment_changed": True, "bundle_name": "new-bundle"}
+                update_received.set()
+
+            source = MagicMock()
+            source.connect = AsyncMock()
+            source.close = AsyncMock()
+            source.watch = mock_watch
+            mock_src_cls.return_value = source
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name="old-bundle",
+                auto_watch=True,
+            )
+
+            # Initial: V1 has 1 contract (deny-rm)
+            assert len(guard._preconditions) == 1
+
+            await asyncio.wait_for(update_received.wait(), timeout=2.0)
+            await asyncio.sleep(0.05)
+
+            # After assignment change: V2 has 2 contracts (deny-curl, deny-wget)
+            assert len(guard._preconditions) == 2
+
+            # Verify client.get was called twice
+            assert client.get.call_count == 2
+            # Second call fetches the new bundle
+            second_call = client.get.call_args_list[1]
+            assert "new-bundle" in second_call.args[0]
+
+            await guard.close()
 
     @pytest.mark.asyncio
     async def test_auto_watch_false_no_sse_task(self):
@@ -263,6 +323,7 @@ class TestSSEReload:
                 "https://example.com",
                 "key",
                 "agent-1",
+                bundle_name="default",
                 auto_watch=False,
             )
 

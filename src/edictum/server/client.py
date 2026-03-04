@@ -38,20 +38,35 @@ class EdictumServerClient:
         *,
         agent_id: str = "default",
         env: str = "production",
-        bundle_name: str = "default",
+        bundle_name: str | None = None,
+        tags: dict[str, str] | None = None,
         timeout: float = 30.0,
         max_retries: int = 3,
     ) -> None:
-        for name, value in [("agent_id", agent_id), ("env", env), ("bundle_name", bundle_name)]:
+        for name, value in [("agent_id", agent_id), ("env", env)]:
             if not _SAFE_IDENTIFIER_RE.match(value):
                 raise ValueError(
                     f"Invalid {name}: {value!r}. " "Must be 1-128 alphanumeric chars, hyphens, underscores, or dots."
                 )
+        if bundle_name is not None and not _SAFE_IDENTIFIER_RE.match(bundle_name):
+            raise ValueError(
+                f"Invalid bundle_name: {bundle_name!r}. "
+                "Must be 1-128 alphanumeric chars, hyphens, underscores, or dots."
+            )
+        if tags is not None:
+            for k, v in tags.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    raise ValueError(f"Tag keys and values must be strings, got {type(k).__name__}={type(v).__name__}")
+                if len(k) > 128:
+                    raise ValueError(f"Tag key too long ({len(k)} > 128): {k!r}")
+                if len(v) > 256:
+                    raise ValueError(f"Tag value too long ({len(v)} > 256) for key {k!r}")
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.agent_id = agent_id
         self.env = env
         self.bundle_name = bundle_name
+        self.tags = tags
         self.timeout = timeout
         self.max_retries = max_retries
         self._client: httpx.AsyncClient | None = None
