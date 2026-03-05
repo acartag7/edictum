@@ -84,6 +84,7 @@ The split follows one rule: **evaluation = core library, coordination = server.*
 - v0.11.1: Fix path traversal bypass in sandbox within/not_within checks (os.path.normpath normalization)
 - v0.11.2: Security hardening — ServerBackend fail-closed, BashClassifier operator coverage, symlink resolution in sandbox, approval timeout audit accuracy, tool_name validation, MemoryBackend atomicity
 - v0.11.3: Adversarial test suite, CI hardening (bandit + security test step), code-reviewer security criteria, architecture.md refresh
+- v0.14.0: Google ADK adapter — plugin and agent callback integration for Google Agent Development Kit (8th framework adapter)
 
 ## Session Model
 

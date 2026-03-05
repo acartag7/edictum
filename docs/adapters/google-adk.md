@@ -126,7 +126,7 @@ def handle_warn(result, findings):
 
 plugin = adapter.as_plugin(on_postcondition_warn=handle_warn)
 # or
-before_cb, after_cb = adapter.as_agent_callbacks(on_postcondition_warn=handle_warn)
+before_cb, after_cb, error_cb = adapter.as_agent_callbacks(on_postcondition_warn=handle_warn)
 ```
 
 The callback receives the tool result and a list of `Finding` objects. It is called for side effects only -- it does not modify the response.
@@ -162,6 +162,7 @@ GoogleADKAdapter(
     session_id: str | None = None,
     principal: Principal | None = None,
     principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+    on_postcondition_warn: Callable | None = None,
 )
 ```
 
@@ -171,6 +172,7 @@ GoogleADKAdapter(
 | `session_id` | Session identifier for [session contracts](../concepts/contracts.md). Auto-generated UUID if omitted |
 | `principal` | Static [principal](../concepts/principals.md) attached to every tool call |
 | `principal_resolver` | Callable `(tool_name, tool_input) -> Principal` for dynamic resolution. Overrides static `principal` |
+| `on_postcondition_warn` | Callback `(result, findings) -> None` invoked when postconditions detect issues. Can also be passed to `as_plugin()` or `as_agent_callbacks()` |
 
 ### `as_plugin()`
 
@@ -187,10 +189,10 @@ Returns a `BasePlugin` for `Runner(plugins=[...])`. Applies governance globally 
 ```python
 adapter.as_agent_callbacks(
     on_postcondition_warn: Callable | None = None,
-) -> tuple[Callable, Callable]
+) -> tuple[Callable, Callable, Callable]
 ```
 
-Returns `(before_tool_callback, after_tool_callback)` for `LlmAgent`. Use for per-agent scoping or live mode.
+Returns `(before_tool_callback, after_tool_callback, error_tool_callback)` for `LlmAgent`. Pass the first two to `LlmAgent(...)`. The third handles tool exceptions -- wire it up separately if your runner supports error callbacks.
 
 ### `session_id`
 

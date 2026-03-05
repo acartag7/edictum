@@ -47,6 +47,7 @@ class GoogleADKAdapter:
         session_id: str | None = None,
         principal: Principal | None = None,
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+        on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
     ):
         self._guard = guard
         self._pipeline = GovernancePipeline(guard)
@@ -56,6 +57,7 @@ class GoogleADKAdapter:
         self._pending: dict[str, tuple[Any, Any]] = {}
         self._principal = principal
         self._principal_resolver = principal_resolver
+        self._on_postcondition_warn = on_postcondition_warn
 
     @property
     def session_id(self) -> str:
@@ -330,6 +332,8 @@ class GoogleADKAdapter:
                 principal=asdict(envelope.principal) if envelope.principal else None,
                 tool_success=False,
                 error=str(error),
+                session_attempt_count=await self._session.attempt_count(),
+                session_execution_count=await self._session.execution_count(),
                 mode=self._guard.mode,
                 policy_version=self._guard.policy_version,
             )
@@ -407,7 +411,7 @@ class GoogleADKAdapter:
         Args:
             on_postcondition_warn: Optional callback invoked when postconditions
                 detect issues. Receives (original_result, findings) and is called
-                for side effects.
+                for side effects. Overrides the constructor value if provided.
 
         Note:
             Plugins are NOT invoked in ADK's live/streaming mode.
@@ -416,7 +420,8 @@ class GoogleADKAdapter:
         from google.adk.plugins.base_plugin import BasePlugin
 
         adapter = self
-        adapter._on_postcondition_warn = on_postcondition_warn
+        if on_postcondition_warn is not None:
+            adapter._on_postcondition_warn = on_postcondition_warn
 
         class _EdictumPlugin(BasePlugin):
             def __init__(self):
@@ -480,7 +485,8 @@ class GoogleADKAdapter:
             wire it up separately if your runner supports error callbacks.
         """
         adapter = self
-        adapter._on_postcondition_warn = on_postcondition_warn
+        if on_postcondition_warn is not None:
+            adapter._on_postcondition_warn = on_postcondition_warn
 
         async def before_tool_callback(tool, args, tool_context):
             call_id = getattr(tool_context, "function_call_id", None) or str(uuid.uuid4())
