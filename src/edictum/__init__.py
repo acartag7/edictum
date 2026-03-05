@@ -60,6 +60,10 @@ from edictum.yaml_engine.composer import CompositionReport
 
 logger = logging.getLogger(__name__)
 
+# How long from_server() waits for the server to push a bundle in
+# server-assigned mode (bundle_name=None) before raising EdictumConfigError.
+_ASSIGNMENT_TIMEOUT_SECS = 30.0
+
 __all__ = [
     "__version__",
     "ApprovalBackend",
@@ -205,7 +209,8 @@ class Edictum:
         agent_id: str,
         *,
         env: str | None = None,
-        bundle_name: str = "default",
+        bundle_name: str | None = None,
+        tags: dict[str, str] | None = None,
         audit_sink: AuditSink | None = None,
         approval_backend: ApprovalBackend | None = None,
         storage_backend: StorageBackend | None = None,
@@ -227,8 +232,12 @@ class Edictum:
             api_key: API key for authentication.
             agent_id: Unique identifier for this agent instance.
             env: Environment name (defaults to ``"production"``).
-            bundle_name: Which bundle lineage this agent tracks
-                (defaults to ``"default"``).
+            bundle_name: Which bundle lineage this agent tracks. When
+                ``None``, the server assigns a bundle based on agent
+                tags and assignment rules (requires ``auto_watch=True``).
+            tags: Key-value metadata describing this agent (e.g.
+                ``{"team": "billing", "tier": "production"}``). Sent to
+                the server on SSE connect for assignment resolution.
             audit_sink: Override the default ``ServerAuditSink``.
             approval_backend: Override the default ``ServerApprovalBackend``.
             storage_backend: Override the default ``ServerBackend``.
@@ -240,14 +249,16 @@ class Edictum:
             principal_resolver: Per-call dynamic principal resolution.
             auto_watch: If True (default), start an SSE background task
                 that automatically reloads contracts when the server
-                pushes updates.
+                pushes updates. Must be True when ``bundle_name`` is None.
 
         Returns:
             Configured Edictum instance connected to the server.
 
         Raises:
             EdictumConfigError: If the server is unreachable or returns
-                invalid contract data.
+                invalid contract data, or if the server does not push a
+                bundle assignment within 30 seconds.
+            ValueError: If ``bundle_name`` is None and ``auto_watch`` is False.
         """
         from edictum.server.approval_backend import ServerApprovalBackend
         from edictum.server.audit_sink import ServerAuditSink
@@ -256,6 +267,12 @@ class Edictum:
         from edictum.server.contract_source import ServerContractSource
         from edictum.yaml_engine.compiler import compile_contracts
         from edictum.yaml_engine.loader import load_bundle_string
+
+        if bundle_name is None and not auto_watch:
+            raise ValueError(
+                "auto_watch must be True when bundle_name is None. "
+                "Server-assigned mode requires the SSE connection to receive the bundle."
+            )
 
         environment = env or "production"
 
@@ -266,6 +283,7 @@ class Edictum:
             agent_id=agent_id,
             env=environment,
             bundle_name=bundle_name,
+            tags=tags,
         )
 
         # 2. Server-backed components (use overrides if provided)
@@ -273,51 +291,75 @@ class Edictum:
         effective_approval = approval_backend or ServerApprovalBackend(client)
         effective_backend = storage_backend or ServerBackend(client)
 
-        # 3. Fetch current contracts from the server
-        try:
-            response = await client.get(
-                f"/api/v1/bundles/{client.bundle_name}/current",
-                env=client.env,
+        if bundle_name is not None:
+            # 3a. Fetch current contracts from the server
+            try:
+                response = await client.get(
+                    f"/api/v1/bundles/{bundle_name}/current",
+                    env=client.env,
+                )
+                yaml_b64 = response.get("yaml_bytes", "")
+                bundle_yaml = base64.b64decode(yaml_b64) if yaml_b64 else b""
+            except Exception as exc:
+                await client.close()
+                raise EdictumConfigError(f"Failed to fetch contracts from server: {exc}") from exc
+
+            # 4a. Parse and compile contracts
+            try:
+                bundle_data, bundle_hash = load_bundle_string(bundle_yaml)
+                compiled = compile_contracts(bundle_data)
+            except Exception as exc:
+                await client.close()
+                raise EdictumConfigError(f"Failed to parse server contracts: {exc}") from exc
+
+            policy_version = str(bundle_hash)
+            effective_mode = mode or compiled.default_mode
+            all_contracts = (
+                compiled.preconditions
+                + compiled.postconditions
+                + compiled.session_contracts
+                + compiled.sandbox_contracts
             )
-            yaml_b64 = response.get("yaml_bytes", "")
-            bundle_yaml = base64.b64decode(yaml_b64) if yaml_b64 else b""
-        except Exception as exc:
-            await client.close()
-            raise EdictumConfigError(f"Failed to fetch contracts from server: {exc}") from exc
 
-        # 4. Parse and compile contracts
-        try:
-            bundle_data, bundle_hash = load_bundle_string(bundle_yaml)
-            compiled = compile_contracts(bundle_data)
-        except Exception as exc:
-            await client.close()
-            raise EdictumConfigError(f"Failed to parse server contracts: {exc}") from exc
+            # Merge YAML tools
+            yaml_tools = compiled.tools
 
-        policy_version = str(bundle_hash)
-        effective_mode = mode or compiled.default_mode
-        all_contracts = (
-            compiled.preconditions + compiled.postconditions + compiled.session_contracts + compiled.sandbox_contracts
-        )
-
-        # Merge YAML tools
-        yaml_tools = compiled.tools
-
-        guard = cls(
-            environment=environment,
-            mode=effective_mode,
-            limits=compiled.limits,
-            tools=yaml_tools if yaml_tools else None,
-            contracts=all_contracts,
-            audit_sink=effective_sink,
-            backend=effective_backend,
-            policy_version=policy_version,
-            on_deny=on_deny,
-            on_allow=on_allow,
-            success_check=success_check,
-            principal=principal,
-            principal_resolver=principal_resolver,
-            approval_backend=effective_approval,
-        )
+            guard = cls(
+                environment=environment,
+                mode=effective_mode,
+                limits=compiled.limits,
+                tools=yaml_tools if yaml_tools else None,
+                contracts=all_contracts,
+                audit_sink=effective_sink,
+                backend=effective_backend,
+                policy_version=policy_version,
+                on_deny=on_deny,
+                on_allow=on_allow,
+                success_check=success_check,
+                principal=principal,
+                principal_resolver=principal_resolver,
+                approval_backend=effective_approval,
+            )
+        else:
+            # 3b. Server-assigned mode: start with empty contracts,
+            # wait for the server to push a bundle via SSE.
+            guard = cls(
+                environment=environment,
+                mode=mode,
+                limits=None,
+                tools=None,
+                contracts=[],
+                audit_sink=effective_sink,
+                backend=effective_backend,
+                policy_version=None,
+                on_deny=on_deny,
+                on_allow=on_allow,
+                success_check=success_check,
+                principal=principal,
+                principal_resolver=principal_resolver,
+                approval_backend=effective_approval,
+            )
+            guard._assignment_ready = asyncio.Event()
 
         # Store server resources for lifecycle management
         guard._server_client = client
@@ -327,6 +369,21 @@ class Edictum:
         # 5. Optionally start SSE watcher for live contract updates
         if auto_watch:
             await guard._start_sse_watcher()
+
+        # 6. In server-assigned mode, block until first bundle arrives
+        if bundle_name is None:
+            try:
+                await asyncio.wait_for(
+                    guard._assignment_ready.wait(),
+                    timeout=_ASSIGNMENT_TIMEOUT_SECS,
+                )
+            except TimeoutError:
+                await guard.close()
+                raise EdictumConfigError(
+                    f"Server did not push a bundle assignment within "
+                    f"{_ASSIGNMENT_TIMEOUT_SECS} seconds. Check that the server "
+                    f"has an assignment rule matching this agent's tags."
+                ) from None
 
         return guard
 
@@ -384,9 +441,28 @@ class Edictum:
             try:
                 async for bundle in source.watch():
                     try:
-                        yaml_b64 = bundle.get("yaml_bytes", "")
-                        yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        if bundle.get("_assignment_changed"):
+                            # Assignment changed: fetch the new bundle's contracts
+                            new_name = bundle["bundle_name"]
+                            response = await self._server_client.get(
+                                f"/api/v1/bundles/{new_name}/current",
+                                env=self._server_client.env,
+                            )
+                            yaml_b64 = response.get("yaml_bytes", "")
+                            yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        else:
+                            yaml_b64 = bundle.get("yaml_bytes", "")
+                            yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
                         await self.reload(yaml_data)
+                        # Commit bundle_name only after successful reload.
+                        # This ensures failed fetches don't block retries
+                        # via deduplication in contract_source.
+                        if bundle.get("_assignment_changed"):
+                            self._server_client.bundle_name = bundle["bundle_name"]
+                        # Signal readiness after first successful reload
+                        ready_event = getattr(self, "_assignment_ready", None)
+                        if ready_event is not None and not ready_event.is_set():
+                            ready_event.set()
                     except Exception:
                         # Fail closed: keep existing contracts on reload error
                         logger.warning("Failed to reload contracts from SSE update, keeping existing contracts")

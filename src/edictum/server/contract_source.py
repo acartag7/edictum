@@ -8,7 +8,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
-from edictum.server.client import EdictumServerClient
+from edictum.server.client import _SAFE_IDENTIFIER_RE, EdictumServerClient
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,8 @@ class ServerContractSource:
                     params["bundle_name"] = self._client.bundle_name
                 if self._current_revision:
                     params["policy_version"] = self._current_revision
+                if self._client.tags:
+                    params["tags"] = json.dumps(self._client.tags)
 
                 async with httpx_sse.aconnect_sse(
                     http_client,
@@ -88,6 +90,30 @@ class ServerContractSource:
                             if "revision_hash" in bundle:
                                 self._current_revision = bundle["revision_hash"]
                             yield bundle
+                        elif event.event == "assignment_changed":
+                            try:
+                                data = json.loads(event.data)
+                            except json.JSONDecodeError:
+                                logger.warning("Invalid JSON in SSE assignment_changed event")
+                                continue
+                            if not isinstance(data, dict):
+                                logger.warning("SSE assignment_changed payload is not an object")
+                                continue
+                            new_bundle = data.get("bundle_name")
+                            if not isinstance(new_bundle, str) or not _SAFE_IDENTIFIER_RE.match(new_bundle):
+                                logger.warning("SSE assignment_changed has invalid bundle_name: %r", new_bundle)
+                                continue
+                            if new_bundle != self._client.bundle_name:
+                                logger.info(
+                                    "Assignment changed: %s -> %s",
+                                    self._client.bundle_name,
+                                    new_bundle,
+                                )
+                                # Do NOT update self._client.bundle_name here.
+                                # The watcher updates it after a successful reload.
+                                # Updating early would cause deduplication to block
+                                # retries if the fetch fails.
+                                yield {"_assignment_changed": True, "bundle_name": new_bundle}
 
             except (httpx.TransportError, httpx.HTTPStatusError, OSError) as exc:
                 if self._closed:
