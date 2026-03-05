@@ -522,9 +522,10 @@ class TestAgentCallbacks:
         adapter = GoogleADKAdapter(guard)
         callbacks = adapter.as_agent_callbacks()
         assert isinstance(callbacks, tuple)
-        assert len(callbacks) == 2
+        assert len(callbacks) == 3
         assert callable(callbacks[0])
         assert callable(callbacks[1])
+        assert callable(callbacks[2])
 
     async def test_agent_before_callback_deny(self):
         @precondition("*")
@@ -533,7 +534,7 @@ class TestAgentCallbacks:
 
         guard = make_guard(contracts=[always_deny])
         adapter = GoogleADKAdapter(guard)
-        before_cb, _ = adapter.as_agent_callbacks()
+        before_cb, _, _ = adapter.as_agent_callbacks()
 
         mock_tool = SimpleNamespace(name="TestTool")
         mock_context = SimpleNamespace(function_call_id="fc-1")
@@ -545,7 +546,7 @@ class TestAgentCallbacks:
     async def test_agent_before_callback_allow(self):
         guard = make_guard()
         adapter = GoogleADKAdapter(guard)
-        before_cb, _ = adapter.as_agent_callbacks()
+        before_cb, _, _ = adapter.as_agent_callbacks()
 
         mock_tool = SimpleNamespace(name="TestTool")
         mock_context = SimpleNamespace(function_call_id="fc-1")
@@ -556,7 +557,7 @@ class TestAgentCallbacks:
     async def test_agent_after_callback_passthrough(self):
         guard = make_guard()
         adapter = GoogleADKAdapter(guard)
-        before_cb, after_cb = adapter.as_agent_callbacks()
+        before_cb, after_cb, _ = adapter.as_agent_callbacks()
 
         mock_tool = SimpleNamespace(name="TestTool")
         mock_context = SimpleNamespace(function_call_id="fc-1")
@@ -577,7 +578,7 @@ class TestAgentCallbacks:
 
         guard = make_guard(contracts=[detect_secret], tools=_READ_TOOLS)
         adapter = GoogleADKAdapter(guard)
-        before_cb, after_cb = adapter.as_agent_callbacks()
+        before_cb, after_cb, _ = adapter.as_agent_callbacks()
 
         mock_tool = SimpleNamespace(name="TestTool")
         mock_context = SimpleNamespace(function_call_id="fc-1")
@@ -586,6 +587,40 @@ class TestAgentCallbacks:
         result = await after_cb(mock_tool, {}, mock_context, "key: sk-prod12345")
         assert result is not None
         assert "sk-prod12345" not in str(result)
+
+    async def test_agent_error_callback_cleans_pending(self):
+        sink = NullAuditSink()
+        guard = make_guard(audit_sink=sink)
+        adapter = GoogleADKAdapter(guard)
+        before_cb, _, error_cb = adapter.as_agent_callbacks()
+
+        mock_tool = SimpleNamespace(name="TestTool")
+        mock_context = SimpleNamespace(function_call_id="fc-1")
+
+        await before_cb(mock_tool, {}, mock_context)
+        assert "fc-1" in adapter._pending
+
+        await error_cb(mock_tool, {}, mock_context, RuntimeError("boom"))
+        assert "fc-1" not in adapter._pending
+        assert any(e.action == AuditAction.CALL_FAILED for e in sink.events)
+
+    async def test_call_id_persists_across_callbacks_without_function_call_id(self):
+        """When function_call_id is absent, UUID fallback is shared via _edictum_call_id."""
+        guard = make_guard()
+        adapter = GoogleADKAdapter(guard)
+        before_cb, after_cb, _ = adapter.as_agent_callbacks()
+
+        mock_tool = SimpleNamespace(name="TestTool")
+        mock_context = SimpleNamespace()  # no function_call_id
+
+        await before_cb(mock_tool, {}, mock_context)
+        # Should have stored _edictum_call_id on context
+        assert hasattr(mock_context, "_edictum_call_id")
+        assert len(adapter._pending) == 1
+
+        await after_cb(mock_tool, {}, mock_context, "ok")
+        # Pending should be cleaned up via the persisted call_id
+        assert len(adapter._pending) == 0
 
 
 class TestApproval:
@@ -677,6 +712,7 @@ class TestApproval:
         result = await adapter._pre(tool_name="TestTool", tool_input={}, call_id="call-1")
         assert isinstance(result, dict)
         assert "DENIED:" in result["error"]
+        assert "timed out" in result["error"].lower()
 
     async def test_approval_timeout_allow(self):
         @precondition("*")

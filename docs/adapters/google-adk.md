@@ -50,7 +50,7 @@ from edictum.adapters.google_adk import GoogleADKAdapter
 guard = Edictum.from_yaml("contracts.yaml")
 adapter = GoogleADKAdapter(guard=guard)
 
-before_cb, after_cb = adapter.as_agent_callbacks()
+before_cb, after_cb, error_cb = adapter.as_agent_callbacks()
 
 agent = LlmAgent(
     name="researcher",

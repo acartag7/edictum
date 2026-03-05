@@ -383,6 +383,8 @@ class GoogleADKAdapter:
             return None  # Proceed with execution
 
         reason = approval_decision.reason or decision.reason or "Approval denied"
+        if not approved and approval_decision.status == ApprovalStatus.TIMEOUT:
+            reason = f"Approval timed out: {reason}"
         self._guard.telemetry.record_denial(envelope, reason)
         if self._guard._on_deny:
             try:
@@ -422,6 +424,11 @@ class GoogleADKAdapter:
 
             async def before_tool_callback(self, *, tool, tool_args, tool_context):
                 call_id = getattr(tool_context, "function_call_id", None) or str(uuid.uuid4())
+                # Store resolved call_id so after/error callbacks can find it
+                try:
+                    tool_context._edictum_call_id = call_id
+                except AttributeError:
+                    pass  # read-only context
                 result = await adapter._pre(
                     tool_name=tool.name,
                     tool_input=tool_args,
@@ -431,7 +438,9 @@ class GoogleADKAdapter:
                 return result  # None or dict
 
             async def after_tool_callback(self, *, tool, tool_args, tool_context, result):
-                call_id = getattr(tool_context, "function_call_id", None)
+                call_id = getattr(tool_context, "_edictum_call_id", None) or getattr(
+                    tool_context, "function_call_id", None
+                )
                 post_result = await adapter._post(call_id, result)
                 if post_result.output_suppressed:
                     return {"error": "DENIED: output suppressed by postcondition"}
@@ -442,7 +451,9 @@ class GoogleADKAdapter:
                 return None  # keep original
 
             async def on_tool_error_callback(self, *, tool, tool_args, tool_context, error):
-                call_id = getattr(tool_context, "function_call_id", None)
+                call_id = getattr(tool_context, "_edictum_call_id", None) or getattr(
+                    tool_context, "function_call_id", None
+                )
                 await adapter._emit_error_audit(call_id, error)
                 return None  # re-raise the exception
 
@@ -451,8 +462,8 @@ class GoogleADKAdapter:
     def as_agent_callbacks(
         self,
         on_postcondition_warn: Callable[[Any, list[Finding]], Any] | None = None,
-    ) -> tuple[Callable, Callable]:
-        """Return (before_tool_callback, after_tool_callback) for LlmAgent.
+    ) -> tuple[Callable, Callable, Callable]:
+        """Return (before_tool_callback, after_tool_callback, error_tool_callback) for LlmAgent.
 
         Use this for per-agent scoping or when live/streaming mode
         governance is needed (plugins don't run in live mode).
@@ -463,13 +474,20 @@ class GoogleADKAdapter:
                 for side effects.
 
         Returns:
-            Tuple of (before_tool_callback, after_tool_callback) callables.
+            Tuple of (before_tool_callback, after_tool_callback, error_tool_callback).
+            Pass the first two to ``LlmAgent(before_tool_callback=...,
+            after_tool_callback=...)``. The third handles tool exceptions —
+            wire it up separately if your runner supports error callbacks.
         """
         adapter = self
         adapter._on_postcondition_warn = on_postcondition_warn
 
         async def before_tool_callback(tool, args, tool_context):
             call_id = getattr(tool_context, "function_call_id", None) or str(uuid.uuid4())
+            try:
+                tool_context._edictum_call_id = call_id
+            except AttributeError:
+                pass  # read-only context
             result = await adapter._pre(
                 tool_name=tool.name,
                 tool_input=args,
@@ -479,7 +497,7 @@ class GoogleADKAdapter:
             return result  # None or dict
 
         async def after_tool_callback(tool, args, tool_context, tool_response):
-            call_id = getattr(tool_context, "function_call_id", None)
+            call_id = getattr(tool_context, "_edictum_call_id", None) or getattr(tool_context, "function_call_id", None)
             post_result = await adapter._post(call_id, tool_response)
             if post_result.output_suppressed:
                 return {"error": "DENIED: output suppressed by postcondition"}
@@ -489,4 +507,9 @@ class GoogleADKAdapter:
                 return {"result": str(post_result.result)}
             return None  # keep original
 
-        return before_tool_callback, after_tool_callback
+        async def error_tool_callback(tool, args, tool_context, error):
+            call_id = getattr(tool_context, "_edictum_call_id", None) or getattr(tool_context, "function_call_id", None)
+            await adapter._emit_error_audit(call_id, error)
+            return None  # re-raise the exception
+
+        return before_tool_callback, after_tool_callback, error_tool_callback
