@@ -109,7 +109,10 @@ class ServerContractSource:
                                     self._client.bundle_name,
                                     new_bundle,
                                 )
-                                self._client.bundle_name = new_bundle
+                                # Do NOT update self._client.bundle_name here.
+                                # The watcher updates it after a successful reload.
+                                # Updating early would cause deduplication to block
+                                # retries if the fetch fails.
                                 yield {"_assignment_changed": True, "bundle_name": new_bundle}
 
             except (httpx.TransportError, httpx.HTTPStatusError, OSError) as exc:

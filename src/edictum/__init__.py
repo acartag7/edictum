@@ -454,6 +454,11 @@ class Edictum:
                             yaml_b64 = bundle.get("yaml_bytes", "")
                             yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
                         await self.reload(yaml_data)
+                        # Commit bundle_name only after successful reload.
+                        # This ensures failed fetches don't block retries
+                        # via deduplication in contract_source.
+                        if bundle.get("_assignment_changed"):
+                            self._server_client.bundle_name = bundle["bundle_name"]
                         # Signal readiness after first successful reload
                         ready_event = getattr(self, "_assignment_ready", None)
                         if ready_event is not None and not ready_event.is_set():

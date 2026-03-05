@@ -600,7 +600,7 @@ class TestServerContractSource:
 
     @pytest.mark.asyncio
     async def test_watch_handles_assignment_changed_event(self):
-        """assignment_changed event yields dict with _assignment_changed and updates client.bundle_name."""
+        """assignment_changed event yields dict with _assignment_changed flag."""
         client = _make_client(env="production", bundle_name="old-bundle")
         source = ServerContractSource(client)
 
@@ -616,7 +616,9 @@ class TestServerContractSource:
         assert len(received) == 1
         assert received[0].get("_assignment_changed") is True
         assert received[0]["bundle_name"] == "new-bundle"
-        assert client.bundle_name == "new-bundle"
+        # bundle_name is NOT updated here — the watcher commits it after
+        # successful reload to avoid deduplication blocking retries.
+        assert client.bundle_name == "old-bundle"
 
     @pytest.mark.asyncio
     async def test_watch_ignores_assignment_changed_same_bundle(self):

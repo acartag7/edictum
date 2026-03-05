@@ -54,6 +54,8 @@ class EdictumServerClient:
                 "Must be 1-128 alphanumeric chars, hyphens, underscores, or dots."
             )
         if tags is not None:
+            if len(tags) > 64:
+                raise ValueError(f"Too many tags ({len(tags)} > 64); maximum is 64 entries")
             for k, v in tags.items():
                 if not isinstance(k, str) or not isinstance(v, str):
                     raise ValueError(f"Tag keys and values must be strings, got {type(k).__name__}={type(v).__name__}")

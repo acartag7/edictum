@@ -286,3 +286,7 @@ class TestClientBundleNameOptional:
     def test_tags_validates_value_length(self):
         with pytest.raises(ValueError, match="256"):
             EdictumServerClient("http://localhost", "key", tags={"role": "x" * 257})
+
+    def test_tags_validates_max_count(self):
+        with pytest.raises(ValueError, match="64"):
+            EdictumServerClient("http://localhost", "key", tags={f"k{i}": "v" for i in range(65)})
