@@ -178,6 +178,7 @@ Adapters are thin translation layers between framework-specific hook APIs and th
 | `OpenAIAgentsAdapter` | OpenAI Agents | `as_guardrails()` -- input/output guardrails |
 | `ClaudeAgentSDKAdapter` | Claude Agent SDK | `to_hook_callables()` -- pre/post tool use hooks |
 | `NanobotAdapter` | Nanobot | `wrap_registry()` -- governed ToolRegistry |
+| `GoogleADKAdapter` | Google ADK | `as_plugin()`, `as_agent_callbacks()` |
 
 Adapters never contain enforcement logic. They translate formats. If you need to add a new contract, add it as a contract or hook -- not adapter code.
 
@@ -290,7 +291,7 @@ The split between core and server follows one principle: **evaluation = core lib
 | Session tracking (multi-process) | -- | Yes (ServerBackend) |
 | Atomic contract reload (`reload()`) | Yes | -- |
 | SSE-driven hot-reload | -- | Yes (ServerContractSource + `from_server()`) |
-| 7 framework adapters | Yes | -- |
+| 8 framework adapters | Yes | -- |
 | CLI tools | Yes | -- |
 
 The pipeline that takes a tool call and returns allow/deny/warn runs entirely in-process with zero external dependencies. Anything that requires coordination across processes, networking to external systems, or centralized management is server scope.
@@ -313,7 +314,7 @@ src/edictum/
   session.py               Session (atomic counters via StorageBackend)
   storage.py               StorageBackend protocol, MemoryBackend
   limits.py                OperationLimits (max_attempts, max_tool_calls, per-tool)
-  audit.py                 AuditEvent, AuditAction, AuditSink, RedactionPolicy
+  audit.py                 AuditEvent, AuditAction, AuditSink, RedactionPolicy, CollectingAuditSink
   approval.py              ApprovalBackend protocol, ApprovalRequest/Decision, LocalApprovalBackend
   telemetry.py             GovernanceTelemetry (OTel spans + metrics, no-op fallback)
   builtins.py              deny_sensitive_reads() built-in precondition
@@ -338,6 +339,7 @@ src/edictum/
     openai_agents.py       OpenAI Agents guardrails
     claude_agent_sdk.py    Anthropic Claude Agent SDK hooks
     nanobot.py             Nanobot governed ToolRegistry
+    google_adk.py          Google ADK plugin and agent callback adapter
 
   server/                  pip install edictum[server]
     client.py              EdictumServerClient (async HTTP, auth, retries, env, bundle_name)
