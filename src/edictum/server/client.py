@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 from typing import Any
 
 import httpx
@@ -71,14 +72,18 @@ class EdictumServerClient:
         self.tags = tags
         self.timeout = timeout
         self.max_retries = max_retries
-        self._client: httpx.AsyncClient | None = None
+        self._local = threading.local()
 
     async def __aenter__(self) -> EdictumServerClient:
-        self._client = httpx.AsyncClient(
+        self._local.client = httpx.AsyncClient(
             base_url=self.base_url,
             headers=self._headers(),
             timeout=self.timeout,
         )
+        try:
+            self._local.loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._local.loop = None
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
@@ -92,13 +97,28 @@ class EdictumServerClient:
         }
 
     def _ensure_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers=self._headers(),
-                timeout=self.timeout,
-            )
-        return self._client
+        client = getattr(self._local, "client", None)
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        # Compare loop objects directly — id() can be recycled after GC,
+        # causing a stale client to be reused on a new loop at the same address.
+        if client is not None and getattr(self._local, "loop", None) is current_loop:
+            return client
+        # Stale client from a dead loop — can't aclose() because the
+        # underlying transport's sockets are bound to the closed loop.
+        # GC will finalize the transport and close sockets. This may emit
+        # ResourceWarning in debug mode; acceptable since sync adapters
+        # process tool calls sequentially (bounded number of stale clients).
+        client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=self._headers(),
+            timeout=self.timeout,
+        )
+        self._local.client = client
+        self._local.loop = current_loop
+        return client
 
     async def get(self, path: str, **params: Any) -> dict:
         """Send a GET request with retry logic."""
@@ -162,7 +182,9 @@ class EdictumServerClient:
         raise last_exc  # type: ignore[misc]
 
     async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """Close this thread's HTTP client."""
+        client = getattr(self._local, "client", None)
+        if client is not None:
+            await client.aclose()
+            self._local.client = None
+            self._local.loop = None

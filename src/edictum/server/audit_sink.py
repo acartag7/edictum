@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any
 
 from edictum.server.client import EdictumServerClient
@@ -33,17 +34,34 @@ class ServerAuditSink:
         self._max_buffer_size = max_buffer_size
         self._buffer: list[dict[str, Any]] = []
         self._flush_task: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
+        self._flush_task_loop: asyncio.AbstractEventLoop | None = None
+        self._lock = threading.Lock()
 
     async def emit(self, event: Any) -> None:
         """Convert an AuditEvent to server format and add to batch buffer."""
         payload = self._map_event(event)
-        async with self._lock:
+        with self._lock:
             self._buffer.append(payload)
-            if len(self._buffer) >= self._batch_size:
-                await self._flush_locked()
-            elif self._flush_task is None or self._flush_task.done():
+            needs_flush = len(self._buffer) >= self._batch_size
+
+        if needs_flush:
+            await self._flush()
+        else:
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            # TOCTOU: two threads can both see task_active=False and create
+            # tasks; the second overwrites _flush_task, orphaning the first.
+            # Benign: the orphaned task does one harmless flush then is cancelled
+            # when the worker's asyncio.run() exits. close() always calls flush()
+            # regardless, so no data loss.
+            task_active = (
+                self._flush_task is not None and not self._flush_task.done() and self._flush_task_loop is current_loop
+            )
+            if not task_active:
                 self._flush_task = asyncio.create_task(self._auto_flush())
+                self._flush_task_loop = current_loop
 
     def _map_event(self, event: Any) -> dict[str, Any]:
         """Map an AuditEvent to the server EventPayload format."""
@@ -69,23 +87,37 @@ class ServerAuditSink:
 
     async def flush(self) -> None:
         """Flush all buffered events to the server."""
-        async with self._lock:
-            await self._flush_locked()
+        await self._flush()
 
-    async def _flush_locked(self) -> None:
-        """Flush buffer while lock is held."""
-        if not self._buffer:
-            return
-        events = list(self._buffer)
+    async def _flush(self) -> None:
+        """Thread-safe flush: grab buffer under lock, send outside lock."""
+        with self._lock:
+            if not self._buffer:
+                return
+            events = list(self._buffer)
+            self._buffer.clear()
         try:
             await self._client.post("/api/v1/events", {"events": events})
-            self._buffer.clear()
         except Exception:
             logger.warning("Failed to flush %d audit events, keeping in buffer for retry", len(events))
+            self._restore_events(events)
+        except BaseException:
+            # CancelledError, KeyboardInterrupt, SystemExit — preserve events, re-raise
+            self._restore_events(events)
+            raise
+
+    def _restore_events(self, events: list[dict[str, Any]]) -> None:
+        """Re-add events to the front of the buffer after a failed flush.
+
+        Concurrent flush failures may reorder events; the server uses
+        event timestamps for ordering, not insertion order.
+        """
+        with self._lock:
+            self._buffer = events + self._buffer
             if len(self._buffer) > self._max_buffer_size:
                 dropped = len(self._buffer) - self._max_buffer_size
                 self._buffer = self._buffer[dropped:]
-                logger.warning("Buffer exceeded %d, dropped %d oldest events", self._max_buffer_size, dropped)
+                logger.warning("Buffer exceeded %d, dropped %d oldest", self._max_buffer_size, dropped)
 
     async def _auto_flush(self) -> None:
         """Background task: flush after flush_interval seconds."""
@@ -94,7 +126,11 @@ class ServerAuditSink:
 
     async def close(self) -> None:
         """Flush remaining events and cancel the background flush task."""
-        if self._flush_task is not None and not self._flush_task.done():
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if self._flush_task is not None and not self._flush_task.done() and self._flush_task_loop is current_loop:
             self._flush_task.cancel()
             try:
                 await self._flush_task
