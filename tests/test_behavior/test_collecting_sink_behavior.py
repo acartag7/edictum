@@ -138,6 +138,14 @@ class TestOverflow:
         sink_custom = CollectingAuditSink(max_events=100_000)
         assert sink_custom._max_events == 100_000
 
+    def test_max_events_zero_rejected(self):
+        with pytest.raises(ValueError, match="max_events must be >= 1"):
+            CollectingAuditSink(max_events=0)
+
+    def test_max_events_negative_rejected(self):
+        with pytest.raises(ValueError, match="max_events must be >= 1"):
+            CollectingAuditSink(max_events=-1)
+
 
 class TestDefensiveCopy:
     async def test_events_returns_defensive_copy(self):

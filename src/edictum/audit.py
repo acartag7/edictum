@@ -261,6 +261,8 @@ class CollectingAuditSink:
     """
 
     def __init__(self, max_events: int = 50_000) -> None:
+        if max_events < 1:
+            raise ValueError(f"max_events must be >= 1, got {max_events}")
         self._events: list[AuditEvent] = []
         self._max_events = max_events
         self._total_emitted: int = 0  # monotonic counter, never resets
