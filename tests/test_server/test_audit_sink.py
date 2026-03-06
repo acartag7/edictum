@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -162,3 +163,25 @@ class TestServerAuditSink:
         event = _make_event(environment="staging")
         mapped = sink._map_event(event)
         assert mapped["payload"]["environment"] == "staging"
+
+    @pytest.mark.asyncio
+    async def test_cancellation_preserves_events(self, mock_client):
+        """CancelledError during POST must not lose events from the buffer."""
+
+        async def slow_post(*args, **kwargs):
+            await asyncio.sleep(10)  # will be cancelled
+
+        mock_client.post = slow_post
+        sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
+        await sink.emit(_make_event(call_id="precious-1"))
+        await sink.emit(_make_event(call_id="precious-2"))
+
+        flush_task = asyncio.create_task(sink.flush())
+        await asyncio.sleep(0)  # let flush_task start and enter slow_post
+        flush_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await flush_task
+
+        # Events must be back in the buffer, not lost
+        assert len(sink._buffer) == 2
+        assert sink._buffer[0]["call_id"] == "precious-1"

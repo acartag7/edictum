@@ -60,6 +60,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "security: marks tests as security-related (bypass vectors, boundary checks)",
+    "integration: marks tests requiring real HTTP infrastructure (deselected by default, use --run-integration)",
 ]
 
 [tool.ruff]

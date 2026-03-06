@@ -33,8 +33,8 @@ class TestEdictumServerClient:
         client = EdictumServerClient("https://example.com", "key")
         async with client as c:
             assert c is client
-            assert c._client is not None
-        assert client._client is None
+            assert getattr(c._local, "client", None) is not None
+        assert getattr(client._local, "client", None) is None
 
     @pytest.mark.asyncio
     async def test_auth_header(self):
