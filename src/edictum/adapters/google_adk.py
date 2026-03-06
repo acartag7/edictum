@@ -121,81 +121,82 @@ class GoogleADKAdapter:
         # Increment attempts BEFORE governance
         await self._session.increment_attempts()
 
-        # Start OTel span
+        # Start OTel span — invariant: span is ALWAYS ended.
+        # Either stored in _pending (ended later by _post/_emit_error_audit)
+        # or ended explicitly on deny/error. The outer except handles crashes.
         span = self._guard.telemetry.start_tool_span(envelope)
 
         try:
-            # Run pipeline
             decision = await self._pipeline.pre_execute(envelope, self._session)
-        except Exception:
-            span.end()
-            raise
 
-        # Handle observe mode: convert deny to allow with warning
-        if self._guard.mode == "observe" and decision.action == "deny":
-            await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
-            span.set_attribute("governance.action", "would_deny")
-            span.set_attribute("governance.would_deny_reason", decision.reason)
-            self._pending[call_id] = (envelope, span)
-            return None  # allow through
+            # Handle observe mode: convert deny to allow with warning
+            if self._guard.mode == "observe" and decision.action == "deny":
+                await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
+                span.set_attribute("governance.action", "would_deny")
+                span.set_attribute("governance.would_deny_reason", decision.reason)
+                self._pending[call_id] = (envelope, span)
+                return None  # allow through
 
-        # Handle deny
-        if decision.action == "deny":
+            # Handle deny
+            if decision.action == "deny":
+                await self._emit_audit_pre(envelope, decision)
+                self._guard.telemetry.record_denial(envelope, decision.reason)
+                if self._guard._on_deny:
+                    try:
+                        self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                    except Exception:
+                        logger.exception("on_deny callback raised")
+                span.set_attribute("governance.action", "denied")
+                span.end()
+                return self._deny(decision.reason or "")
+
+            # Handle pending_approval
+            if decision.action == "pending_approval":
+                result = await self._handle_approval(envelope, decision, span)
+                if result is not None:
+                    return result  # span ended inside _handle_approval
+                # Approved -- fall through to allow
+                self._pending[call_id] = (envelope, span)
+                return None
+
+            # Handle per-contract observed denials
+            if decision.observed:
+                for cr in decision.contracts_evaluated:
+                    if cr.get("observed") and not cr.get("passed"):
+                        await self._guard.audit_sink.emit(
+                            AuditEvent(
+                                action=AuditAction.CALL_WOULD_DENY,
+                                run_id=envelope.run_id,
+                                call_id=envelope.call_id,
+                                call_index=envelope.call_index,
+                                tool_name=envelope.tool_name,
+                                tool_args=self._guard.redaction.redact_args(envelope.args),
+                                side_effect=envelope.side_effect.value,
+                                environment=envelope.environment,
+                                principal=asdict(envelope.principal) if envelope.principal else None,
+                                decision_source="precondition",
+                                decision_name=cr["name"],
+                                reason=cr["message"],
+                                mode="observe",
+                                policy_version=self._guard.policy_version,
+                                policy_error=decision.policy_error,
+                            )
+                        )
+
+            # Handle allow
             await self._emit_audit_pre(envelope, decision)
-            self._guard.telemetry.record_denial(envelope, decision.reason)
-            if self._guard._on_deny:
+            if self._guard._on_allow:
                 try:
-                    self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                    self._guard._on_allow(envelope)
                 except Exception:
-                    logger.exception("on_deny callback raised")
-            span.set_attribute("governance.action", "denied")
-            span.end()
-            self._pending.pop(call_id, None)
-            return self._deny(decision.reason or "")
-
-        # Handle pending_approval
-        if decision.action == "pending_approval":
-            result = await self._handle_approval(envelope, decision, span)
-            if result is not None:
-                return result
-            # Approved -- fall through to allow
+                    logger.exception("on_allow callback raised")
+            span.set_attribute("governance.action", "allowed")
             self._pending[call_id] = (envelope, span)
             return None
-
-        # Handle per-contract observed denials
-        if decision.observed:
-            for cr in decision.contracts_evaluated:
-                if cr.get("observed") and not cr.get("passed"):
-                    await self._guard.audit_sink.emit(
-                        AuditEvent(
-                            action=AuditAction.CALL_WOULD_DENY,
-                            run_id=envelope.run_id,
-                            call_id=envelope.call_id,
-                            call_index=envelope.call_index,
-                            tool_name=envelope.tool_name,
-                            tool_args=self._guard.redaction.redact_args(envelope.args),
-                            side_effect=envelope.side_effect.value,
-                            environment=envelope.environment,
-                            principal=asdict(envelope.principal) if envelope.principal else None,
-                            decision_source="precondition",
-                            decision_name=cr["name"],
-                            reason=cr["message"],
-                            mode="observe",
-                            policy_version=self._guard.policy_version,
-                            policy_error=decision.policy_error,
-                        )
-                    )
-
-        # Handle allow
-        await self._emit_audit_pre(envelope, decision)
-        if self._guard._on_allow:
-            try:
-                self._guard._on_allow(envelope)
-            except Exception:
-                logger.exception("on_allow callback raised")
-        span.set_attribute("governance.action", "allowed")
-        self._pending[call_id] = (envelope, span)
-        return None
+        except Exception:
+            if call_id not in self._pending:
+                span.end()
+            raise
 
     async def _post(self, call_id: str, tool_response: Any = None) -> PostCallResult:
         """Run post-execution governance. Returns PostCallResult with findings.
