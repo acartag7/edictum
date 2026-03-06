@@ -84,9 +84,14 @@ class GoogleADKAdapter:
 
         Exposed for direct testing without framework imports.
         """
-        # Resolve principal -- auto-resolve from tool_context when no explicit principal/resolver
-        principal = self._resolve_principal(tool_name, tool_input)
-        if principal is None and tool_context is not None:
+        # Resolve principal -- auto-resolve from tool_context only when
+        # no explicit principal AND no resolver is configured.
+        # If a resolver is set, it owns the decision — even if it returns None.
+        if self._principal_resolver is not None:
+            principal = self._principal_resolver(tool_name, tool_input)
+        elif self._principal is not None:
+            principal = self._principal
+        elif tool_context is not None:
             user_id = getattr(tool_context, "user_id", None)
             agent_name = getattr(tool_context, "agent_name", None)
             if user_id or agent_name:
@@ -94,6 +99,10 @@ class GoogleADKAdapter:
                     user_id=user_id,
                     claims={"adk_agent_name": agent_name} if agent_name else {},
                 )
+            else:
+                principal = None
+        else:
+            principal = None
 
         # Extract ADK-specific metadata
         metadata: dict[str, Any] = {}
