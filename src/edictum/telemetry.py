@@ -24,7 +24,7 @@ class _NoOpSpan:
     def set_attribute(self, key, value):
         pass
 
-    def set_status(self, status):
+    def set_status(self, status, description=None):
         pass
 
     def add_event(self, name, attributes=None):
@@ -83,3 +83,19 @@ class GovernanceTelemetry:
     def record_allowed(self, envelope: Any) -> None:
         if _HAS_OTEL and self._meter:
             self._allowed_counter.add(1, {"tool.name": envelope.tool_name})
+
+    def set_span_error(self, span: Any, reason: str) -> None:
+        """Set span status to ERROR. No-op if OTel not available."""
+        if not _HAS_OTEL:
+            return
+        from opentelemetry.trace import StatusCode
+
+        span.set_status(StatusCode.ERROR, reason)
+
+    def set_span_ok(self, span: Any) -> None:
+        """Set span status to OK. No-op if OTel not available."""
+        if not _HAS_OTEL:
+            return
+        from opentelemetry.trace import StatusCode
+
+        span.set_status(StatusCode.OK)

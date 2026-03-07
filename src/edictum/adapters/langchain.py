@@ -219,64 +219,70 @@ class LangChainAdapter:
 
         span = self._guard.telemetry.start_tool_span(envelope)
 
-        decision = await self._pipeline.pre_execute(envelope, self._session)
+        try:
+            decision = await self._pipeline.pre_execute(envelope, self._session)
 
-        # Observe mode: convert deny to allow with WOULD_DENY audit
-        if self._guard.mode == "observe" and decision.action == "deny":
-            await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
-            span.set_attribute("governance.action", "would_deny")
-            span.set_attribute("governance.would_deny_reason", decision.reason)
-            self._pending[tool_call_id] = (envelope, span)
-            return None  # allow through
+            # Observe mode: convert deny to allow with WOULD_DENY audit
+            if self._guard.mode == "observe" and decision.action == "deny":
+                await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
+                span.set_attribute("governance.action", "would_deny")
+                span.set_attribute("governance.would_deny_reason", decision.reason)
+                self._pending[tool_call_id] = (envelope, span)
+                return None  # allow through
 
-        # Deny
-        if decision.action == "deny":
-            await self._emit_audit_pre(envelope, decision)
-            self._guard.telemetry.record_denial(envelope, decision.reason)
-            if self._guard._on_deny:
-                try:
-                    self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
-                except Exception:
-                    logger.exception("on_deny callback raised")
-            span.set_attribute("governance.action", "denied")
-            span.end()
-            self._pending.pop(tool_call_id, None)
-            return self._deny(decision.reason, tool_call_id)
+            # Deny
+            if decision.action == "deny":
+                await self._emit_audit_pre(envelope, decision)
+                self._guard.telemetry.record_denial(envelope, decision.reason)
+                if self._guard._on_deny:
+                    try:
+                        self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                    except Exception:
+                        logger.exception("on_deny callback raised")
+                span.set_attribute("governance.action", "denied")
+                self._guard.telemetry.set_span_error(span, decision.reason or "denied")
+                span.end()
+                self._pending.pop(tool_call_id, None)
+                return self._deny(decision.reason, tool_call_id)
 
-        # Handle per-contract observed denials
-        if decision.observed:
-            for cr in decision.contracts_evaluated:
-                if cr.get("observed") and not cr.get("passed"):
-                    await self._guard.audit_sink.emit(
-                        AuditEvent(
-                            action=AuditAction.CALL_WOULD_DENY,
-                            run_id=envelope.run_id,
-                            call_id=envelope.call_id,
-                            call_index=envelope.call_index,
-                            tool_name=envelope.tool_name,
-                            tool_args=self._guard.redaction.redact_args(envelope.args),
-                            side_effect=envelope.side_effect.value,
-                            environment=envelope.environment,
-                            principal=asdict(envelope.principal) if envelope.principal else None,
-                            decision_source="precondition",
-                            decision_name=cr["name"],
-                            reason=cr["message"],
-                            mode="observe",
-                            policy_version=self._guard.policy_version,
-                            policy_error=decision.policy_error,
+            # Handle per-contract observed denials
+            if decision.observed:
+                for cr in decision.contracts_evaluated:
+                    if cr.get("observed") and not cr.get("passed"):
+                        await self._guard.audit_sink.emit(
+                            AuditEvent(
+                                action=AuditAction.CALL_WOULD_DENY,
+                                run_id=envelope.run_id,
+                                call_id=envelope.call_id,
+                                call_index=envelope.call_index,
+                                tool_name=envelope.tool_name,
+                                tool_args=self._guard.redaction.redact_args(envelope.args),
+                                side_effect=envelope.side_effect.value,
+                                environment=envelope.environment,
+                                principal=asdict(envelope.principal) if envelope.principal else None,
+                                decision_source="precondition",
+                                decision_name=cr["name"],
+                                reason=cr["message"],
+                                mode="observe",
+                                policy_version=self._guard.policy_version,
+                                policy_error=decision.policy_error,
+                            )
                         )
-                    )
 
-        # Allow
-        await self._emit_audit_pre(envelope, decision)
-        if self._guard._on_allow:
-            try:
-                self._guard._on_allow(envelope)
-            except Exception:
-                logger.exception("on_allow callback raised")
-        span.set_attribute("governance.action", "allowed")
-        self._pending[tool_call_id] = (envelope, span)
-        return None
+            # Allow
+            await self._emit_audit_pre(envelope, decision)
+            if self._guard._on_allow:
+                try:
+                    self._guard._on_allow(envelope)
+                except Exception:
+                    logger.exception("on_allow callback raised")
+            span.set_attribute("governance.action", "allowed")
+            self._pending[tool_call_id] = (envelope, span)
+            return None
+        except Exception:
+            if tool_call_id not in self._pending:
+                span.end()
+            raise
 
     async def _post_tool_call(self, request: Any, result: Any) -> PostCallResult:
         """Run post-execution governance. Returns PostCallResult with findings."""
@@ -287,40 +293,49 @@ class LangChainAdapter:
 
         envelope, span = pending
 
-        tool_success = self._check_tool_success(envelope.tool_name, result)
+        try:
+            tool_success = self._check_tool_success(envelope.tool_name, result)
 
-        post_decision = await self._pipeline.post_execute(envelope, result, tool_success)
+            post_decision = await self._pipeline.post_execute(envelope, result, tool_success)
 
-        effective_response = post_decision.redacted_response if post_decision.redacted_response is not None else result
-
-        await self._session.record_execution(envelope.tool_name, success=tool_success)
-
-        action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
-        await self._guard.audit_sink.emit(
-            AuditEvent(
-                action=action,
-                run_id=envelope.run_id,
-                call_id=envelope.call_id,
-                call_index=envelope.call_index,
-                tool_name=envelope.tool_name,
-                tool_args=self._guard.redaction.redact_args(envelope.args),
-                side_effect=envelope.side_effect.value,
-                environment=envelope.environment,
-                principal=asdict(envelope.principal) if envelope.principal else None,
-                tool_success=tool_success,
-                postconditions_passed=post_decision.postconditions_passed,
-                contracts_evaluated=post_decision.contracts_evaluated,
-                session_attempt_count=await self._session.attempt_count(),
-                session_execution_count=await self._session.execution_count(),
-                mode=self._guard.mode,
-                policy_version=self._guard.policy_version,
-                policy_error=post_decision.policy_error,
+            effective_response = (
+                post_decision.redacted_response if post_decision.redacted_response is not None else result
             )
-        )
 
-        span.set_attribute("governance.tool_success", tool_success)
-        span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
-        span.end()
+            await self._session.record_execution(envelope.tool_name, success=tool_success)
+
+            action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
+            await self._guard.audit_sink.emit(
+                AuditEvent(
+                    action=action,
+                    run_id=envelope.run_id,
+                    call_id=envelope.call_id,
+                    call_index=envelope.call_index,
+                    tool_name=envelope.tool_name,
+                    tool_args=self._guard.redaction.redact_args(envelope.args),
+                    side_effect=envelope.side_effect.value,
+                    environment=envelope.environment,
+                    principal=asdict(envelope.principal) if envelope.principal else None,
+                    tool_success=tool_success,
+                    postconditions_passed=post_decision.postconditions_passed,
+                    contracts_evaluated=post_decision.contracts_evaluated,
+                    session_attempt_count=await self._session.attempt_count(),
+                    session_execution_count=await self._session.execution_count(),
+                    mode=self._guard.mode,
+                    policy_version=self._guard.policy_version,
+                    policy_error=post_decision.policy_error,
+                )
+            )
+
+            span.set_attribute("governance.tool_success", tool_success)
+            span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
+
+            if tool_success:
+                self._guard.telemetry.set_span_ok(span)
+            else:
+                self._guard.telemetry.set_span_error(span, "tool execution failed")
+        finally:
+            span.end()
 
         findings = build_findings(post_decision)
         return PostCallResult(
@@ -365,13 +380,15 @@ class LangChainAdapter:
         # Check for LangChain ToolMessage with error content
         content = getattr(result, "content", None)
         if isinstance(content, str):
-            if content.startswith("Error:") or content.startswith("fatal:"):
+            content_lower = content[:7].lower()
+            if content_lower.startswith("error:") or content_lower.startswith("fatal:"):
                 return False
         if isinstance(result, dict):
             if result.get("is_error"):
                 return False
         if isinstance(result, str):
-            if result.startswith("Error:") or result.startswith("fatal:"):
+            lower = result[:7].lower()
+            if lower.startswith("error:") or lower.startswith("fatal:"):
                 return False
         return True
 

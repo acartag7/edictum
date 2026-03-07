@@ -154,6 +154,7 @@ class GoogleADKAdapter:
                     except Exception:
                         logger.exception("on_deny callback raised")
                 span.set_attribute("governance.action", "denied")
+                self._guard.telemetry.set_span_error(span, decision.reason or "denied")
                 span.end()
                 return self._deny(decision.reason or "")
 
@@ -257,6 +258,11 @@ class GoogleADKAdapter:
             # End span
             span.set_attribute("governance.tool_success", tool_success)
             span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
+
+            if tool_success:
+                self._guard.telemetry.set_span_ok(span)
+            else:
+                self._guard.telemetry.set_span_error(span, "tool execution failed")
         finally:
             span.end()
 
@@ -294,7 +300,8 @@ class GoogleADKAdapter:
             if tool_response.get("error"):
                 return False
         if isinstance(tool_response, str):
-            if tool_response.startswith("Error:") or tool_response.startswith("fatal:"):
+            lower = tool_response[:7].lower()
+            if lower.startswith("error:") or lower.startswith("fatal:"):
                 return False
         return True
 
@@ -355,6 +362,7 @@ class GoogleADKAdapter:
             )
             span.set_attribute("governance.tool_success", False)
             span.set_attribute("governance.error", str(error))
+            self._guard.telemetry.set_span_error(span, str(error))
         finally:
             span.end()
 
@@ -370,6 +378,7 @@ class GoogleADKAdapter:
                 except Exception:
                     logger.exception("on_deny callback raised")
             span.set_attribute("governance.action", "denied")
+            self._guard.telemetry.set_span_error(span, reason)
             span.end()
             return self._deny(reason)
 
@@ -421,6 +430,7 @@ class GoogleADKAdapter:
             except Exception:
                 logger.exception("on_deny callback raised")
         span.set_attribute("governance.action", "denied")
+        self._guard.telemetry.set_span_error(span, reason)
         span.end()
         return self._deny(f"Approval denied: {reason}")
 
