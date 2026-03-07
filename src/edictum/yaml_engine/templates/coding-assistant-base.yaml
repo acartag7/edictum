@@ -1,0 +1,155 @@
+apiVersion: edictum/v1
+kind: ContractBundle
+
+metadata:
+  name: coding-assistant-base
+  description: "Base governance contracts for coding assistants"
+
+defaults:
+  mode: enforce
+
+tools:
+  Bash:
+    side_effect: irreversible
+  Read:
+    side_effect: read
+  Write:
+    side_effect: irreversible
+  Edit:
+    side_effect: irreversible
+  Glob:
+    side_effect: read
+  Grep:
+    side_effect: read
+  WebFetch:
+    side_effect: read
+  WebSearch:
+    side_effect: read
+  NotebookEdit:
+    side_effect: irreversible
+  Task:
+    side_effect: irreversible
+  "mcp_*":
+    side_effect: irreversible
+
+contracts:
+  # -- Secret Protection -------------------------------------------------------
+  # Covers tools with a file_path argument (Read, Write, Edit).
+  # Bash/shell access to secrets is covered by deny-env-dump-commands below.
+  - id: deny-secret-file-reads
+    type: pre
+    tool: '{Read,Write,Edit}'
+    when:
+      args.file_path:
+        matches_any:
+          - '\.env$'
+          - '\.env\.\w+$'
+          - 'credentials\.json$'
+          - '\.pem$'
+          - '\.key$'
+          - '\.secret$'
+          - '\.ssh/'
+          - '\.aws/'
+          - '\.gcloud/'
+          - '\.docker/config\.json$'
+          - '\.npmrc$'
+          - '\.pypirc$'
+    then:
+      effect: deny
+      message: "Denied: this file may contain secrets"
+      tags: [security, secrets]
+
+  - id: deny-env-dump-commands
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - '^(printenv|env|set)(\s|$)'
+          - 'cat\s+\.env'
+          - 'echo\s+\$[A-Z_]+'
+          - 'export\s+-p'
+    then:
+      effect: deny
+      message: "Denied: environment variable access is restricted"
+      tags: [security, secrets]
+
+  # -- Destructive Command Protection ------------------------------------------
+  - id: deny-destructive-commands
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - 'rm\s+-rf\s+/'
+          - 'rm\s+-rf\s+~'
+          - 'rm\s+-rf\s+\*'
+          - '^mkfs\b'
+          - '^dd\s+if='
+          - 'chmod\s+777'
+          - ':(){.*};:'
+    then:
+      effect: deny
+      message: "Denied: destructive command"
+      tags: [security, destructive]
+
+  # -- Git Safety ---------------------------------------------------------------
+  - id: deny-dangerous-git
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - 'git\s+push\s+.*--force'
+          - 'git\s+push\s+-f\b'
+          - 'git\s+reset\s+--hard'
+          - 'git\s+clean\s+-f'
+          - 'git\s+checkout\s+\.'
+          - 'git\s+branch\s+-D'
+    then:
+      effect: deny
+      message: "Denied: destructive git operation"
+      tags: [git, destructive]
+
+  # -- Scope Enforcement --------------------------------------------------------
+  # NOTE: Scope enforcement is handled programmatically in gate/check.py,
+  # NOT via YAML contracts. The _check_scope() function compares
+  # os.path.realpath(file_path) against the working directory from stdin.
+  # This runs AFTER standard contract evaluation as an additional gate-level
+  # check. It cannot be expressed in YAML because cwd is a runtime value
+  # from the assistant's stdin, not a contract field.
+
+  - id: deny-system-commands
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - '^sudo\b'
+          - 'systemctl\b'
+          - 'launchctl\b'
+          - '/etc/'
+          - '/usr/local/bin/'
+    then:
+      effect: deny
+      message: "Denied: system modification"
+      tags: [security, system]
+
+  # -- Package Install Protection -----------------------------------------------
+  - id: deny-package-installs
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - 'npm\s+install\b'
+          - 'pnpm\s+(add|install)\b'
+          - 'yarn\s+add\b'
+          - 'pip\s+install\b'
+          - 'brew\s+install\b'
+          - 'cargo\s+install\b'
+          - 'go\s+install\b'
+    then:
+      effect: deny
+      message: "Denied: package installation"
+      tags: [audit, packages]
