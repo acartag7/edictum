@@ -1,0 +1,209 @@
+"""Behavior tests for gate check flow."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from edictum.gate.check import _check_scope, resolve_category, run_check
+from edictum.gate.config import AuditConfig, GateConfig, RedactionConfig
+
+# Minimal contract YAML for testing
+_MINIMAL_CONTRACTS = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: test
+  description: test
+defaults:
+  mode: enforce
+contracts:
+  - id: deny-env-dump
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - 'cat\\s+\\.env'
+    then:
+      effect: deny
+      message: "Denied: environment variable access"
+  - id: deny-destructive
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - 'rm\\s+-rf\\s+/'
+    then:
+      effect: deny
+      message: "Denied: destructive command"
+"""
+
+
+def _make_config(tmp_path: Path) -> GateConfig:
+    """Create a GateConfig pointing to a temp contract file."""
+    contract_path = tmp_path / "contracts.yaml"
+    contract_path.write_text(_MINIMAL_CONTRACTS)
+    return GateConfig(
+        contracts=(str(contract_path),),
+        audit=AuditConfig(enabled=False),
+        redaction=RedactionConfig(enabled=False),
+        fail_open=False,
+    )
+
+
+def _stdin(tool_name: str, tool_input: dict, cwd: str | None = None) -> str:
+    d: dict = {"tool_name": tool_name, "tool_input": tool_input}
+    if cwd:
+        d["cwd"] = cwd
+    return json.dumps(d)
+
+
+class TestRunCheck:
+    def test_allow_safe_command(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check(_stdin("Bash", {"command": "ls"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_deny_secret_read(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check(_stdin("Bash", {"command": "cat .env"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-env-dump"
+
+    def test_deny_destructive_command(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check(_stdin("Bash", {"command": "rm -rf /"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_fail_closed_on_error(self, tmp_path: Path) -> None:
+        config = GateConfig(
+            contracts=(str(tmp_path / "nonexistent.yaml"),),
+            audit=AuditConfig(enabled=False),
+            fail_open=False,
+        )
+        stdout, code = run_check(_stdin("Bash", {"command": "ls"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_fail_open_on_error(self, tmp_path: Path) -> None:
+        config = GateConfig(
+            contracts=(str(tmp_path / "nonexistent.yaml"),),
+            audit=AuditConfig(enabled=False),
+            fail_open=True,
+        )
+        stdout, code = run_check(_stdin("Bash", {"command": "ls"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_invalid_json_stdin(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check("not json", "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_empty_stdin(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check("", "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_raw_output_format(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdout, code = run_check(_stdin("Bash", {"command": "cat .env"}), "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert "verdict" in result
+        assert "contracts_evaluated" in result
+
+    def test_scope_deny_write_outside_cwd(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        stdin = _stdin("Write", {"file_path": "/etc/passwd"}, cwd=str(tmp_path))
+        stdout, code = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "gate-scope-enforcement"
+
+    def test_scope_allow_write_inside_cwd(self, tmp_path: Path) -> None:
+        config = _make_config(tmp_path)
+        target = tmp_path / "src" / "foo.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        stdin = _stdin("Write", {"file_path": str(target)}, cwd=str(tmp_path))
+        stdout, code = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_scope_symlink_escape(self, tmp_path: Path) -> None:
+        # Create a symlink inside cwd that points outside
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        target_file = outside / "secret.txt"
+        target_file.write_text("secret")
+
+        project = tmp_path / "project"
+        project.mkdir()
+        symlink = project / "link.txt"
+        symlink.symlink_to(target_file)
+
+        config = _make_config(tmp_path)
+        stdin = _stdin("Write", {"file_path": str(symlink)}, cwd=str(project))
+        stdout, code = run_check(stdin, "raw", config, str(project))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+
+class TestCategoryMapping:
+    def test_bash_category(self) -> None:
+        assert resolve_category("Bash") == "shell"
+
+    def test_read_category(self) -> None:
+        assert resolve_category("Read") == "file.read"
+
+    def test_write_category(self) -> None:
+        assert resolve_category("Write") == "file.write"
+
+    def test_edit_category(self) -> None:
+        assert resolve_category("Edit") == "file.edit"
+
+    def test_glob_category(self) -> None:
+        assert resolve_category("Glob") == "file.search"
+
+    def test_grep_category(self) -> None:
+        assert resolve_category("Grep") == "file.search"
+
+    def test_webfetch_category(self) -> None:
+        assert resolve_category("WebFetch") == "browser"
+
+    def test_mcp_prefix(self) -> None:
+        assert resolve_category("mcp__chrome__click") == "mcp"
+
+    def test_unknown_tool(self) -> None:
+        assert resolve_category("SomeNewTool") == "unknown"
+
+    def test_notebook_category(self) -> None:
+        assert resolve_category("NotebookEdit") == "notebook"
+
+    def test_task_category(self) -> None:
+        assert resolve_category("Task") == "task"
+
+
+class TestCheckScope:
+    def test_within_cwd(self, tmp_path: Path) -> None:
+        target = tmp_path / "file.py"
+        ok, reason = _check_scope(str(target), str(tmp_path))
+        assert ok
+
+    def test_outside_cwd(self, tmp_path: Path) -> None:
+        ok, reason = _check_scope("/etc/passwd", str(tmp_path))
+        assert not ok
+
+    def test_none_path(self, tmp_path: Path) -> None:
+        ok, reason = _check_scope(None, str(tmp_path))
+        assert ok
+
+    def test_cwd_itself(self, tmp_path: Path) -> None:
+        ok, reason = _check_scope(str(tmp_path), str(tmp_path))
+        assert ok
