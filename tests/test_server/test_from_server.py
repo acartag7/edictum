@@ -283,7 +283,7 @@ class TestFromServer:
             mock_src_cls.return_value = source
 
             # Patch timeout to 0.1s so the test doesn't wait 30 real seconds
-            with patch("edictum._ASSIGNMENT_TIMEOUT_SECS", 0.1):
+            with patch("edictum._server_factory._ASSIGNMENT_TIMEOUT_SECS", 0.1):
                 with pytest.raises(EdictumConfigError, match="did not push a bundle assignment"):
                     await Edictum.from_server(
                         "https://example.com",

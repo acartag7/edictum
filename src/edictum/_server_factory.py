@@ -1,0 +1,265 @@
+"""Server factory and SSE lifecycle for Edictum.from_server()."""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import logging
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+from edictum._exceptions import EdictumConfigError
+from edictum.approval import ApprovalBackend
+from edictum.audit import AuditSink
+from edictum.envelope import Principal
+from edictum.storage import StorageBackend
+
+if TYPE_CHECKING:
+    from edictum._guard import Edictum
+    from edictum.envelope import ToolEnvelope
+
+logger = logging.getLogger(__name__)
+
+# How long from_server() waits for the server to push a bundle in
+# server-assigned mode (bundle_name=None) before raising EdictumConfigError.
+_ASSIGNMENT_TIMEOUT_SECS = 30.0
+
+
+async def _from_server(
+    cls: type[Edictum],
+    url: str,
+    api_key: str,
+    agent_id: str,
+    *,
+    env: str | None = None,
+    bundle_name: str | None = None,
+    tags: dict[str, str] | None = None,
+    audit_sink: AuditSink | None = None,
+    approval_backend: ApprovalBackend | None = None,
+    storage_backend: StorageBackend | None = None,
+    mode: str = "enforce",
+    on_deny: Callable[[ToolEnvelope, str, str | None], None] | None = None,
+    on_allow: Callable[[ToolEnvelope], None] | None = None,
+    success_check: Callable[[str, Any], bool] | None = None,
+    principal: Principal | None = None,
+    principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
+    auto_watch: bool = True,
+) -> Edictum:
+    """Create an Edictum instance wired to a remote edictum-server.
+
+    Auto-configures all server components (audit, approval, session,
+    contract source) from a single URL and API key.
+
+    Args:
+        url: Base URL of the edictum-server.
+        api_key: API key for authentication.
+        agent_id: Unique identifier for this agent instance.
+        env: Environment name (defaults to ``"production"``).
+        bundle_name: Which bundle lineage this agent tracks. When
+            ``None``, the server assigns a bundle via SSE.
+        tags: Key-value metadata describing this agent.
+        audit_sink: Override the default ``ServerAuditSink``.
+        approval_backend: Override the default ``ServerApprovalBackend``.
+        storage_backend: Override the default ``ServerBackend``.
+        mode: Enforcement mode (``"enforce"`` or ``"observe"``).
+        on_deny: Callback invoked when a tool call is denied.
+        on_allow: Callback invoked when a tool call is allowed.
+        success_check: Callable ``(tool_name, result) -> bool``.
+        principal: Static principal for all tool calls.
+        principal_resolver: Per-call dynamic principal resolution.
+        auto_watch: If True (default), start an SSE background task.
+
+    Returns:
+        Configured Edictum instance connected to the server.
+
+    Raises:
+        EdictumConfigError: If the server is unreachable or returns
+            invalid data, or if assignment times out.
+        ValueError: If ``bundle_name`` is None and ``auto_watch`` is False.
+    """
+    from edictum.server.approval_backend import ServerApprovalBackend
+    from edictum.server.audit_sink import ServerAuditSink
+    from edictum.server.backend import ServerBackend
+    from edictum.server.client import EdictumServerClient
+    from edictum.server.contract_source import ServerContractSource
+    from edictum.yaml_engine.compiler import compile_contracts
+    from edictum.yaml_engine.loader import load_bundle_string
+
+    if bundle_name is None and not auto_watch:
+        raise ValueError(
+            "auto_watch must be True when bundle_name is None. "
+            "Server-assigned mode requires the SSE connection to receive the bundle."
+        )
+
+    environment = env or "production"
+
+    client = EdictumServerClient(
+        url,
+        api_key,
+        agent_id=agent_id,
+        env=environment,
+        bundle_name=bundle_name,
+        tags=tags,
+    )
+
+    effective_sink = audit_sink or ServerAuditSink(client)
+    effective_approval = approval_backend or ServerApprovalBackend(client)
+    effective_backend = storage_backend or ServerBackend(client)
+
+    if bundle_name is not None:
+        try:
+            response = await client.get(
+                f"/api/v1/bundles/{bundle_name}/current",
+                env=client.env,
+            )
+            yaml_b64 = response.get("yaml_bytes", "")
+            bundle_yaml = base64.b64decode(yaml_b64) if yaml_b64 else b""
+        except Exception as exc:
+            await client.close()
+            raise EdictumConfigError(f"Failed to fetch contracts from server: {exc}") from exc
+
+        try:
+            bundle_data, bundle_hash = load_bundle_string(bundle_yaml)
+            compiled = compile_contracts(bundle_data)
+        except Exception as exc:
+            await client.close()
+            raise EdictumConfigError(f"Failed to parse server contracts: {exc}") from exc
+
+        policy_version = str(bundle_hash)
+        effective_mode = mode or compiled.default_mode
+        all_contracts = (
+            compiled.preconditions + compiled.postconditions + compiled.session_contracts + compiled.sandbox_contracts
+        )
+        yaml_tools = compiled.tools
+
+        guard = cls(
+            environment=environment,
+            mode=effective_mode,
+            limits=compiled.limits,
+            tools=yaml_tools if yaml_tools else None,
+            contracts=all_contracts,
+            audit_sink=effective_sink,
+            backend=effective_backend,
+            policy_version=policy_version,
+            on_deny=on_deny,
+            on_allow=on_allow,
+            success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
+            approval_backend=effective_approval,
+        )
+    else:
+        guard = cls(
+            environment=environment,
+            mode=mode,
+            limits=None,
+            tools=None,
+            contracts=[],
+            audit_sink=effective_sink,
+            backend=effective_backend,
+            policy_version=None,
+            on_deny=on_deny,
+            on_allow=on_allow,
+            success_check=success_check,
+            principal=principal,
+            principal_resolver=principal_resolver,
+            approval_backend=effective_approval,
+        )
+        guard._assignment_ready = asyncio.Event()
+
+    guard._server_client = client
+    guard._contract_source = ServerContractSource(client)
+    guard._sse_task: asyncio.Task | None = None
+
+    if auto_watch:
+        await _start_sse_watcher(guard)
+
+    if bundle_name is None:
+        try:
+            await asyncio.wait_for(
+                guard._assignment_ready.wait(),
+                timeout=_ASSIGNMENT_TIMEOUT_SECS,
+            )
+        except TimeoutError:
+            await _close(guard)
+            raise EdictumConfigError(
+                f"Server did not push a bundle assignment within "
+                f"{_ASSIGNMENT_TIMEOUT_SECS} seconds. Check that the server "
+                f"has an assignment rule matching this agent's tags."
+            ) from None
+
+    return guard
+
+
+async def _start_sse_watcher(self: Edictum) -> None:
+    """Start a background task that watches for SSE contract updates."""
+    source = getattr(self, "_contract_source", None)
+    if source is None:
+        return
+
+    await source.connect()
+
+    async def _watch_loop() -> None:
+        try:
+            async for bundle in source.watch():
+                try:
+                    if bundle.get("_assignment_changed"):
+                        new_name = bundle["bundle_name"]
+                        response = await self._server_client.get(
+                            f"/api/v1/bundles/{new_name}/current",
+                            env=self._server_client.env,
+                        )
+                        yaml_b64 = response.get("yaml_bytes", "")
+                        yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                    else:
+                        yaml_b64 = bundle.get("yaml_bytes", "")
+                        yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                    await self.reload(yaml_data)
+                    if bundle.get("_assignment_changed"):
+                        self._server_client.bundle_name = bundle["bundle_name"]
+                    ready_event = getattr(self, "_assignment_ready", None)
+                    if ready_event is not None and not ready_event.is_set():
+                        ready_event.set()
+                except Exception:
+                    logger.warning("Failed to reload contracts from SSE update, keeping existing contracts")
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning("SSE watcher loop exited unexpectedly")
+
+    self._sse_task = asyncio.create_task(_watch_loop())
+
+
+async def _stop_sse_watcher(self: Edictum) -> None:
+    """Stop the SSE background watcher and close server resources."""
+    task = getattr(self, "_sse_task", None)
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        self._sse_task = None
+
+    source = getattr(self, "_contract_source", None)
+    if source is not None:
+        await source.close()
+
+    client = getattr(self, "_server_client", None)
+    if client is not None:
+        await client.close()
+
+
+async def _close(self: Edictum) -> None:
+    """Shut down server resources (SSE watcher, HTTP client).
+
+    Safe to call on non-server instances (no-op).
+    """
+    await _stop_sse_watcher(self)
+
+    # Flush audit sink if it supports close()
+    sink_close = getattr(self.audit_sink, "close", None)
+    if sink_close is not None:
+        result = sink_close()
+        if asyncio.iscoroutine(result):
+            await result
