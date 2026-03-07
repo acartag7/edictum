@@ -94,113 +94,129 @@ class GovernedToolRegistry:
 
         span = self._guard.telemetry.start_tool_span(envelope)
 
-        decision = await self._pipeline.pre_execute(envelope, self._session)
+        try:
+            decision = await self._pipeline.pre_execute(envelope, self._session)
 
-        # Observe mode: convert deny to allow with CALL_WOULD_DENY audit
-        if self._guard.mode == "observe" and decision.action == "deny":
-            await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
-            span.set_attribute("governance.action", "would_deny")
-            span.set_attribute("governance.would_deny_reason", decision.reason)
-            # Fall through to execute
-        elif decision.action == "deny":
-            # Enforce mode: return denial string
-            await self._emit_audit_pre(envelope, decision)
-            self._guard.telemetry.record_denial(envelope, decision.reason)
-            if self._guard._on_deny:
-                try:
-                    self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
-                except Exception:
-                    logger.exception("on_deny callback raised")
-            span.set_attribute("governance.action", "denied")
-            span.end()
-            return f"[DENIED] {decision.reason}"
-        elif decision.action == "pending_approval":
-            # Approval flow
-            result = await self._handle_approval(envelope, decision, span)
-            if result is not None:
-                return result
-            # Approved — fall through to execute
-        else:
-            # Handle per-contract observed denials
-            if decision.observed:
-                for cr in decision.contracts_evaluated:
-                    if cr.get("observed") and not cr.get("passed"):
-                        await self._guard.audit_sink.emit(
-                            AuditEvent(
-                                action=AuditAction.CALL_WOULD_DENY,
-                                run_id=envelope.run_id,
-                                call_id=envelope.call_id,
-                                call_index=envelope.call_index,
-                                tool_name=envelope.tool_name,
-                                tool_args=self._guard.redaction.redact_args(envelope.args),
-                                side_effect=envelope.side_effect.value,
-                                environment=envelope.environment,
-                                principal=asdict(envelope.principal) if envelope.principal else None,
-                                decision_source="precondition",
-                                decision_name=cr["name"],
-                                reason=cr["message"],
-                                mode="observe",
-                                policy_version=self._guard.policy_version,
-                                policy_error=decision.policy_error,
+            # Observe mode: convert deny to allow with CALL_WOULD_DENY audit
+            if self._guard.mode == "observe" and decision.action == "deny":
+                await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_WOULD_DENY)
+                span.set_attribute("governance.action", "would_deny")
+                span.set_attribute("governance.would_deny_reason", decision.reason)
+                # Fall through to execute
+            elif decision.action == "deny":
+                # Enforce mode: return denial string
+                await self._emit_audit_pre(envelope, decision)
+                self._guard.telemetry.record_denial(envelope, decision.reason)
+                if self._guard._on_deny:
+                    try:
+                        self._guard._on_deny(envelope, decision.reason or "", decision.decision_name)
+                    except Exception:
+                        logger.exception("on_deny callback raised")
+                span.set_attribute("governance.action", "denied")
+                self._guard.telemetry.set_span_error(span, decision.reason or "denied")
+                return f"[DENIED] {decision.reason}"
+            elif decision.action == "pending_approval":
+                # Approval flow
+                result = await self._handle_approval(envelope, decision, span)
+                if result is not None:
+                    return result
+                # Approved — fall through to execute
+            else:
+                # Handle per-contract observed denials
+                if decision.observed:
+                    for cr in decision.contracts_evaluated:
+                        if cr.get("observed") and not cr.get("passed"):
+                            await self._guard.audit_sink.emit(
+                                AuditEvent(
+                                    action=AuditAction.CALL_WOULD_DENY,
+                                    run_id=envelope.run_id,
+                                    call_id=envelope.call_id,
+                                    call_index=envelope.call_index,
+                                    tool_name=envelope.tool_name,
+                                    tool_args=self._guard.redaction.redact_args(envelope.args),
+                                    side_effect=envelope.side_effect.value,
+                                    environment=envelope.environment,
+                                    principal=asdict(envelope.principal) if envelope.principal else None,
+                                    decision_source="precondition",
+                                    decision_name=cr["name"],
+                                    reason=cr["message"],
+                                    mode="observe",
+                                    policy_version=self._guard.policy_version,
+                                    policy_error=decision.policy_error,
+                                )
                             )
-                        )
 
-            # Allow
-            await self._emit_audit_pre(envelope, decision)
-            if self._guard._on_allow:
-                try:
-                    self._guard._on_allow(envelope)
-                except Exception:
-                    logger.exception("on_allow callback raised")
-            span.set_attribute("governance.action", "allowed")
+                # Allow
+                await self._emit_audit_pre(envelope, decision)
+                if self._guard._on_allow:
+                    try:
+                        self._guard._on_allow(envelope)
+                    except Exception:
+                        logger.exception("on_allow callback raised")
+                span.set_attribute("governance.action", "allowed")
 
-        # Execute the tool via inner registry
-        result = await self._inner.execute(name, args)
+            # Execute the tool via inner registry
+            result = await self._inner.execute(name, args)
 
-        # Post-execution governance
-        tool_success = self._check_tool_success(name, result)
-        post_decision = await self._pipeline.post_execute(envelope, result, tool_success)
+            # Post-execution governance
+            tool_success = self._check_tool_success(name, result)
+            post_decision = await self._pipeline.post_execute(envelope, result, tool_success)
 
-        effective_response = post_decision.redacted_response if post_decision.redacted_response is not None else result
-
-        await self._session.record_execution(name, success=tool_success)
-
-        action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
-        await self._guard.audit_sink.emit(
-            AuditEvent(
-                action=action,
-                run_id=envelope.run_id,
-                call_id=envelope.call_id,
-                call_index=envelope.call_index,
-                tool_name=envelope.tool_name,
-                tool_args=self._guard.redaction.redact_args(envelope.args),
-                side_effect=envelope.side_effect.value,
-                environment=envelope.environment,
-                principal=asdict(envelope.principal) if envelope.principal else None,
-                tool_success=tool_success,
-                postconditions_passed=post_decision.postconditions_passed,
-                contracts_evaluated=post_decision.contracts_evaluated,
-                session_attempt_count=await self._session.attempt_count(),
-                session_execution_count=await self._session.execution_count(),
-                mode=self._guard.mode,
-                policy_version=self._guard.policy_version,
-                policy_error=post_decision.policy_error,
+            effective_response = (
+                post_decision.redacted_response if post_decision.redacted_response is not None else result
             )
-        )
 
-        span.set_attribute("governance.tool_success", tool_success)
-        span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
-        span.end()
+            await self._session.record_execution(name, success=tool_success)
 
-        return str(effective_response)
+            action = AuditAction.CALL_EXECUTED if tool_success else AuditAction.CALL_FAILED
+            await self._guard.audit_sink.emit(
+                AuditEvent(
+                    action=action,
+                    run_id=envelope.run_id,
+                    call_id=envelope.call_id,
+                    call_index=envelope.call_index,
+                    tool_name=envelope.tool_name,
+                    tool_args=self._guard.redaction.redact_args(envelope.args),
+                    side_effect=envelope.side_effect.value,
+                    environment=envelope.environment,
+                    principal=asdict(envelope.principal) if envelope.principal else None,
+                    tool_success=tool_success,
+                    postconditions_passed=post_decision.postconditions_passed,
+                    contracts_evaluated=post_decision.contracts_evaluated,
+                    session_attempt_count=await self._session.attempt_count(),
+                    session_execution_count=await self._session.execution_count(),
+                    mode=self._guard.mode,
+                    policy_version=self._guard.policy_version,
+                    policy_error=post_decision.policy_error,
+                )
+            )
+
+            span.set_attribute("governance.tool_success", tool_success)
+            span.set_attribute("governance.postconditions_passed", post_decision.postconditions_passed)
+
+            if tool_success:
+                self._guard.telemetry.set_span_ok(span)
+            else:
+                self._guard.telemetry.set_span_error(span, "tool execution failed")
+
+            return str(effective_response)
+        finally:
+            span.end()
 
     async def _handle_approval(self, envelope: Any, decision: Any, span: Any) -> str | None:
         """Handle pending_approval decisions. Returns denial string or None to proceed."""
         if self._guard._approval_backend is None:
-            await self._emit_audit_pre(envelope, decision)
+            reason = "Approval required but no approval backend configured"
+            await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_DENIED)
+            self._guard.telemetry.record_denial(envelope, reason)
+            if self._guard._on_deny:
+                try:
+                    self._guard._on_deny(envelope, reason, decision.decision_name)
+                except Exception:
+                    logger.exception("on_deny callback raised")
             span.set_attribute("governance.action", "denied")
-            span.end()
-            return "[DENIED] Approval required but no approval backend configured"
+            self._guard.telemetry.set_span_error(span, reason)
+            return f"[DENIED] {reason}"
 
         principal_dict = asdict(envelope.principal) if envelope.principal else None
         approval_request = await self._guard._approval_backend.request_approval(
@@ -246,7 +262,7 @@ class GovernedToolRegistry:
             except Exception:
                 logger.exception("on_deny callback raised")
         span.set_attribute("governance.action", "denied")
-        span.end()
+        self._guard.telemetry.set_span_error(span, reason)
         return f"[DENIED] Approval denied: {reason}"
 
     async def _emit_audit_pre(self, envelope: Any, decision: Any, audit_action: AuditAction | None = None) -> None:
@@ -283,7 +299,8 @@ class GovernedToolRegistry:
         if result is None:
             return True
         if isinstance(result, str):
-            if result.startswith("Error:") or result.startswith("fatal:"):
+            lower = result[:7].lower()
+            if lower.startswith("error:") or lower.startswith("fatal:"):
                 return False
         return True
 
