@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from edictum import Edictum, Verdict, precondition
+from edictum._runner import _ERROR_ACTIONS
 from edictum.audit import AuditAction
 from edictum.storage import MemoryBackend
 from tests.conftest import NullAuditSink
@@ -109,9 +110,9 @@ def test_set_span_ok_noop_without_otel():
 def test_error_actions_coverage(action, should_error):
     """_ERROR_ACTIONS frozenset contains exactly the error audit actions."""
     if should_error:
-        assert action.value in Edictum._ERROR_ACTIONS
+        assert action.value in _ERROR_ACTIONS
     else:
-        assert action.value not in Edictum._ERROR_ACTIONS
+        assert action.value not in _ERROR_ACTIONS
 
 
 # --- Adapter pre/post helpers (copied from test_adapter_parity.py) ---
