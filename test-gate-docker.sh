@@ -39,7 +39,7 @@ fi
 # --------------------------------------------------------------------------
 header "PHASE 4: CLI — gate init"
 # --------------------------------------------------------------------------
-edictum gate init
+edictum gate init --non-interactive
 if [ -f "$HOME/.edictum/gate.yaml" ] && [ -f "$HOME/.edictum/contracts/base.yaml" ]; then
     pass "gate init created config + contracts"
 else
@@ -260,7 +260,59 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 15: gate check — raw format"
+header "PHASE 15b: gate check — Copilot CLI format deny"
+# --------------------------------------------------------------------------
+# Copilot stdin: camelCase keys, toolArgs is a JSON STRING
+RESULT=$(echo '{"toolName":"bash","toolArgs":"{\"command\":\"rm -rf /\"}","cwd":"/tmp"}' \
+    | edictum gate check --format copilot 2>/dev/null || true)
+echo "  Output: $RESULT"
+if echo "$RESULT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+assert d.get('permissionDecision') == 'deny', f'Expected permissionDecision:deny for Copilot, got {d}'
+"; then
+    pass "Copilot CLI format deny"
+else
+    fail "Copilot CLI format deny"
+fi
+
+# --------------------------------------------------------------------------
+header "PHASE 15c: gate check — Copilot CLI format allow"
+# --------------------------------------------------------------------------
+RESULT=$(echo '{"toolName":"view","toolArgs":"{\"file_path\":\"/tmp/foo.txt\"}","cwd":"/tmp"}' \
+    | edictum gate check --format copilot 2>/dev/null || true)
+echo "  Output: $RESULT"
+if echo "$RESULT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+# Copilot allow: empty JSON or no permissionDecision
+assert d.get('permissionDecision', None) is None or d == {}, f'Expected allow for Copilot, got {d}'
+"; then
+    pass "Copilot CLI format allow"
+else
+    fail "Copilot CLI format allow"
+fi
+
+# --------------------------------------------------------------------------
+header "PHASE 15d: gate check — Cursor auto-detection"
+# --------------------------------------------------------------------------
+# When stdin has cursor_version but format is claude-code, should auto-detect Cursor
+RESULT=$(echo '{"tool_name":"Shell","tool_input":{"command":"rm -rf /"},"cwd":"/tmp","cursor_version":"1.7.2"}' \
+    | edictum gate check --format claude-code 2>/dev/null || true)
+echo "  Output: $RESULT"
+if echo "$RESULT" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+# Should use Cursor format (decision key), not Claude Code format (hookSpecificOutput)
+assert d.get('decision') == 'deny', f'Expected Cursor format decision:deny, got {d}'
+"; then
+    pass "Cursor auto-detection from claude-code format"
+else
+    fail "Cursor auto-detection from claude-code format"
+fi
+
+# --------------------------------------------------------------------------
+header "PHASE 16: gate check — raw format"
 # --------------------------------------------------------------------------
 RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/tmp"}' \
     | edictum gate check --format raw 2>/dev/null || true)
@@ -276,7 +328,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 16: gate check — malicious stdin (oversized)"
+header "PHASE 17: gate check — malicious stdin (oversized)"
 # --------------------------------------------------------------------------
 RESULT=$(python3 -c "print('{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"' + 'A'*11000000 + '\"},\"cwd\":\"/tmp\"}')" \
     | edictum gate check --format claude-code 2>/dev/null || true)
@@ -292,7 +344,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 17: gate check — malicious stdin (not JSON)"
+header "PHASE 18: gate check — malicious stdin (not JSON)"
 # --------------------------------------------------------------------------
 RESULT=$(echo 'this is not json' \
     | edictum gate check --format claude-code 2>/dev/null || true)
@@ -309,7 +361,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 18: Symlink scope escape"
+header "PHASE 19: Symlink scope escape"
 # --------------------------------------------------------------------------
 mkdir -p /tmp/project
 ln -sf /etc/passwd /tmp/project/sneaky 2>/dev/null || true
@@ -328,7 +380,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 19: gate install + uninstall (Claude Code)"
+header "PHASE 20: gate install + uninstall (Claude Code)"
 # --------------------------------------------------------------------------
 edictum gate install claude-code
 if [ -f "$HOME/.claude/settings.json" ] && grep -q "edictum gate check" "$HOME/.claude/settings.json"; then
@@ -345,7 +397,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 20: gate audit"
+header "PHASE 21: gate audit"
 # --------------------------------------------------------------------------
 if edictum gate audit --limit 5; then
     pass "gate audit"
@@ -354,7 +406,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-header "PHASE 21: Redaction — secrets never in WAL"
+header "PHASE 22: Redaction — secrets never in WAL"
 # --------------------------------------------------------------------------
 echo '{"tool_name":"Bash","tool_input":{"command":"echo sk_live_abc123456789xyz AKIA1234567890123456"},"cwd":"/tmp"}' \
     | edictum gate check --format claude-code >/dev/null 2>&1 || true
