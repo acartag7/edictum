@@ -12,20 +12,21 @@ from edictum.gate.config import RedactionConfig
 def _make_event(**kwargs) -> GateAuditEvent:
     defaults = {
         "call_id": "test-call-id",
-        "agent_id": "",
-        "user": "testuser",
-        "assistant": "ClaudeCodeFormat",
-        "tool_name": "Bash",
-        "tool_category": "shell",
-        "args_preview": "{}",
-        "verdict": "allow",
-        "mode": "enforce",
-        "contract_id": None,
-        "reason": None,
-        "cwd": "/project",
         "timestamp": "2026-03-01T00:00:00+00:00",
+        "agent_id": "",
+        "tool_name": "Bash",
+        "tool_args": {},
+        "side_effect": "shell",
+        "action": "call_allowed",
+        "decision_source": None,
+        "decision_name": None,
+        "reason": None,
+        "contracts_evaluated": [],
+        "mode": "enforce",
         "duration_ms": 2,
-        "contracts_evaluated": 5,
+        "assistant": "ClaudeCodeFormat",
+        "user": "testuser",
+        "cwd": "/project",
     }
     defaults.update(kwargs)
     return GateAuditEvent(**defaults)
@@ -33,7 +34,7 @@ def _make_event(**kwargs) -> GateAuditEvent:
 
 class TestRedactionBeforeWal:
     def test_redaction_before_wal_write(self, tmp_path: Path) -> None:
-        """Secrets are redacted in args_preview before building the event."""
+        """Secrets are redacted in tool_args before building the event."""
         event = build_audit_event(
             tool_name="Bash",
             tool_input={"command": "export TOKEN=sk_live_abc123def456"},
@@ -41,18 +42,19 @@ class TestRedactionBeforeWal:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
             redaction_config=RedactionConfig(
                 patterns=("sk_live_\\w+",),
                 replacement="<REDACTED>",
             ),
         )
-        assert "sk_live_" not in event.args_preview
-        assert "<REDACTED>" in event.args_preview
+        args_str = json.dumps(event.tool_args)
+        assert "sk_live_" not in args_str
+        assert "<REDACTED>" in args_str
 
     def test_redaction_aws_key(self) -> None:
         event = build_audit_event(
@@ -62,17 +64,18 @@ class TestRedactionBeforeWal:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
             redaction_config=RedactionConfig(
                 patterns=("AKIA\\w{16}",),
                 replacement="<REDACTED>",
             ),
         )
-        assert "AKIA" not in event.args_preview
+        args_str = json.dumps(event.tool_args)
+        assert "AKIA" not in args_str
 
     def test_redaction_github_token(self) -> None:
         event = build_audit_event(
@@ -82,17 +85,18 @@ class TestRedactionBeforeWal:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
             redaction_config=RedactionConfig(
                 patterns=("ghp_\\w{36}",),
                 replacement="<REDACTED>",
             ),
         )
-        assert "ghp_" not in event.args_preview
+        args_str = json.dumps(event.tool_args)
+        assert "ghp_" not in args_str
 
     def test_redaction_custom_pattern(self) -> None:
         event = build_audit_event(
@@ -102,17 +106,18 @@ class TestRedactionBeforeWal:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
             redaction_config=RedactionConfig(
                 patterns=("my_custom_secret_\\d+",),
                 replacement="<REDACTED>",
             ),
         )
-        assert "my_custom_secret_" not in event.args_preview
+        args_str = json.dumps(event.tool_args)
+        assert "my_custom_secret_" not in args_str
 
     def test_redaction_preserves_structure(self) -> None:
         event = build_audit_event(
@@ -122,15 +127,14 @@ class TestRedactionBeforeWal:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
         )
-        parsed = json.loads(event.args_preview)
-        assert parsed["command"] == "ls"
-        assert parsed["safe_field"] == "hello"
+        assert event.tool_args["command"] == "ls"
+        assert event.tool_args["safe_field"] == "hello"
 
     def test_redaction_policy_from_config(self) -> None:
         from edictum.gate.audit_buffer import _build_redaction_policy

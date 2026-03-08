@@ -91,9 +91,9 @@ def test_full_lifecycle(tmp_path: Path) -> None:
         lines = [ln for ln in wal_path.read_text().strip().split("\n") if ln.strip()]
         assert len(lines) >= 2
         events = [json.loads(line) for line in lines]
-        verdicts = {e["verdict"] for e in events}
-        assert "deny" in verdicts
-        assert "allow" in verdicts
+        actions = {e["action"] for e in events}
+        assert "call_denied" in actions
+        assert "call_allowed" in actions
 
     # 6. Uninstall
     result = uninstall_claude_code(home=home)

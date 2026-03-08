@@ -411,30 +411,33 @@ def gate_audit(limit: int, tool: str | None, verdict: str | None) -> None:
             ts_raw = e.get("timestamp", "")
             # Wide: full datetime, narrow: just time
             ts = ts_raw[:19].replace("T", " ") if wide else ts_raw[11:19]
-            v = e.get("verdict", "")
-            m = e.get("mode", "")
+            # Support both new (action) and old (verdict) field names
+            action = e.get("action", e.get("verdict", ""))
             tool_name = e.get("tool_name", "")
             user = e.get("user", "")
             assistant = e.get("assistant", "")
-            contract = e.get("contract_id", "")
+            contract = e.get("decision_name", e.get("contract_id", ""))
             reason = e.get("reason", "")
             preview_len = min(detail_width, 80)
-            args = escape(e.get("args_preview", "")[:preview_len])
-
-            # Observed denial: mode=observe + contract matched (allowed through but flagged)
-            is_observed_deny = m == "observe" and contract
-
-            if v == "deny" and m == "observe":
-                verdict_styled = "[yellow]would deny[/yellow]"
-            elif is_observed_deny:
-                verdict_styled = "[yellow]would deny[/yellow]"
-            elif v == "deny":
-                verdict_styled = "[red]deny[/red]"
+            # Support both new (tool_args dict) and old (args_preview string)
+            tool_args = e.get("tool_args")
+            if isinstance(tool_args, dict):
+                args = escape(json.dumps(tool_args, default=str)[:preview_len])
             else:
-                verdict_styled = f"[green]{v}[/green]"
+                args = escape(str(e.get("args_preview", ""))[:preview_len])
 
-            # Detail: contract+reason for denials/warns, truncated args for allows
-            if (v == "deny" or is_observed_deny) and contract:
+            if action == "call_would_deny":
+                verdict_styled = "[yellow]would deny[/yellow]"
+            elif action in ("call_denied", "deny"):
+                verdict_styled = "[red]deny[/red]"
+            elif action in ("call_allowed", "allow"):
+                verdict_styled = "[green]allow[/green]"
+            else:
+                verdict_styled = f"[dim]{action}[/dim]"
+
+            # Detail: contract+reason for denials, truncated args for allows
+            is_denial = action in ("call_denied", "call_would_deny", "deny")
+            if is_denial and contract:
                 detail = contract
                 if reason:
                     detail += f" — {reason}"

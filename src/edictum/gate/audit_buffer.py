@@ -7,7 +7,7 @@ import os
 import sys
 import time
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,32 +17,44 @@ from edictum.audit import RedactionPolicy
 
 @dataclass(frozen=True)
 class GateAuditEvent:
-    """Gate-specific audit event for JSONL WAL."""
+    """Audit event aligned with core AuditEvent schema.
+
+    WAL events use the same field names as core AuditEvent so they can be
+    sent directly to the console without a translation layer. Fields that
+    don't apply to Gate (run_id, principal, session counters) are omitted.
+    """
 
     # Identity
     call_id: str
-    agent_id: str
-    user: str
-    assistant: str
-
-    # What happened
-    tool_name: str
-    tool_category: str
-    args_preview: str
-
-    # Decision
-    verdict: str
-    mode: str  # "observe" or "enforce"
-    contract_id: str | None
-    reason: str | None
-
-    # Context
-    cwd: str
     timestamp: str
+    agent_id: str
+
+    # Tool
+    tool_name: str
+    tool_args: dict  # redacted args (full dict, not preview string)
+    side_effect: str  # tool category as side_effect label
+
+    # Governance decision — same names as core AuditEvent
+    action: str  # "call_allowed" | "call_denied" | "call_would_deny"
+    decision_source: str | None
+    decision_name: str | None  # contract_id
+    reason: str | None
+    contracts_evaluated: list[dict] = field(default_factory=list)
+
+    # Mode
+    mode: str = "enforce"
+
+    # Policy tracking
+    policy_version: str | None = None
+    policy_error: bool = False
 
     # Performance
-    duration_ms: int
-    contracts_evaluated: int
+    duration_ms: int = 0
+
+    # Gate-specific context (not in core AuditEvent)
+    assistant: str = ""
+    user: str = ""
+    cwd: str = ""
 
 
 def _build_redaction_policy(config: Any) -> RedactionPolicy:
@@ -63,6 +75,35 @@ def _resolve_user() -> str:
         return os.getenv("USER", "unknown")
 
 
+def _verdict_to_action(verdict: str, mode: str) -> str:
+    """Map Gate verdict+mode to core AuditAction value."""
+    if verdict == "deny" and mode == "observe":
+        return "call_would_deny"
+    if verdict == "deny":
+        return "call_denied"
+    return "call_allowed"
+
+
+def _contracts_to_dicts(evaluation_result: Any) -> list[dict]:
+    """Extract contract evaluation details from EvaluationResult."""
+    if evaluation_result is None:
+        return []
+    contracts = getattr(evaluation_result, "contracts", [])
+    result = []
+    for c in contracts:
+        result.append(
+            {
+                "contract_id": c.contract_id,
+                "contract_type": c.contract_type,
+                "passed": c.passed,
+                "message": c.message,
+                "observed": c.observed,
+                "policy_error": c.policy_error,
+            }
+        )
+    return result
+
+
 def build_audit_event(
     *,
     tool_name: str,
@@ -71,23 +112,25 @@ def build_audit_event(
     verdict: str,
     mode: str,
     contract_id: str | None,
+    decision_source: str | None,
     reason: str | None,
     cwd: str,
     duration_ms: int,
-    contracts_evaluated: int,
     assistant: str,
     agent_id: str = "",
     redaction_config: Any = None,
+    evaluation_result: Any = None,
+    policy_version: str | None = None,
 ) -> GateAuditEvent:
-    """Build a GateAuditEvent with redacted args preview."""
+    """Build a GateAuditEvent with redacted args, aligned with core AuditEvent."""
     import re
 
     policy = _build_redaction_policy(redaction_config)
     redacted_args = policy.redact_args(tool_input)
-    args_str = json.dumps(redacted_args, default=str)
 
-    # Apply gate-specific regex patterns to the serialized string
+    # Apply gate-specific regex patterns to serialized form, then parse back
     if redaction_config is not None:
+        args_str = json.dumps(redacted_args, default=str)
         patterns = getattr(redaction_config, "patterns", ())
         replacement = getattr(redaction_config, "replacement", "<REDACTED>")
         for pattern in patterns:
@@ -95,26 +138,40 @@ def build_audit_event(
                 args_str = re.sub(pattern, replacement, args_str)
             except re.error:
                 pass
+        try:
+            redacted_args = json.loads(args_str)
+        except (json.JSONDecodeError, ValueError):
+            pass
 
-    if len(args_str) > 200:
-        args_str = args_str[:197] + "..."
+    action = _verdict_to_action(verdict, mode)
+    contracts = _contracts_to_dicts(evaluation_result)
+    pe = getattr(evaluation_result, "policy_error", False) if evaluation_result else False
+    evaluated_count = getattr(evaluation_result, "contracts_evaluated", 0) if evaluation_result else 0
+
+    # For backward compat with old WAL readers, include contracts_evaluated as count
+    # if no contract details available
+    if not contracts and evaluated_count:
+        contracts = [{"_count": evaluated_count}]
 
     return GateAuditEvent(
         call_id=str(uuid.uuid4()),
-        agent_id=agent_id,
-        user=_resolve_user(),
-        assistant=assistant,
-        tool_name=tool_name,
-        tool_category=category,
-        args_preview=args_str,
-        verdict=verdict,
-        mode=mode,
-        contract_id=contract_id,
-        reason=reason,
-        cwd=cwd,
         timestamp=datetime.now(UTC).isoformat(),
+        agent_id=agent_id,
+        tool_name=tool_name,
+        tool_args=redacted_args,
+        side_effect=category,
+        action=action,
+        decision_source=decision_source,
+        decision_name=contract_id,
+        reason=reason,
+        contracts_evaluated=contracts,
+        mode=mode,
+        policy_version=policy_version,
+        policy_error=pe,
         duration_ms=duration_ms,
-        contracts_evaluated=contracts_evaluated,
+        assistant=assistant,
+        user=_resolve_user(),
+        cwd=cwd,
     )
 
 
@@ -227,8 +284,14 @@ class AuditBuffer:
                         continue
                     if tool and event.get("tool_name") != tool:
                         continue
-                    if verdict and event.get("verdict") != verdict:
-                        continue
+                    # Support both old (verdict) and new (action) field names
+                    event_verdict = event.get("action", event.get("verdict", ""))
+                    if verdict:
+                        # Map filter to action values
+                        if verdict == "deny" and event_verdict not in ("call_denied", "call_would_deny", "deny"):
+                            continue
+                        if verdict == "allow" and event_verdict not in ("call_allowed", "allow"):
+                            continue
                     events.append(event)
         except OSError:
             return []
@@ -237,78 +300,59 @@ class AuditBuffer:
 
     @staticmethod
     def _to_console_event(raw: dict) -> dict:
-        """Map a WAL event dict to Console EventPayload schema.
+        """Map a WAL event to Console EventPayload schema.
 
-        Console expects top-level: call_id, agent_id, tool_name, verdict, mode,
-        timestamp, payload (optional dict).
-
-        The dashboard renders payload fields using core AuditEvent conventions:
-        - decision_name (contract id), decision_source, reason, policy_version
-        - tool_args (dict of args), duration_ms
-        Gate must map its WAL field names to these.
+        WAL events are already aligned with core AuditEvent field names.
+        This method just selects the top-level fields the console expects
+        and packs everything else into payload.
         """
-        # Map Gate verdict to core AuditAction values the dashboard understands
-        gate_verdict = raw.get("verdict", "allow")
-        gate_mode = raw.get("mode", "enforce")
-        if gate_verdict == "deny" and gate_mode == "observe":
-            verdict = "call_would_deny"
-        elif gate_verdict == "deny":
-            verdict = "call_denied"
-        else:
-            verdict = "call_allowed"
+        # Top-level fields the console expects
+        action = raw.get("action", raw.get("verdict", "call_allowed"))
+        mode = raw.get("mode", "enforce")
 
-        # Build payload using core AuditEvent field names
+        # Build payload from all remaining fields
         payload: dict[str, object] = {}
-
-        # Contract provenance — dashboard reads decision_name, decision_source
-        contract_id = raw.get("contract_id")
-        if contract_id:
-            payload["decision_name"] = contract_id
-            if contract_id == "gate-scope-enforcement":
-                payload["decision_source"] = "gate_scope"
-            else:
-                payload["decision_source"] = "yaml_precondition"
-
-        reason = raw.get("reason")
-        if reason:
-            payload["reason"] = reason
-
-        # Tool args — dashboard reads tool_args as dict for preview
-        args_preview = raw.get("args_preview", "")
-        if args_preview:
-            try:
-                payload["tool_args"] = json.loads(args_preview)
-            except (json.JSONDecodeError, ValueError):
-                payload["tool_args"] = {"_preview": args_preview}
-
-        # Performance and context
-        duration_ms = raw.get("duration_ms")
-        if duration_ms is not None:
-            payload["duration_ms"] = duration_ms
-
-        contracts_evaluated = raw.get("contracts_evaluated")
-        if contracts_evaluated is not None:
-            payload["contracts_evaluated"] = contracts_evaluated
-
-        # Gate-specific extras (not in core AuditEvent but useful)
-        for key in ("assistant", "user", "tool_category", "cwd"):
+        for key in (
+            "decision_name",
+            "decision_source",
+            "reason",
+            "tool_args",
+            "side_effect",
+            "contracts_evaluated",
+            "policy_version",
+            "policy_error",
+            "duration_ms",
+            "assistant",
+            "user",
+            "cwd",
+        ):
             val = raw.get(key)
-            if val:
+            if val is not None and val != "" and val != [] and val is not False:
                 payload[key] = val
 
-        # Default agent_id from user+hostname if not set
+        # Backward compat: old WAL events used different field names
+        if "contract_id" in raw and "decision_name" not in payload:
+            payload["decision_name"] = raw["contract_id"]
+        if "tool_category" in raw and "side_effect" not in payload:
+            payload["side_effect"] = raw["tool_category"]
+        if "args_preview" in raw and "tool_args" not in payload:
+            preview = raw["args_preview"]
+            try:
+                payload["tool_args"] = json.loads(preview)
+            except (json.JSONDecodeError, ValueError):
+                payload["tool_args"] = {"_preview": preview}
+
+        # Default agent_id from user if not set
         agent_id = raw.get("agent_id", "")
         if not agent_id:
-            user = raw.get("user", "")
-            if user:
-                agent_id = user
+            agent_id = raw.get("user", "")
 
         return {
             "call_id": raw.get("call_id", str(uuid.uuid4())),
             "agent_id": agent_id,
             "tool_name": raw.get("tool_name", ""),
-            "verdict": verdict,
-            "mode": gate_mode,
+            "verdict": action,
+            "mode": mode,
             "timestamp": raw.get("timestamp", datetime.now(UTC).isoformat()),
             "payload": payload or None,
         }

@@ -192,15 +192,17 @@ def _run_check_inner(
     else:
         verdict = "allow"  # "allow" and "warn" both pass through
 
-    # Derive mode from contract results — observed=True means observe mode
+    # Derive mode and decision info from contract results
     mode = "enforce"
     contract_id = None
     reason = None
+    decision_source = None
     if result.contracts:
         for c in result.contracts:
             if not c.passed:
                 contract_id = c.contract_id
                 reason = c.message
+                decision_source = f"yaml_{c.contract_type}"
                 if c.observed:
                     mode = "observe"
                 break
@@ -215,32 +217,42 @@ def _run_check_inner(
             mode = "enforce"  # scope enforcement is always enforce
             contract_id = "gate-scope-enforcement"
             reason = scope_reason
+            decision_source = "gate_scope"
 
     duration_ms = (time.perf_counter_ns() - start) // 1_000_000
-    evaluated_count = result.contracts_evaluated
 
-    # Resolve agent_id from config
+    # Resolve agent_id: prefer console config, fall back to hostname-user
     console_config = getattr(config, "console", None)
     agent_id = getattr(console_config, "agent_id", "") if console_config else ""
+    if not agent_id:
+        import socket
 
-    # Write audit event (sync, non-blocking on failure)
+        try:
+            user = os.getlogin()
+        except OSError:
+            user = os.getenv("USER", "unknown")
+        agent_id = f"{socket.gethostname()}-{user}"
+
+    # Write audit event aligned with core AuditEvent schema
     _write_audit(
-        config,
-        tool_name,
-        tool_input,
-        category,
-        verdict,
-        mode,
-        contract_id,
-        reason,
-        effective_cwd,
-        duration_ms,
-        evaluated_count,
-        format_name,
-        agent_id,
+        config=config,
+        tool_name=tool_name,
+        tool_input=tool_input,
+        category=category,
+        verdict=verdict,
+        mode=mode,
+        contract_id=contract_id,
+        decision_source=decision_source,
+        reason=reason,
+        cwd=effective_cwd,
+        duration_ms=duration_ms,
+        assistant=format_name,
+        agent_id=agent_id,
+        evaluation_result=result,
+        policy_version=guard.policy_version,
     )
 
-    return format_handler.format_output(verdict, contract_id, reason, evaluated_count)
+    return format_handler.format_output(verdict, contract_id, reason, result.contracts_evaluated)
 
 
 def _write_audit(
@@ -251,12 +263,14 @@ def _write_audit(
     verdict: str,
     mode: str,
     contract_id: str | None,
+    decision_source: str | None,
     reason: str | None,
     cwd: str,
     duration_ms: int,
-    contracts_evaluated: int,
     assistant: str,
     agent_id: str,
+    evaluation_result: Any,
+    policy_version: str | None,
 ) -> None:
     """Write audit event to WAL if audit is enabled. Never raises."""
     try:
@@ -275,13 +289,15 @@ def _write_audit(
             verdict=verdict,
             mode=mode,
             contract_id=contract_id,
+            decision_source=decision_source,
             reason=reason,
             cwd=cwd,
             duration_ms=duration_ms,
-            contracts_evaluated=contracts_evaluated,
             assistant=assistant,
             agent_id=agent_id,
             redaction_config=redaction_config,
+            evaluation_result=evaluation_result,
+            policy_version=policy_version,
         )
         console_config = getattr(config, "console", None)
         buffer.write(event, console_config=console_config)

@@ -21,20 +21,21 @@ def _make_audit_config(tmp_path: Path) -> AuditConfig:
 def _make_event(**kwargs) -> GateAuditEvent:
     defaults = {
         "call_id": "test-call-id",
-        "agent_id": "test-agent",
-        "user": "testuser",
-        "assistant": "ClaudeCodeFormat",
-        "tool_name": "Bash",
-        "tool_category": "shell",
-        "args_preview": '{"command": "ls"}',
-        "verdict": "allow",
-        "mode": "enforce",
-        "contract_id": None,
-        "reason": None,
-        "cwd": "/project",
         "timestamp": "2026-03-01T00:00:00+00:00",
+        "agent_id": "test-agent",
+        "tool_name": "Bash",
+        "tool_args": {"command": "ls"},
+        "side_effect": "shell",
+        "action": "call_allowed",
+        "decision_source": None,
+        "decision_name": None,
+        "reason": None,
+        "contracts_evaluated": [],
+        "mode": "enforce",
         "duration_ms": 2,
-        "contracts_evaluated": 5,
+        "assistant": "ClaudeCodeFormat",
+        "user": "testuser",
+        "cwd": "/project",
     }
     defaults.update(kwargs)
     return GateAuditEvent(**defaults)
@@ -53,8 +54,8 @@ class TestAuditBufferWrite:
     def test_write_appends(self, tmp_path: Path) -> None:
         config = _make_audit_config(tmp_path)
         buffer = AuditBuffer(config)
-        buffer.write(_make_event(verdict="allow"))
-        buffer.write(_make_event(verdict="deny"))
+        buffer.write(_make_event(action="call_allowed"))
+        buffer.write(_make_event(action="call_denied"))
         wal = Path(config.buffer_path)
         lines = wal.read_text().strip().split("\n")
         assert len(lines) == 2
@@ -71,11 +72,11 @@ class TestAuditBufferWrite:
     def test_write_event_fields(self, tmp_path: Path) -> None:
         config = _make_audit_config(tmp_path)
         buffer = AuditBuffer(config)
-        buffer.write(_make_event(tool_name="Read", verdict="deny"))
+        buffer.write(_make_event(tool_name="Read", action="call_denied"))
         wal = Path(config.buffer_path)
         event = json.loads(wal.read_text().strip())
         assert event["tool_name"] == "Read"
-        assert event["verdict"] == "deny"
+        assert event["action"] == "call_denied"
 
     def test_write_survives_missing_directory(self, tmp_path: Path) -> None:
         deep_path = tmp_path / "deep" / "nested" / "wal.jsonl"
@@ -114,9 +115,9 @@ class TestAuditBufferRead:
     def test_read_recent_filter_verdict(self, tmp_path: Path) -> None:
         config = _make_audit_config(tmp_path)
         buffer = AuditBuffer(config)
-        buffer.write(_make_event(verdict="allow"))
-        buffer.write(_make_event(verdict="deny"))
-        buffer.write(_make_event(verdict="allow"))
+        buffer.write(_make_event(action="call_allowed"))
+        buffer.write(_make_event(action="call_denied"))
+        buffer.write(_make_event(action="call_allowed"))
         events = buffer.read_recent(verdict="deny")
         assert len(events) == 1
 
@@ -155,20 +156,20 @@ class TestBuildAuditEvent:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
         )
         assert event.tool_name == "Bash"
-        assert event.verdict == "allow"
-        assert event.tool_category == "shell"
+        assert event.action == "call_allowed"
+        assert event.side_effect == "shell"
         assert event.call_id  # UUID generated
         assert event.user  # OS user resolved
         assert event.mode == "enforce"
 
-    def test_args_preview_truncated(self) -> None:
+    def test_tool_args_preserved(self) -> None:
         long_args = {"command": "x" * 500}
         event = build_audit_event(
             tool_name="Bash",
@@ -177,39 +178,41 @@ class TestBuildAuditEvent:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
         )
-        assert len(event.args_preview) <= 200
+        assert isinstance(event.tool_args, dict)
+        assert "command" in event.tool_args
 
 
 class TestConsoleEventMapping:
-    """Verify _to_console_event maps WAL fields to core AuditEvent conventions."""
+    """Verify _to_console_event maps WAL fields to Console EventPayload schema."""
 
     def test_allow_maps_to_call_allowed(self) -> None:
-        raw = {"verdict": "allow", "mode": "enforce", "tool_name": "Bash"}
+        raw = {"action": "call_allowed", "mode": "enforce", "tool_name": "Bash"}
         result = AuditBuffer._to_console_event(raw)
         assert result["verdict"] == "call_allowed"
 
     def test_deny_enforce_maps_to_call_denied(self) -> None:
-        raw = {"verdict": "deny", "mode": "enforce", "tool_name": "Bash"}
+        raw = {"action": "call_denied", "mode": "enforce", "tool_name": "Bash"}
         result = AuditBuffer._to_console_event(raw)
         assert result["verdict"] == "call_denied"
 
     def test_deny_observe_maps_to_call_would_deny(self) -> None:
-        raw = {"verdict": "deny", "mode": "observe", "tool_name": "Bash"}
+        raw = {"action": "call_would_deny", "mode": "observe", "tool_name": "Bash"}
         result = AuditBuffer._to_console_event(raw)
         assert result["verdict"] == "call_would_deny"
 
-    def test_contract_id_maps_to_decision_name(self) -> None:
+    def test_decision_name_in_payload(self) -> None:
         raw = {
-            "verdict": "deny",
+            "action": "call_denied",
             "mode": "enforce",
             "tool_name": "Read",
-            "contract_id": "deny-secret-file-reads",
+            "decision_name": "deny-secret-file-reads",
+            "decision_source": "yaml_precondition",
             "reason": "Denied: secrets",
         }
         result = AuditBuffer._to_console_event(raw)
@@ -217,19 +220,31 @@ class TestConsoleEventMapping:
         assert result["payload"]["decision_source"] == "yaml_precondition"
         assert result["payload"]["reason"] == "Denied: secrets"
 
-    def test_scope_enforcement_maps_to_gate_scope(self) -> None:
+    def test_scope_enforcement_decision_source(self) -> None:
         raw = {
-            "verdict": "deny",
+            "action": "call_denied",
             "mode": "enforce",
             "tool_name": "Write",
-            "contract_id": "gate-scope-enforcement",
+            "decision_name": "gate-scope-enforcement",
+            "decision_source": "gate_scope",
         }
         result = AuditBuffer._to_console_event(raw)
         assert result["payload"]["decision_source"] == "gate_scope"
 
-    def test_args_preview_parsed_to_tool_args(self) -> None:
+    def test_tool_args_in_payload(self) -> None:
         raw = {
-            "verdict": "allow",
+            "action": "call_allowed",
+            "mode": "enforce",
+            "tool_name": "Bash",
+            "tool_args": {"command": "ls -la"},
+        }
+        result = AuditBuffer._to_console_event(raw)
+        assert result["payload"]["tool_args"] == {"command": "ls -la"}
+
+    def test_backward_compat_args_preview_parsed(self) -> None:
+        """Old WAL events with args_preview are still handled."""
+        raw = {
+            "action": "call_allowed",
             "mode": "enforce",
             "tool_name": "Bash",
             "args_preview": '{"command": "ls -la"}',
@@ -237,9 +252,10 @@ class TestConsoleEventMapping:
         result = AuditBuffer._to_console_event(raw)
         assert result["payload"]["tool_args"] == {"command": "ls -la"}
 
-    def test_truncated_args_preview_wrapped(self) -> None:
+    def test_backward_compat_truncated_args_preview_wrapped(self) -> None:
+        """Old WAL events with truncated args_preview are wrapped."""
         raw = {
-            "verdict": "allow",
+            "action": "call_allowed",
             "mode": "enforce",
             "tool_name": "Bash",
             "args_preview": '{"command": "very long...',  # invalid JSON (truncated)
@@ -249,7 +265,7 @@ class TestConsoleEventMapping:
 
     def test_empty_agent_id_falls_back_to_user(self) -> None:
         raw = {
-            "verdict": "allow",
+            "action": "call_allowed",
             "mode": "enforce",
             "tool_name": "Bash",
             "agent_id": "",
@@ -260,7 +276,7 @@ class TestConsoleEventMapping:
 
     def test_agent_id_preserved_when_set(self) -> None:
         raw = {
-            "verdict": "allow",
+            "action": "call_allowed",
             "mode": "enforce",
             "tool_name": "Bash",
             "agent_id": "my-agent-1",
@@ -270,6 +286,6 @@ class TestConsoleEventMapping:
         assert result["agent_id"] == "my-agent-1"
 
     def test_mode_passed_through(self) -> None:
-        raw = {"verdict": "allow", "mode": "observe", "tool_name": "Bash"}
+        raw = {"action": "call_allowed", "mode": "observe", "tool_name": "Bash"}
         result = AuditBuffer._to_console_event(raw)
         assert result["mode"] == "observe"

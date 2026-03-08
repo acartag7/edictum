@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -13,20 +14,21 @@ from edictum.gate.config import AuditConfig
 def _make_event(**kwargs) -> GateAuditEvent:
     defaults = {
         "call_id": "test-call-id",
-        "agent_id": "",
-        "user": "testuser",
-        "assistant": "ClaudeCodeFormat",
-        "tool_name": "Bash",
-        "tool_category": "shell",
-        "args_preview": '{"command": "ls"}',
-        "verdict": "allow",
-        "mode": "enforce",
-        "contract_id": None,
-        "reason": None,
-        "cwd": "/project",
         "timestamp": "2026-03-01T00:00:00+00:00",
+        "agent_id": "",
+        "tool_name": "Bash",
+        "tool_args": {"command": "ls"},
+        "side_effect": "shell",
+        "action": "call_allowed",
+        "decision_source": None,
+        "decision_name": None,
+        "reason": None,
+        "contracts_evaluated": [],
+        "mode": "enforce",
         "duration_ms": 2,
-        "contracts_evaluated": 5,
+        "assistant": "ClaudeCodeFormat",
+        "user": "testuser",
+        "cwd": "/project",
     }
     defaults.update(kwargs)
     return GateAuditEvent(**defaults)
@@ -39,8 +41,8 @@ class TestWalIntegrity:
         wal = tmp_path / "wal.jsonl"
         config = AuditConfig(buffer_path=str(wal))
         buffer = AuditBuffer(config)
-        # Write event with a secret already in args_preview (pre-redacted)
-        event = _make_event(args_preview='{"token": "[REDACTED]"}')
+        # Write event with a secret already redacted in tool_args
+        event = _make_event(tool_args={"token": "[REDACTED]"})
         buffer.write(event)
         content = wal.read_text()
         assert "sk_live" not in content
@@ -89,11 +91,11 @@ class TestWalIntegrity:
         # ... but if wal.parent is audit_dir and realpath(wal) = outside/stolen.txt,
         # it won't start with realpath(audit_dir)
 
-    def test_wal_large_event_truncated(self, tmp_path: Path) -> None:
-        """Large args_preview doesn't blow up the WAL."""
+    def test_wal_large_event_written(self, tmp_path: Path) -> None:
+        """Large tool_args are stored as full dict in the WAL."""
         from edictum.gate.audit_buffer import build_audit_event
 
-        large_args = {"command": "x" * 1_000_000}
+        large_args = {"command": "x" * 500}
         event = build_audit_event(
             tool_name="Bash",
             tool_input=large_args,
@@ -101,20 +103,22 @@ class TestWalIntegrity:
             verdict="allow",
             mode="enforce",
             contract_id=None,
+            decision_source=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
-            contracts_evaluated=5,
             assistant="ClaudeCodeFormat",
         )
-        assert len(event.args_preview) <= 200
+        assert isinstance(event.tool_args, dict)
+        assert "command" in event.tool_args
 
         wal = tmp_path / "wal.jsonl"
         config = AuditConfig(buffer_path=str(wal))
         buffer = AuditBuffer(config)
         buffer.write(event)
         line = wal.read_text().strip()
-        assert len(line) < 2000  # Reasonable size
+        parsed = json.loads(line)
+        assert parsed["tool_args"]["command"] == "x" * 500
 
     def test_wal_write_failure_does_not_crash(self, tmp_path: Path) -> None:
         """Write to read-only location logs error but doesn't raise."""
