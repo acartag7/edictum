@@ -209,7 +209,7 @@ async def _run(
                     logger.exception("on_allow callback raised")
             span.set_attribute("governance.action", "allowed")
 
-        # Emit shadow audit events (never affect the real decision)
+        # Emit observe-mode audit events (never affect the real decision)
         for sr in pre.shadow_results:
             shadow_action = AuditAction.CALL_WOULD_DENY if not sr["passed"] else AuditAction.CALL_ALLOWED
             shadow_event = AuditEvent(
