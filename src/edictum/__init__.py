@@ -44,7 +44,7 @@ from edictum.evaluation import ContractResult, EvaluationResult
 from edictum.findings import Finding, PostCallResult
 from edictum.hooks import HookDecision, HookResult
 from edictum.limits import OperationLimits
-from edictum.otel import configure_otel, has_otel
+from edictum.otel import configure_otel, get_tracer, has_otel  # noqa: F401 — get_tracer re-exported for backward compat
 from edictum.pipeline import GovernancePipeline, PostDecision, PreDecision
 from edictum.session import Session
 from edictum.storage import MemoryBackend, StorageBackend

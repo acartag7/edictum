@@ -169,7 +169,7 @@ async def _from_server(
 
     guard._server_client = client
     guard._contract_source = ServerContractSource(client)
-    guard._sse_task: asyncio.Task | None = None
+    guard._sse_task = None  # asyncio.Task | None, set by _start_sse_watcher
 
     if auto_watch:
         await _start_sse_watcher(guard)
