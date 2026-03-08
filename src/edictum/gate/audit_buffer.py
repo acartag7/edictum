@@ -85,7 +85,12 @@ def _verdict_to_action(verdict: str, mode: str) -> str:
 
 
 def _contracts_to_dicts(evaluation_result: Any) -> list[dict]:
-    """Extract contract evaluation details from EvaluationResult."""
+    """Extract contract evaluation details from EvaluationResult.
+
+    Field names match what the console dashboard expects:
+    - name (dashboard reads c.name for display)
+    - type (dashboard reads c.type for badge)
+    """
     if evaluation_result is None:
         return []
     contracts = getattr(evaluation_result, "contracts", [])
@@ -93,8 +98,8 @@ def _contracts_to_dicts(evaluation_result: Any) -> list[dict]:
     for c in contracts:
         result.append(
             {
-                "contract_id": c.contract_id,
-                "contract_type": c.contract_type,
+                "name": c.contract_id,
+                "type": c.contract_type,
                 "passed": c.passed,
                 "message": c.message,
                 "observed": c.observed,
