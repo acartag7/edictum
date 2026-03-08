@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,17 +18,28 @@ from edictum.audit import RedactionPolicy
 class GateAuditEvent:
     """Gate-specific audit event for JSONL WAL."""
 
-    timestamp: str
-    session_id: str
+    # Identity
+    call_id: str
     agent_id: str
+    user: str
     assistant: str
+
+    # What happened
     tool_name: str
     tool_category: str
     args_preview: str
+
+    # Decision
     verdict: str
+    mode: str  # "observe" or "enforce"
     contract_id: str | None
     reason: str | None
+
+    # Context
     cwd: str
+    timestamp: str
+
+    # Performance
     duration_ms: int
     contracts_evaluated: int
 
@@ -42,19 +54,27 @@ def _build_redaction_policy(config: Any) -> RedactionPolicy:
     return RedactionPolicy(custom_patterns=custom_patterns)
 
 
+def _resolve_user() -> str:
+    """Get the current OS user. Never raises."""
+    try:
+        return os.getlogin()
+    except OSError:
+        return os.getenv("USER", "unknown")
+
+
 def build_audit_event(
     *,
     tool_name: str,
     tool_input: dict,
     category: str,
     verdict: str,
+    mode: str,
     contract_id: str | None,
     reason: str | None,
     cwd: str,
     duration_ms: int,
     contracts_evaluated: int,
     assistant: str,
-    session_id: str = "",
     agent_id: str = "",
     redaction_config: Any = None,
 ) -> GateAuditEvent:
@@ -79,17 +99,19 @@ def build_audit_event(
         args_str = args_str[:197] + "..."
 
     return GateAuditEvent(
-        timestamp=datetime.now(UTC).isoformat(),
-        session_id=session_id,
+        call_id=str(uuid.uuid4()),
         agent_id=agent_id,
+        user=_resolve_user(),
         assistant=assistant,
         tool_name=tool_name,
         tool_category=category,
         args_preview=args_str,
         verdict=verdict,
+        mode=mode,
         contract_id=contract_id,
         reason=reason,
         cwd=cwd,
+        timestamp=datetime.now(UTC).isoformat(),
         duration_ms=duration_ms,
         contracts_evaluated=contracts_evaluated,
     )
@@ -173,35 +195,65 @@ class AuditBuffer:
 
         return events[-limit:]
 
+    @staticmethod
+    def _to_console_event(raw: dict) -> dict:
+        """Map a WAL event dict to Console EventPayload schema.
+
+        Console expects: call_id, agent_id, tool_name, verdict, mode,
+        timestamp, payload (optional dict for extra fields).
+        """
+        # Pack gate-specific fields into payload
+        payload: dict[str, object] = {}
+        for key in (
+            "assistant",
+            "user",
+            "tool_category",
+            "args_preview",
+            "contract_id",
+            "reason",
+            "cwd",
+            "duration_ms",
+            "contracts_evaluated",
+        ):
+            val = raw.get(key)
+            if val is not None and val != "":
+                payload[key] = val
+
+        return {
+            "call_id": raw.get("call_id", str(uuid.uuid4())),
+            "agent_id": raw.get("agent_id", ""),
+            "tool_name": raw.get("tool_name", ""),
+            "verdict": raw.get("verdict", "allow"),
+            "mode": raw.get("mode", "enforce"),
+            "timestamp": raw.get("timestamp", datetime.now(UTC).isoformat()),
+            "payload": payload or None,
+        }
+
     def flush_to_console(self, console_config: Any) -> int:
         """Batch POST buffered events to Console. Returns count sent."""
-        try:
-            import edictum.server.client  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "Console flush requires edictum[server]. " "Install with: pip install edictum[server,gate]"
-            )
-
         if not self._buffer_path.exists():
             return 0
 
         lines = self._buffer_path.read_text().strip().split("\n")
-        events = []
+        raw_events = []
         for line in lines:
             if not line.strip():
                 continue
             try:
-                events.append(json.loads(line))
+                raw_events.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
 
-        if not events:
+        if not raw_events:
             return 0
 
         url = getattr(console_config, "url", "")
         api_key = getattr(console_config, "api_key", "")
         if not url:
             return 0
+
+        # Map WAL events to Console schema
+        console_events = [self._to_console_event(e) for e in raw_events]
 
         import httpx
 
@@ -211,7 +263,10 @@ class AuditBuffer:
             timeout=30,
         )
         try:
-            response = client.post("/api/v1/events", json={"events": events})
+            response = client.post(
+                "/api/v1/events",
+                json={"events": console_events},
+            )
             response.raise_for_status()
         except Exception as exc:
             print(f"Gate audit flush error: {exc}", file=sys.stderr)
@@ -225,4 +280,4 @@ class AuditBuffer:
         except OSError:
             pass
 
-        return len(events)
+        return len(console_events)

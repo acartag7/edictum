@@ -3,10 +3,16 @@ kind: ContractBundle
 
 metadata:
   name: coding-assistant-base
-  description: "Base governance contracts for coding assistants"
+  description: >
+    Opinionated starting contracts for coding assistant governance.
+    Covers secret file access, destructive commands, git safety,
+    system modifications, and package installations.
+    Customize to fit your workflow — this file is yours.
 
+# Observe mode logs what WOULD be denied without blocking anything.
+# Switch to 'enforce' when you're confident in your contract set.
 defaults:
-  mode: enforce
+  mode: observe
 
 tools:
   Bash:
@@ -34,11 +40,58 @@ tools:
 
 contracts:
   # -- Secret Protection -------------------------------------------------------
-  # Covers tools with a file_path argument (Read, Write, Edit).
+  # One contract per tool — Python fnmatch does NOT support {a,b,c} brace
+  # expansion, so a single `tool: '{Read,Write,Edit}'` would never match.
   # Bash/shell access to secrets is covered by deny-env-dump-commands below.
   - id: deny-secret-file-reads
     type: pre
-    tool: '{Read,Write,Edit}'
+    tool: Read
+    when:
+      args.file_path:
+        matches_any:
+          - '\.env$'
+          - '\.env\.\w+$'
+          - 'credentials\.json$'
+          - '\.pem$'
+          - '\.key$'
+          - '\.secret$'
+          - '\.ssh/'
+          - '\.aws/'
+          - '\.gcloud/'
+          - '\.docker/config\.json$'
+          - '\.npmrc$'
+          - '\.pypirc$'
+    then:
+      effect: deny
+      message: "Denied: this file may contain secrets"
+      tags: [security, secrets]
+
+  - id: deny-secret-file-writes
+    type: pre
+    tool: Write
+    when:
+      args.file_path:
+        matches_any:
+          - '\.env$'
+          - '\.env\.\w+$'
+          - 'credentials\.json$'
+          - '\.pem$'
+          - '\.key$'
+          - '\.secret$'
+          - '\.ssh/'
+          - '\.aws/'
+          - '\.gcloud/'
+          - '\.docker/config\.json$'
+          - '\.npmrc$'
+          - '\.pypirc$'
+    then:
+      effect: deny
+      message: "Denied: this file may contain secrets"
+      tags: [security, secrets]
+
+  - id: deny-secret-file-edits
+    type: pre
+    tool: Edit
     when:
       args.file_path:
         matches_any:
@@ -67,7 +120,7 @@ contracts:
         matches_any:
           - '^(printenv|env|set)(\s|$)'
           - 'cat\s+\.env'
-          - 'echo\s+\$[A-Z_]+'
+          - 'echo\s+\$(AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|API_KEY|SECRET_KEY|DATABASE_URL|DB_PASSWORD|PRIVATE_KEY|TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN)'
           - 'export\s+-p'
     then:
       effect: deny

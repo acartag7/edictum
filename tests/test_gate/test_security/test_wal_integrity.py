@@ -12,17 +12,19 @@ from edictum.gate.config import AuditConfig
 
 def _make_event(**kwargs) -> GateAuditEvent:
     defaults = {
-        "timestamp": "2026-03-01T00:00:00+00:00",
-        "session_id": "",
+        "call_id": "test-call-id",
         "agent_id": "",
-        "assistant": "claude-code",
+        "user": "testuser",
+        "assistant": "ClaudeCodeFormat",
         "tool_name": "Bash",
         "tool_category": "shell",
         "args_preview": '{"command": "ls"}',
         "verdict": "allow",
+        "mode": "enforce",
         "contract_id": None,
         "reason": None,
         "cwd": "/project",
+        "timestamp": "2026-03-01T00:00:00+00:00",
         "duration_ms": 2,
         "contracts_evaluated": 5,
     }
@@ -97,12 +99,13 @@ class TestWalIntegrity:
             tool_input=large_args,
             category="shell",
             verdict="allow",
+            mode="enforce",
             contract_id=None,
             reason=None,
             cwd="/project",
             duration_ms=2,
             contracts_evaluated=5,
-            assistant="claude-code",
+            assistant="ClaudeCodeFormat",
         )
         assert len(event.args_preview) <= 200
 

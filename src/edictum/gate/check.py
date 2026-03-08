@@ -37,8 +37,15 @@ def resolve_category(tool_name: str) -> str:
     return "unknown"
 
 
-def _check_scope(file_path: str | None, cwd: str) -> tuple[bool, str]:
-    """Check if file_path is within cwd. Returns (is_within, reason)."""
+def _check_scope(
+    file_path: str | None,
+    cwd: str,
+    allowlist: tuple[str, ...] = (),
+) -> tuple[bool, str]:
+    """Check if file_path is within cwd or an allowlisted prefix.
+
+    Returns (is_within, reason).
+    """
     if not file_path:
         return True, ""
     try:
@@ -46,6 +53,11 @@ def _check_scope(file_path: str | None, cwd: str) -> tuple[bool, str]:
         real_cwd = os.path.realpath(cwd)
         if real == real_cwd or real.startswith(real_cwd + os.sep):
             return True, ""
+        # Check allowlisted prefixes (e.g. ~/.claude/ for assistant memory)
+        for prefix in allowlist:
+            real_prefix = os.path.realpath(prefix.rstrip(os.sep)) + os.sep
+            if real == real_prefix.rstrip(os.sep) or real.startswith(real_prefix):
+                return True, ""
         return False, f"Denied: file path '{file_path}' is outside the project directory"
     except (OSError, ValueError):
         return False, f"Denied: cannot resolve file path '{file_path}'"
@@ -78,7 +90,7 @@ def run_check(
 
     Args:
         stdin_data: Raw JSON string from stdin.
-        format_name: Output format name (claude-code, cline, opencode, raw).
+        format_name: Output format name (claude-code, cursor, gemini, opencode, raw).
         config: GateConfig instance.
         cwd: Working directory for scope enforcement.
 
@@ -91,7 +103,7 @@ def run_check(
     format_handler = get_format(format_name)
 
     try:
-        return _run_check_inner(stdin_data, format_handler, config, cwd, start)
+        return _run_check_inner(stdin_data, format_handler, format_name, config, cwd, start)
     except Exception as exc:
         # Fail-closed by default
         if getattr(config, "fail_open", False):
@@ -103,6 +115,7 @@ def run_check(
 def _run_check_inner(
     stdin_data: str,
     format_handler: Any,
+    format_name: str,
     config: Any,
     cwd: str,
     start: int,
@@ -171,30 +184,44 @@ def _run_check_inner(
     # Evaluate
     result = guard.evaluate(tool_name, tool_input)
 
-    verdict = result.verdict  # "allow", "deny", or "warn"
-    if verdict == "warn":
-        verdict = "allow"  # Gate is binary: allow or deny
+    raw_verdict = result.verdict  # "allow", "deny", or "warn"
 
+    # Gate is binary: allow or deny
+    if raw_verdict == "deny":
+        verdict = "deny"
+    else:
+        verdict = "allow"  # "allow" and "warn" both pass through
+
+    # Derive mode from contract results — observed=True means observe mode
+    mode = "enforce"
     contract_id = None
     reason = None
     if result.contracts:
         for c in result.contracts:
-            if not c.passed and not c.observed:
+            if not c.passed:
                 contract_id = c.contract_id
                 reason = c.message
+                if c.observed:
+                    mode = "observe"
                 break
 
     # Scope enforcement (programmatic, not YAML)
     if verdict == "allow" and tool_name in _SCOPE_TOOLS:
         file_path = tool_input.get("file_path") or tool_input.get("filePath") or tool_input.get("path")
-        is_within, scope_reason = _check_scope(file_path, effective_cwd)
+        scope_allowlist = getattr(config, "scope_allowlist", ())
+        is_within, scope_reason = _check_scope(file_path, effective_cwd, scope_allowlist)
         if not is_within:
             verdict = "deny"
+            mode = "enforce"  # scope enforcement is always enforce
             contract_id = "gate-scope-enforcement"
             reason = scope_reason
 
     duration_ms = (time.perf_counter_ns() - start) // 1_000_000
     evaluated_count = result.contracts_evaluated
+
+    # Resolve agent_id from config
+    console_config = getattr(config, "console", None)
+    agent_id = getattr(console_config, "agent_id", "") if console_config else ""
 
     # Write audit event (sync, non-blocking on failure)
     _write_audit(
@@ -203,12 +230,14 @@ def _run_check_inner(
         tool_input,
         category,
         verdict,
+        mode,
         contract_id,
         reason,
         effective_cwd,
         duration_ms,
         evaluated_count,
-        format_handler.__class__.__name__,
+        format_name,
+        agent_id,
     )
 
     return format_handler.format_output(verdict, contract_id, reason, evaluated_count)
@@ -220,12 +249,14 @@ def _write_audit(
     tool_input: dict,
     category: str,
     verdict: str,
+    mode: str,
     contract_id: str | None,
     reason: str | None,
     cwd: str,
     duration_ms: int,
     contracts_evaluated: int,
     assistant: str,
+    agent_id: str,
 ) -> None:
     """Write audit event to WAL if audit is enabled. Never raises."""
     try:
@@ -242,12 +273,15 @@ def _write_audit(
             tool_input=tool_input,
             category=category,
             verdict=verdict,
+            mode=mode,
             contract_id=contract_id,
             reason=reason,
             cwd=cwd,
             duration_ms=duration_ms,
             contracts_evaluated=contracts_evaluated,
             assistant=assistant,
+            agent_id=agent_id,
+            redaction_config=redaction_config,
         )
         buffer.write(event)
     except Exception:
@@ -263,7 +297,7 @@ def main() -> None:
         "--format",
         dest="format_name",
         default="claude-code",
-        choices=["claude-code", "cline", "opencode", "raw"],
+        choices=["claude-code", "copilot", "cursor", "gemini", "opencode", "raw"],
         help="Output format (default: claude-code)",
     )
     parser.add_argument("--contracts", dest="contracts_path", default=None, help="Override contract path")

@@ -14,14 +14,30 @@ class TestOpenCodeParse:
     def test_parse_stdin_basic(self) -> None:
         data = {
             "tool": "bash",
-            "input": {"command": "ls"},
-            "sessionId": "abc123",
-            "workingDirectory": "/project",
+            "args": {"command": "ls"},
+            "directory": "/project",
         }
         tool_name, tool_input, cwd = self.fmt.parse_stdin(data)
         assert tool_name == "Bash"
         assert tool_input == {"command": "ls"}
         assert cwd == "/project"
+
+    def test_parse_stdin_read_with_file_path_normalization(self) -> None:
+        """OpenCode uses filePath, contracts use file_path."""
+        data = {
+            "tool": "read",
+            "args": {"filePath": "/project/src/main.py"},
+            "directory": "/project",
+        }
+        tool_name, tool_input, cwd = self.fmt.parse_stdin(data)
+        assert tool_name == "Read"
+        assert tool_input["file_path"] == "/project/src/main.py"
+        assert "filePath" not in tool_input
+
+    def test_parse_stdin_args_not_dict(self) -> None:
+        data = {"tool": "bash", "args": "invalid", "directory": "/project"}
+        _, tool_input, _ = self.fmt.parse_stdin(data)
+        assert tool_input == {}
 
     def test_tool_mapping_bash(self) -> None:
         assert OPENCODE_TOOL_MAP["bash"] == "Bash"
@@ -29,8 +45,11 @@ class TestOpenCodeParse:
     def test_tool_mapping_shell(self) -> None:
         assert OPENCODE_TOOL_MAP["shell"] == "Bash"
 
-    def test_working_directory_extraction(self) -> None:
-        data = {"tool": "read", "input": {}, "workingDirectory": "/custom/dir"}
+    def test_tool_mapping_patch(self) -> None:
+        assert OPENCODE_TOOL_MAP["patch"] == "Edit"
+
+    def test_directory_extraction(self) -> None:
+        data = {"tool": "read", "args": {}, "directory": "/custom/dir"}
         _, _, cwd = self.fmt.parse_stdin(data)
         assert cwd == "/custom/dir"
 

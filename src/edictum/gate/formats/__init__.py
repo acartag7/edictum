@@ -36,11 +36,15 @@ def get_format(name: str) -> FormatHandler:
 def _register_formats() -> None:
     """Register all built-in format handlers."""
     from edictum.gate.formats.claude_code import ClaudeCodeFormat
-    from edictum.gate.formats.cline import ClineFormat
+    from edictum.gate.formats.copilot_cli import CopilotCliFormat
+    from edictum.gate.formats.cursor import CursorFormat
+    from edictum.gate.formats.gemini_cli import GeminiCliFormat
     from edictum.gate.formats.opencode import OpenCodeFormat
     from edictum.gate.formats.raw import RawFormat
 
     FORMAT_REGISTRY["claude-code"] = ClaudeCodeFormat()
-    FORMAT_REGISTRY["cline"] = ClineFormat()
+    FORMAT_REGISTRY["copilot"] = CopilotCliFormat()
+    FORMAT_REGISTRY["cursor"] = CursorFormat()
+    FORMAT_REGISTRY["gemini"] = GeminiCliFormat()
     FORMAT_REGISTRY["opencode"] = OpenCodeFormat()
     FORMAT_REGISTRY["raw"] = RawFormat()

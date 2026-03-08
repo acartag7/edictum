@@ -25,47 +25,60 @@ def gate() -> None:
     """Coding assistant governance via hook interception."""
 
 
+_ASSISTANT_INFO: list[tuple[str, str, str]] = [
+    ("claude-code", "Claude Code", "PreToolUse hook in ~/.claude/settings.json"),
+    ("cursor", "Cursor", "preToolUse hook in ~/.cursor/hooks.json"),
+    ("copilot", "Copilot CLI", "preToolUse hook in .github/hooks/hooks.json (per-repo)"),
+    ("gemini", "Gemini CLI", "BeforeTool hook in .gemini/settings.json (per-repo)"),
+    ("opencode", "OpenCode", "Plugin in ~/.opencode/plugins/"),
+]
+
+
 @gate.command("init")
 @click.option("--server", default=None, help="Console server URL.")
 @click.option("--api-key", default=None, help="Console API key.")
-def gate_init(server: str | None, api_key: str | None) -> None:
-    """Initialize gate configuration for the current machine."""
+@click.option(
+    "--contracts",
+    "custom_contracts",
+    default=None,
+    type=click.Path(exists=True),
+    help="Your own ContractBundle YAML.",
+)
+@click.option("--non-interactive", is_flag=True, default=False, help="Skip prompts, use defaults.")
+def gate_init(server: str | None, api_key: str | None, custom_contracts: str | None, non_interactive: bool) -> None:
+    """Set up Edictum Gate — governance for coding assistants."""
     from edictum.gate.config import DEFAULT_GATE_DIR
 
     gate_dir = DEFAULT_GATE_DIR
     config_path = gate_dir / "gate.yaml"
 
-    if config_path.exists():
+    if config_path.exists() and not non_interactive:
         if not click.confirm(f"{config_path} already exists. Overwrite?"):
             _console.print("[yellow]Aborted.[/yellow]")
             return
 
-    # Create directory structure
-    (gate_dir / "contracts").mkdir(parents=True, exist_ok=True)
+    _console.print("\n[bold]Edictum Gate[/bold] — governance for coding assistants\n")
+
+    # --- Step 1: Contracts ---------------------------------------------------
+    _console.print("[bold]Step 1:[/bold] Contracts\n")
+
+    contract_path = _init_contracts(gate_dir, custom_contracts, non_interactive)
+
+    # --- Step 2: Assistants --------------------------------------------------
+    _console.print("\n[bold]Step 2:[/bold] Which assistants do you want to govern?\n")
+
+    installed_assistants = _init_assistants(non_interactive)
+
+    # --- Step 3: Write config ------------------------------------------------
     (gate_dir / "audit").mkdir(parents=True, exist_ok=True)
     (gate_dir / "cache").mkdir(parents=True, exist_ok=True)
 
-    # Copy base contract template
-    template_src = Path(__file__).parent.parent / "yaml_engine" / "templates" / "coding-assistant-base.yaml"
-    template_dst = gate_dir / "contracts" / "base.yaml"
-    if template_src.exists():
-        shutil.copy2(str(template_src), str(template_dst))
-        _console.print(f"  [green]Created[/green] {template_dst}")
-    else:
-        # Write minimal inline contract bundle
-        minimal = (
-            "apiVersion: edictum/v1\nkind: ContractBundle\n\n"
-            "metadata:\n  name: base\n  description: Base gate contracts\n\n"
-            "defaults:\n  mode: enforce\n\ncontracts: []\n"
-        )
-        template_dst.write_text(minimal)
-        _console.print(f"  [yellow]Created[/yellow] {template_dst} (minimal — template not found)")
-
-    # Write gate.yaml
     config_lines = [
         "# Edictum Gate configuration",
+        "# Docs: https://edictum.ai/docs/gate",
+        "",
         "contracts:",
-        f"  - {template_dst}",
+        f"  - {contract_path}",
         "",
     ]
 
@@ -85,21 +98,9 @@ def gate_init(server: str | None, api_key: str | None) -> None:
             "audit:",
             "  enabled: true",
             f"  buffer_path: {gate_dir / 'audit' / 'wal.jsonl'}",
-            "  flush_interval_seconds: 10",
-            "  max_buffer_size_mb: 50",
             "",
             "redaction:",
             "  enabled: true",
-            "  patterns:",
-            "    - 'sk_live_\\w+'",
-            "    - 'AKIA\\w{16}'",
-            "    - 'ghp_\\w{36}'",
-            "    - '-----BEGIN .* PRIVATE KEY-----'",
-            "  replacement: '<REDACTED>'",
-            "",
-            "cache:",
-            "  hash_mtime: true",
-            "  ttl_seconds: 300",
             "",
             "fail_open: false",
         ]
@@ -107,9 +108,104 @@ def gate_init(server: str | None, api_key: str | None) -> None:
 
     config_path.write_text("\n".join(config_lines) + "\n")
     _console.print(f"  [green]Created[/green] {config_path}")
+
+    # --- Step 3: What's next -------------------------------------------------
+    _console.print("\n[bold]Step 3:[/bold] Try it out\n")
+    if installed_assistants:
+        first = installed_assistants[0]
+        _console.print(f"  1. Open [cyan]{first}[/cyan] and use it normally — tool calls are now being logged.")
+    else:
+        _console.print("  1. Run [cyan]edictum gate install <assistant>[/cyan] to register a hook.")
+    _console.print("  2. Run [cyan]edictum gate audit[/cyan] to see what's being caught.")
+    _console.print(f"  3. Edit [cyan]{contract_path}[/cyan] to customize your contracts.")
     _console.print(
-        "\n[bold]Gate initialized.[/bold] " "Run [cyan]edictum gate install <assistant>[/cyan] to register hooks."
+        "  4. When ready, change [bold]mode: observe[/bold] to" " [bold]mode: enforce[/bold] to start blocking."
     )
+    _console.print("\n  Write your own contracts: [dim]https://edictum.ai/docs/gate/contracts[/dim]")
+    _console.print("")
+
+
+def _init_contracts(gate_dir: Path, custom_contracts: str | None, non_interactive: bool) -> Path:
+    """Set up contracts — custom or default. Returns the contract file path."""
+    contracts_dir = gate_dir / "contracts"
+    contracts_dir.mkdir(parents=True, exist_ok=True)
+    template_dst = contracts_dir / "base.yaml"
+
+    if custom_contracts:
+        # User provided their own contracts
+        shutil.copy2(custom_contracts, str(template_dst))
+        _console.print(f"  [green]Copied[/green] {custom_contracts} -> {template_dst}")
+        return template_dst
+
+    if non_interactive:
+        choice = "1"
+    else:
+        _console.print("  [bold][1][/bold] Use default contracts (observe mode — logs without blocking)")
+        _console.print("      Covers: secret file access, destructive commands, git safety,")
+        _console.print("      system modifications, package installations.")
+        _console.print("  [bold][2][/bold] Provide your own ContractBundle path\n")
+        choice = click.prompt("  Choose", type=click.Choice(["1", "2"]), default="1")
+
+    if choice == "2":
+        custom_path = click.prompt("  Path to your ContractBundle YAML", type=click.Path(exists=True))
+        shutil.copy2(custom_path, str(template_dst))
+        _console.print(f"  [green]Copied[/green] {custom_path} -> {template_dst}")
+    else:
+        template_src = Path(__file__).parent.parent / "yaml_engine" / "templates" / "coding-assistant-base.yaml"
+        if template_src.exists():
+            shutil.copy2(str(template_src), str(template_dst))
+            _console.print(f"  [green]Created[/green] {template_dst}")
+            _console.print("  Mode: [cyan]observe[/cyan] (logs what would be denied, does not block)")
+        else:
+            minimal = (
+                "apiVersion: edictum/v1\nkind: ContractBundle\n\n"
+                "metadata:\n  name: base\n  description: Base gate contracts\n\n"
+                "defaults:\n  mode: observe\n\ncontracts: []\n"
+            )
+            template_dst.write_text(minimal)
+            _console.print(f"  [yellow]Created[/yellow] {template_dst} (empty — template not found)")
+
+    return template_dst
+
+
+def _init_assistants(non_interactive: bool) -> list[str]:
+    """Prompt user to select assistants, install hooks. Returns list of installed names."""
+    from edictum.gate.install import INSTALLER_REGISTRY
+
+    for i, (key, name, desc) in enumerate(_ASSISTANT_INFO, 1):
+        _console.print(f"  [bold][{i}][/bold] {name:14s} {desc}")
+    _console.print("")
+
+    if non_interactive:
+        return []
+
+    raw = click.prompt(
+        "  Select (comma-separated numbers, or 'none')",
+        default="none",
+    )
+
+    if raw.strip().lower() in ("none", "n", ""):
+        _console.print("  [dim]Skipped — install later with: edictum gate install <assistant>[/dim]")
+        return []
+
+    # Parse selection
+    installed = []
+    for part in raw.split(","):
+        part = part.strip()
+        try:
+            idx = int(part) - 1
+            if 0 <= idx < len(_ASSISTANT_INFO):
+                key, name, _ = _ASSISTANT_INFO[idx]
+                installer, _ = INSTALLER_REGISTRY[key]
+                result = installer()
+                _console.print(f"  [green]OK[/green] {name}: {result}")
+                installed.append(name)
+            else:
+                _console.print(f"  [yellow]Skipped[/yellow] invalid selection: {part}")
+        except (ValueError, KeyError):
+            _console.print(f"  [yellow]Skipped[/yellow] invalid selection: {part}")
+
+    return installed
 
 
 @gate.command("check")
@@ -117,7 +213,7 @@ def gate_init(server: str | None, api_key: str | None) -> None:
     "--format",
     "format_name",
     default="claude-code",
-    type=click.Choice(["claude-code", "cline", "opencode", "raw"]),
+    type=click.Choice(["claude-code", "copilot", "cursor", "gemini", "opencode", "raw"]),
     help="Output format (default: claude-code).",
 )
 @click.option("--contracts", "contracts_path", default=None, type=click.Path(), help="Override contract path.")
@@ -149,10 +245,22 @@ def gate_check(format_name: str, contracts_path: str | None, json_flag: bool) ->
 
 
 @gate.command("install")
-@click.argument("assistant", type=click.Choice(["claude-code", "cline", "opencode"]))
+@click.argument("assistant", type=click.Choice(["claude-code", "copilot", "cursor", "gemini", "opencode"]))
 def gate_install(assistant: str) -> None:
     """Register the gate hook with a coding assistant."""
+    from edictum.gate.config import DEFAULT_CONFIG_PATH
     from edictum.gate.install import INSTALLER_REGISTRY
+
+    if not DEFAULT_CONFIG_PATH.exists():
+        _console.print("[yellow]Gate not initialized.[/yellow] Run [cyan]edictum gate init[/cyan] first.")
+        _console.print("  This sets up your contracts and configuration.\n")
+        if click.confirm("  Run gate init now?"):
+            ctx = click.get_current_context()
+            ctx.invoke(gate_init, server=None, api_key=None, custom_contracts=None, non_interactive=False)
+            # gate init already offered assistant installation in Step 2
+            return
+        else:
+            return
 
     installer, _ = INSTALLER_REGISTRY[assistant]
     result = installer()
@@ -160,7 +268,7 @@ def gate_install(assistant: str) -> None:
 
 
 @gate.command("uninstall")
-@click.argument("assistant", type=click.Choice(["claude-code", "cline", "opencode"]))
+@click.argument("assistant", type=click.Choice(["claude-code", "copilot", "cursor", "gemini", "opencode"]))
 def gate_uninstall(assistant: str) -> None:
     """Remove the gate hook from a coding assistant."""
     from edictum.gate.install import INSTALLER_REGISTRY
@@ -228,9 +336,31 @@ def gate_status() -> None:
         except Exception:
             pass
 
-    cline_hook = home / "Documents" / "Cline" / "Rules" / "Hooks" / "edictum-gate.sh"
-    if cline_hook.exists():
-        installed.append("cline")
+    cursor_hooks = home / ".cursor" / "hooks.json"
+    if cursor_hooks.exists():
+        try:
+            cdata = json.loads(cursor_hooks.read_text())
+            for entry in cdata.get("hooks", {}).get("preToolUse", []):
+                if isinstance(entry, dict) and "edictum gate check" in entry.get("command", ""):
+                    installed.append("cursor")
+                    break
+        except Exception:
+            pass
+
+    copilot_hooks = Path.cwd() / ".github" / "hooks" / "hooks.json"
+    if copilot_hooks.exists():
+        try:
+            cpdata = json.loads(copilot_hooks.read_text())
+            for entry in cpdata.get("hooks", {}).get("preToolUse", []):
+                if isinstance(entry, dict) and "edictum gate check" in entry.get("bash", ""):
+                    installed.append("copilot")
+                    break
+        except Exception:
+            pass
+
+    gemini_hook = Path.cwd() / ".gemini" / "hooks" / "edictum-gate.sh"
+    if gemini_hook.exists():
+        installed.append("gemini")
 
     opencode_plugin = home / ".opencode" / "plugins" / "edictum-gate.ts"
     if opencode_plugin.exists():
@@ -262,24 +392,60 @@ def gate_audit(limit: int, tool: str | None, verdict: str | None) -> None:
     try:
         from rich.table import Table
 
-        table = Table(show_header=True)
-        table.add_column("Time", style="dim", width=20)
-        table.add_column("Tool")
-        table.add_column("Verdict")
-        table.add_column("Contract")
-        table.add_column("Args Preview", max_width=40)
+        wide = _console.width >= 120
+
+        table = Table(show_header=True, pad_edge=False, box=None)
+        table.add_column("Time", style="dim", no_wrap=True)
+        if wide:
+            table.add_column("User", no_wrap=True)
+            table.add_column("Assistant", no_wrap=True)
+        table.add_column("Verdict", no_wrap=True)
+        table.add_column("Tool", no_wrap=True)
+        table.add_column("Detail")
+
+        # How much space is left for the detail column
+        fixed_cols = 32 if not wide else 62
+        detail_width = max(20, _console.width - fixed_cols)
 
         for e in events:
-            ts = e.get("timestamp", "")[:19]
+            ts_raw = e.get("timestamp", "")
+            # Wide: full datetime, narrow: just time
+            ts = ts_raw[:19].replace("T", " ") if wide else ts_raw[11:19]
             v = e.get("verdict", "")
-            verdict_styled = f"[red]{v}[/red]" if v == "deny" else f"[green]{v}[/green]"
-            table.add_row(
-                ts,
-                e.get("tool_name", ""),
-                verdict_styled,
-                e.get("contract_id", "") or "",
-                escape(e.get("args_preview", "")[:40]),
-            )
+            m = e.get("mode", "")
+            tool_name = e.get("tool_name", "")
+            user = e.get("user", "")
+            assistant = e.get("assistant", "")
+            contract = e.get("contract_id", "")
+            reason = e.get("reason", "")
+            preview_len = min(detail_width, 80)
+            args = escape(e.get("args_preview", "")[:preview_len])
+
+            # Observed denial: mode=observe + contract matched (allowed through but flagged)
+            is_observed_deny = m == "observe" and contract
+
+            if v == "deny" and m == "observe":
+                verdict_styled = "[yellow]would deny[/yellow]"
+            elif is_observed_deny:
+                verdict_styled = "[yellow]would deny[/yellow]"
+            elif v == "deny":
+                verdict_styled = "[red]deny[/red]"
+            else:
+                verdict_styled = f"[green]{v}[/green]"
+
+            # Detail: contract+reason for denials/warns, truncated args for allows
+            if (v == "deny" or is_observed_deny) and contract:
+                detail = contract
+                if reason:
+                    detail += f" — {reason}"
+            else:
+                detail = f"[dim]{args}[/dim]"
+
+            row: list[str] = [ts]
+            if wide:
+                row.extend([user, assistant])
+            row.extend([verdict_styled, tool_name, detail])
+            table.add_row(*row)
         _console.print(table)
     except ImportError:
         for e in events:

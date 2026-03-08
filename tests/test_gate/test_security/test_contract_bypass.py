@@ -87,17 +87,17 @@ class TestContractBypass:
         assert result["verdict"] == "allow"
 
     def test_format_mismatch(self, tmp_path: Path) -> None:
-        """Claude Code format with Cline-shaped data should fail gracefully."""
+        """Claude Code format with mismatched data should fail gracefully."""
         config = _config(tmp_path)
-        cline_data = json.dumps(
+        mismatched_data = json.dumps(
             {
                 "type": "PreToolUse",
                 "tool": "execute_command",
                 "params": {"command": "cat .env"},
             }
         )
-        # Using claude-code format with cline data
-        stdout, _ = run_check(cline_data, "claude-code", config, str(tmp_path))
+        # Using claude-code format with mismatched data
+        stdout, _ = run_check(mismatched_data, "claude-code", config, str(tmp_path))
         result = json.loads(stdout)
         # Should not crash — tool_name will be empty from claude-code parser
         assert isinstance(result, dict)

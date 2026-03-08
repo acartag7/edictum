@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from edictum.gate.check import _check_scope, resolve_category, run_check
@@ -207,3 +208,185 @@ class TestCheckScope:
     def test_cwd_itself(self, tmp_path: Path) -> None:
         ok, reason = _check_scope(str(tmp_path), str(tmp_path))
         assert ok
+
+    def test_allowlist_permits_outside_cwd(self, tmp_path: Path) -> None:
+        """Paths matching scope_allowlist bypass scope enforcement."""
+        allowed_dir = tmp_path / "allowed"
+        allowed_dir.mkdir()
+        target = allowed_dir / "memory.md"
+        target.write_text("test")
+        ok, reason = _check_scope(str(target), str(tmp_path / "project"), allowlist=(str(allowed_dir) + os.sep,))
+        assert ok
+
+    def test_allowlist_does_not_permit_other_paths(self, tmp_path: Path) -> None:
+        """Allowlist only covers its specific prefixes."""
+        allowed_dir = tmp_path / "allowed"
+        allowed_dir.mkdir()
+        other = tmp_path / "other" / "secret.txt"
+        ok, reason = _check_scope(str(other), str(tmp_path / "project"), allowlist=(str(allowed_dir) + os.sep,))
+        assert not ok
+
+    def test_allowlist_symlink_escape(self, tmp_path: Path) -> None:
+        """Symlink inside allowlisted dir pointing outside is still resolved."""
+        allowed_dir = tmp_path / "allowed"
+        allowed_dir.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        secret = outside / "secret.txt"
+        secret.write_text("secret")
+        symlink = allowed_dir / "link.txt"
+        symlink.symlink_to(secret)
+        # Symlink resolves to outside — should be denied
+        ok, reason = _check_scope(str(symlink), str(tmp_path / "project"), allowlist=(str(allowed_dir) + os.sep,))
+        # realpath resolves to outside/secret.txt which IS outside the allowlisted dir
+        assert not ok
+
+    def test_scope_allowlist_via_run_check(self, tmp_path: Path) -> None:
+        """End-to-end: Write to allowlisted path outside cwd is allowed."""
+        allowed_dir = tmp_path / "claude-memory"
+        allowed_dir.mkdir()
+        target = allowed_dir / "MEMORY.md"
+        target.write_text("test")
+
+        contract_path = tmp_path / "contracts.yaml"
+        contract_path.write_text(_MINIMAL_CONTRACTS)
+        config = GateConfig(
+            contracts=(str(contract_path),),
+            audit=AuditConfig(enabled=False),
+            scope_allowlist=(str(allowed_dir) + os.sep,),
+            fail_open=False,
+        )
+
+        project = tmp_path / "project"
+        project.mkdir()
+        stdin = _stdin("Write", {"file_path": str(target)}, cwd=str(project))
+        stdout, code = run_check(stdin, "raw", config, str(project))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+
+def _make_enforced_base_config(tmp_path: Path) -> GateConfig:
+    """Config using the real coding-assistant-base.yaml template, overridden to enforce mode.
+
+    The shipped template defaults to observe mode (non-blocking), but tests need
+    enforce mode to assert deny verdicts.
+    """
+    import importlib.resources
+
+    template_dir = importlib.resources.files("edictum.yaml_engine.templates")
+    base_text = (template_dir / "coding-assistant-base.yaml").read_text()
+    # Override mode to enforce for testing
+    enforced = base_text.replace("mode: observe", "mode: enforce", 1)
+    enforced_path = tmp_path / "base-enforced.yaml"
+    enforced_path.write_text(enforced)
+    return GateConfig(
+        contracts=(str(enforced_path),),
+        audit=AuditConfig(enabled=False),
+        redaction=RedactionConfig(enabled=False),
+        scope_allowlist=(),
+        fail_open=False,
+    )
+
+
+class TestSecretFileContracts:
+    """Tests for deny-secret-file-reads/writes/edits contracts (brace expansion fix)."""
+
+    def test_read_env_denied(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/project/.env"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-secret-file-reads"
+
+    def test_write_env_denied(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        target = tmp_path / ".env"
+        stdin = _stdin("Write", {"file_path": str(target)}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-secret-file-writes"
+
+    def test_edit_env_denied(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        target = tmp_path / ".env"
+        stdin = _stdin("Edit", {"file_path": str(target)}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-secret-file-edits"
+
+    def test_read_credentials_denied(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/project/credentials.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_read_pem_denied(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/project/server.pem"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_read_safe_file_allowed(self, tmp_path: Path) -> None:
+        config = _make_enforced_base_config(tmp_path)
+        target = tmp_path / "app.py"
+        stdin = _stdin("Read", {"file_path": str(target)}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+
+class TestEnvDumpNarrowing:
+    """Tests for narrowed echo regex — no false positives on echo $PATH."""
+
+    def test_echo_path_allowed(self, tmp_path: Path) -> None:
+        """echo $PATH should NOT be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo $PATH"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_echo_home_allowed(self, tmp_path: Path) -> None:
+        """echo $HOME should NOT be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo $HOME"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_echo_aws_secret_denied(self, tmp_path: Path) -> None:
+        """echo $AWS_SECRET_ACCESS_KEY should be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo $AWS_SECRET_ACCESS_KEY"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_echo_api_key_denied(self, tmp_path: Path) -> None:
+        """echo $API_KEY should be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo $API_KEY"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_printenv_still_denied(self, tmp_path: Path) -> None:
+        """printenv should still be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "printenv"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_cat_env_still_denied(self, tmp_path: Path) -> None:
+        """cat .env should still be denied."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "cat .env"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"

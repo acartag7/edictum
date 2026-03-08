@@ -45,6 +45,16 @@ class CacheConfig:
     ttl_seconds: int = 300
 
 
+def _default_scope_allowlist() -> tuple[str, ...]:
+    """Default paths that bypass scope enforcement.
+
+    These are assistant infrastructure directories that coding assistants
+    must be able to write to for normal operation (memory, settings, etc.).
+    """
+    home = str(Path.home())
+    return (os.path.join(home, ".claude") + os.sep,)
+
+
 @dataclass(frozen=True)
 class GateConfig:
     contracts: tuple[str, ...] = (str(DEFAULT_GATE_DIR / "contracts" / "base.yaml"),)
@@ -52,6 +62,7 @@ class GateConfig:
     audit: AuditConfig = field(default_factory=AuditConfig)
     redaction: RedactionConfig = field(default_factory=RedactionConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
+    scope_allowlist: tuple[str, ...] = field(default_factory=_default_scope_allowlist)
     fail_open: bool = False
 
 
@@ -134,11 +145,26 @@ def _parse_config(raw: dict[str, Any]) -> GateConfig:
         ttl_seconds=cache_raw.get("ttl_seconds", 300),
     )
 
+    # Scope allowlist
+    scope_raw = raw.get("scope_allowlist")
+    if scope_raw and isinstance(scope_raw, list):
+        # Expand ~ in user-provided paths and ensure trailing sep
+        expanded = []
+        for p in scope_raw:
+            resolved = os.path.expanduser(str(p))
+            if not resolved.endswith(os.sep):
+                resolved += os.sep
+            expanded.append(resolved)
+        scope_allowlist = tuple(expanded)
+    else:
+        scope_allowlist = _default_scope_allowlist()
+
     return GateConfig(
         contracts=contracts,
         console=console,
         audit=audit,
         redaction=redaction,
         cache=cache,
+        scope_allowlist=scope_allowlist,
         fail_open=raw.get("fail_open", False),
     )
