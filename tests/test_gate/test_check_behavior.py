@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from edictum.gate.check import _check_scope, resolve_category, run_check
 from edictum.gate.config import AuditConfig, GateConfig, RedactionConfig
 
@@ -390,3 +392,175 @@ class TestEnvDumpNarrowing:
         stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
         result = json.loads(stdout)
         assert result["verdict"] == "deny"
+
+
+@pytest.mark.security
+class TestGateSelfProtection:
+    """Verify the assistant cannot disable or tamper with Gate infrastructure.
+
+    These tests attempt bypass vectors that a governed assistant might try:
+    reading hook config, editing gate settings, using Bash to modify files.
+    """
+
+    # -- File tool bypass: read hook config ------------------------------------
+
+    def test_read_claude_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read ~/.claude/settings.json (contains hook config)."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/Users/me/.claude/settings.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    def test_read_cursor_hooks_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read ~/.cursor/hooks.json."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/Users/me/.cursor/hooks.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    def test_read_gate_config_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read ~/.edictum/gate.yaml."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/Users/me/.edictum/gate.yaml"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    def test_read_gate_contracts_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read ~/.edictum/contracts/base.yaml."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/Users/me/.edictum/contracts/base.yaml"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    def test_read_gemini_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read .gemini/settings.json."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/project/.gemini/settings.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    # -- File tool bypass: write/edit hook config ------------------------------
+
+    def test_write_claude_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not overwrite ~/.claude/settings.json to remove hook."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Write", {"file_path": "/Users/me/.claude/settings.json", "content": "{}"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-writes"
+
+    def test_edit_claude_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not edit ~/.claude/settings.json to remove hook."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin(
+            "Edit",
+            {"file_path": "/Users/me/.claude/settings.json", "old_string": "edictum", "new_string": ""},
+            cwd=str(tmp_path),
+        )
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-edits"
+
+    def test_write_gate_config_denied(self, tmp_path: Path) -> None:
+        """Assistant must not overwrite ~/.edictum/gate.yaml."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin(
+            "Write", {"file_path": "/Users/me/.edictum/gate.yaml", "content": "fail_open: true"}, cwd=str(tmp_path)
+        )
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-writes"
+
+    # -- Bash bypass: shell commands to modify config --------------------------
+
+    def test_bash_rm_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not delete settings.json via shell."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "rm ~/.claude/settings.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_bash_echo_redirect_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not overwrite settings.json via echo redirect."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo '{}' > ~/.claude/settings.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_bash_sed_settings_denied(self, tmp_path: Path) -> None:
+        """Assistant must not use sed to remove hook from settings.json."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "sed -i 's/edictum//g' settings.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_bash_gate_uninstall_denied(self, tmp_path: Path) -> None:
+        """Assistant must not run edictum gate uninstall."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "edictum gate uninstall claude-code"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_bash_modify_edictum_dir_denied(self, tmp_path: Path) -> None:
+        """Assistant must not modify files under ~/.edictum/."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "echo 'fail_open: true' > ~/.edictum/gate.yaml"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_bash_cat_hooks_json_denied(self, tmp_path: Path) -> None:
+        """Assistant must not read hooks.json via cat."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "cat ~/.cursor/hooks.json"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    # -- Verify deny message tells assistant to ask the human ------------------
+
+    def test_deny_message_instructs_human(self, tmp_path: Path) -> None:
+        """Deny message must tell the assistant to ask the human to make changes."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Edit", {"file_path": "/Users/me/.edictum/gate.yaml"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert "human" in result["reason"].lower()
+
+    # -- Non-gate files still allowed ------------------------------------------
+
+    def test_read_normal_json_allowed(self, tmp_path: Path) -> None:
+        """Reading a normal .json file should not be denied by gate protection."""
+        config = _make_enforced_base_config(tmp_path)
+        normal = tmp_path / "package.json"
+        normal.write_text("{}")
+        stdin = _stdin("Read", {"file_path": str(normal)}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_bash_ls_allowed(self, tmp_path: Path) -> None:
+        """Normal Bash commands should not be denied by gate protection."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "ls -la"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"

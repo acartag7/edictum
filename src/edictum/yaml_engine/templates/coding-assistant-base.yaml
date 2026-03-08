@@ -206,3 +206,80 @@ contracts:
       effect: deny
       message: "Denied: package installation"
       tags: [audit, packages]
+
+  # -- Gate Self-Protection ----------------------------------------------------
+  # Prevent the governed assistant from disabling or modifying Gate.
+  # Gate configuration is managed by humans in a terminal — if you need
+  # changes, tell the human what to modify and where.
+
+  - id: deny-gate-config-reads
+    type: pre
+    tool: Read
+    when:
+      args.file_path:
+        matches_any:
+          - '\.edictum/'
+          - '\.claude/settings\.json$'
+          - '\.cursor/hooks\.json$'
+          - '\.gemini/settings\.json$'
+    then:
+      effect: deny
+      message: >-
+        Denied: this is a Gate infrastructure file. Gate configuration is
+        managed by humans, not by the governed assistant. Tell the human
+        what needs to change and they will update it in their terminal.
+      tags: [security, gate-protection]
+
+  - id: deny-gate-config-writes
+    type: pre
+    tool: Write
+    when:
+      args.file_path:
+        matches_any:
+          - '\.edictum/'
+          - '\.claude/settings\.json$'
+          - '\.cursor/hooks\.json$'
+          - '\.gemini/settings\.json$'
+    then:
+      effect: deny
+      message: >-
+        Denied: this is a Gate infrastructure file. Gate configuration is
+        managed by humans, not by the governed assistant. Tell the human
+        what needs to change and they will update it in their terminal.
+      tags: [security, gate-protection]
+
+  - id: deny-gate-config-edits
+    type: pre
+    tool: Edit
+    when:
+      args.file_path:
+        matches_any:
+          - '\.edictum/'
+          - '\.claude/settings\.json$'
+          - '\.cursor/hooks\.json$'
+          - '\.gemini/settings\.json$'
+    then:
+      effect: deny
+      message: >-
+        Denied: this is a Gate infrastructure file. Gate configuration is
+        managed by humans, not by the governed assistant. Tell the human
+        what needs to change and they will update it in their terminal.
+      tags: [security, gate-protection]
+
+  - id: deny-gate-config-bash-tampering
+    type: pre
+    tool: Bash
+    when:
+      args.command:
+        matches_any:
+          - '\.edictum/'
+          - 'settings\.json'
+          - 'hooks\.json'
+          - 'edictum\s+gate\s+uninstall'
+    then:
+      effect: deny
+      message: >-
+        Denied: Gate infrastructure cannot be modified by the assistant.
+        Gate configuration is managed by humans in a terminal. Tell the
+        human what command to run and they will execute it themselves.
+      tags: [security, gate-protection]
