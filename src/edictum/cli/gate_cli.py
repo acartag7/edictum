@@ -315,6 +315,7 @@ def gate_check(format_name: str, contracts_path: str | None, json_flag: bool) ->
             audit=config.audit,
             redaction=config.redaction,
             cache=config.cache,
+            scope_allowlist=config.scope_allowlist,
             fail_open=config.fail_open,
         )
 
@@ -399,7 +400,8 @@ def gate_status() -> None:
     wal = Path(config.audit.buffer_path)
     if wal.exists():
         size = wal.stat().st_size
-        line_count = sum(1 for _ in open(wal))
+        with open(wal) as _f:
+            line_count = sum(1 for _ in _f)
         _console.print(f"  Audit:     {line_count} events buffered ({size} bytes)")
     else:
         _console.print("  Audit:     no events")

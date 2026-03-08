@@ -409,7 +409,7 @@ export const EdictumGate = async ({ directory }) => {
         const proc = spawnSync(
           "edictum",
           ["gate", "check", "--format", "opencode"],
-          { input: payload, encoding: "utf-8", timeout: 5000 }
+          { input: payload, encoding: "utf-8", timeout: 5000, shell: false }
         );
         if (proc.error) {
           throw new Error("Edictum gate check failed: " + proc.error.message);

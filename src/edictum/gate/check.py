@@ -420,6 +420,7 @@ def main() -> None:
             audit=config.audit,
             redaction=config.redaction,
             cache=config.cache,
+            scope_allowlist=config.scope_allowlist,
             fail_open=config.fail_open,
         )
 

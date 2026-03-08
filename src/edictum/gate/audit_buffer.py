@@ -200,7 +200,7 @@ class AuditBuffer:
             # Safety: refuse to write if WAL path resolves to a symlink target outside expected dir
             real_path = os.path.realpath(self._buffer_path)
             expected_parent = os.path.realpath(self._buffer_path.parent)
-            if not real_path.startswith(expected_parent):
+            if real_path != expected_parent and not real_path.startswith(expected_parent + os.sep):
                 print("Gate audit: WAL path resolves outside expected directory", file=sys.stderr)
                 return
 
@@ -362,21 +362,34 @@ class AuditBuffer:
             "payload": payload or None,
         }
 
+    def _verify_wal_path(self) -> str | None:
+        """Verify WAL path hasn't been replaced by a symlink. Returns real path or None."""
+        real_path = os.path.realpath(self._buffer_path)
+        expected_parent = os.path.realpath(self._buffer_path.parent)
+        if real_path != expected_parent and not real_path.startswith(expected_parent + os.sep):
+            print("Gate audit: WAL path resolves outside expected directory", file=sys.stderr)
+            return None
+        return real_path
+
     def flush_to_console(self, console_config: Any) -> int:
         """Batch POST buffered events to Console. Returns count sent."""
         if not self._buffer_path.exists():
             return 0
 
-        lines = self._buffer_path.read_text().strip().split("\n")
-        raw_events = []
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                raw_events.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+        real_path = self._verify_wal_path()
+        if real_path is None:
+            return 0
 
+        raw_events = []
+        with open(real_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    raw_events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
         if not raw_events:
             return 0
 
@@ -424,9 +437,10 @@ class AuditBuffer:
         finally:
             client.close()
 
-        # Truncate WAL on success
+        # Truncate WAL on success (use verified real_path, not potentially-symlinked path)
         try:
-            self._buffer_path.write_text("")
+            with open(real_path, "w") as f:
+                f.truncate(0)
         except OSError:
             pass
 
