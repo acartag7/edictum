@@ -12,7 +12,6 @@ except Exception:  # pragma: no cover — editable installs, test envs
 from edictum._exceptions import EdictumConfigError, EdictumDenied, EdictumToolError
 from edictum._factory import TemplateInfo
 from edictum._guard import Edictum
-from edictum._server_factory import _ASSIGNMENT_TIMEOUT_SECS
 from edictum.approval import (
     ApprovalBackend,
     ApprovalDecision,
@@ -55,7 +54,6 @@ from edictum.yaml_engine.composer import CompositionReport
 
 __all__ = [
     "__version__",
-    "_ASSIGNMENT_TIMEOUT_SECS",
     "ApprovalBackend",
     "ApprovalDecision",
     "ApprovalRequest",

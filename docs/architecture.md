@@ -326,7 +326,7 @@ src/edictum/
     compiler.py            YAML contracts -> @precondition/@postcondition/@sandbox objects
     composer.py            Bundle composition (compose_bundles, observe_alongside)
 
-  otel.py                  configure_otel(), has_otel(), get_tracer() (OTel spans)
+  otel.py                  configure_otel(), has_otel() (OTel spans)
 
   cli/
     main.py                Click CLI entry point (validate, check, diff, replay, test)
