@@ -60,12 +60,12 @@ def _build_guard_from_compiled(
     approval_backend: ApprovalBackend | None,
 ) -> Edictum:
     """Shared guard construction from compiled contracts and bundle data."""
-    from edictum.otel import configure_otel
-
     # Handle observability config
     obs_config = bundle_data.get("observability", {})
     otel_config = obs_config.get("otel", {})
     if otel_config.get("enabled"):
+        from edictum.otel import configure_otel
+
         configure_otel(
             service_name=otel_config.get("service_name", "edictum-agent"),
             endpoint=otel_config.get("endpoint", "http://localhost:4317"),
