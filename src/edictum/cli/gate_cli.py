@@ -469,7 +469,5 @@ def gate_sync() -> None:
         sent = buffer.flush_to_console(config.console)
         _console.print(f"Flushed {sent} audit events to Console")
     except ImportError:
-        _err_console.print(
-            "[red]Console sync requires edictum[server]. " "Install with: pip install edictum[server,gate][/red]"
-        )
+        _err_console.print("[red]Console sync requires httpx. Install with: pip install 'edictum\\[gate]'[/red]")
         sys.exit(1)
