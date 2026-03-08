@@ -223,8 +223,12 @@ def _run_check_inner(
         scope_allowlist = getattr(config, "scope_allowlist", ())
         is_within, scope_reason = _check_scope(file_path, effective_cwd, scope_allowlist)
         if not is_within:
+            # Scope enforcement respects the guard's default mode.
+            # In observe mode, scope logs (would-deny) but does not block.
+            # Self-protection contracts have explicit mode: enforce and fire
+            # before scope reaches this point, so they always block.
             verdict = "deny"
-            mode = "enforce"  # scope enforcement is always enforce
+            mode = guard.mode
             contract_id = "gate-scope-enforcement"
             reason = scope_reason
             decision_source = "gate_scope"
@@ -262,7 +266,9 @@ def _run_check_inner(
         policy_version=guard.policy_version,
     )
 
-    return format_handler.format_output(verdict, contract_id, reason, result.contracts_evaluated)
+    # Observe mode: audit records would-deny, but the assistant is told allow
+    output_verdict = "allow" if (verdict == "deny" and mode == "observe") else verdict
+    return format_handler.format_output(output_verdict, contract_id, reason, result.contracts_evaluated)
 
 
 def _write_audit(

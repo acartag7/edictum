@@ -566,6 +566,60 @@ class TestGateSelfProtection:
         assert result["verdict"] == "allow"
 
 
+def _make_observe_base_config(tmp_path: Path) -> GateConfig:
+    """Config using the real coding-assistant-base.yaml template in observe mode (default)."""
+    import importlib.resources
+
+    template_dir = importlib.resources.files("edictum.yaml_engine.templates")
+    base_text = (template_dir / "coding-assistant-base.yaml").read_text()
+    observe_path = tmp_path / "base-observe.yaml"
+    observe_path.write_text(base_text)
+    return GateConfig(
+        contracts=(str(observe_path),),
+        audit=AuditConfig(enabled=False),
+        redaction=RedactionConfig(enabled=False),
+        scope_allowlist=(),
+        fail_open=False,
+    )
+
+
+class TestObserveModeScope:
+    """Scope enforcement respects observe mode — logs but does not block."""
+
+    def test_scope_observe_allows_write_outside_cwd(self, tmp_path: Path) -> None:
+        """In observe mode, scope violation returns allow (not deny)."""
+        config = _make_observe_base_config(tmp_path)
+        stdin = _stdin("Write", {"file_path": "/etc/passwd"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "allow"
+
+    def test_scope_enforce_blocks_write_outside_cwd(self, tmp_path: Path) -> None:
+        """In enforce mode, scope violation returns deny."""
+        config = _make_enforced_base_config(tmp_path)
+        stdin = _stdin("Write", {"file_path": "/etc/passwd"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+    def test_self_protection_always_enforces(self, tmp_path: Path) -> None:
+        """Self-protection contracts have explicit mode: enforce, even when defaults are observe."""
+        config = _make_observe_base_config(tmp_path)
+        stdin = _stdin("Read", {"file_path": "/Users/me/.edictum/gate.yaml"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+        assert result["contract_id"] == "deny-gate-config-reads"
+
+    def test_self_protection_bash_always_enforces(self, tmp_path: Path) -> None:
+        """Bash self-protection enforces even in observe mode."""
+        config = _make_observe_base_config(tmp_path)
+        stdin = _stdin("Bash", {"command": "edictum gate uninstall claude-code"}, cwd=str(tmp_path))
+        stdout, _ = run_check(stdin, "raw", config, str(tmp_path))
+        result = json.loads(stdout)
+        assert result["verdict"] == "deny"
+
+
 class TestCursorAutoDetection:
     """Verify that Cursor stdin is auto-detected when hook is registered as claude-code."""
 

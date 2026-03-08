@@ -213,6 +213,7 @@ contracts:
   # changes, tell the human what to modify and where.
 
   - id: deny-gate-config-reads
+    mode: enforce
     type: pre
     tool: Read
     when:
@@ -231,6 +232,7 @@ contracts:
       tags: [security, gate-protection]
 
   - id: deny-gate-config-writes
+    mode: enforce
     type: pre
     tool: Write
     when:
@@ -249,6 +251,7 @@ contracts:
       tags: [security, gate-protection]
 
   - id: deny-gate-config-edits
+    mode: enforce
     type: pre
     tool: Edit
     when:
@@ -267,6 +270,7 @@ contracts:
       tags: [security, gate-protection]
 
   - id: deny-gate-config-bash-tampering
+    mode: enforce
     type: pre
     tool: Bash
     when:
