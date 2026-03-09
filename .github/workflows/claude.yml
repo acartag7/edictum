@@ -26,20 +26,20 @@ jobs:
       actions: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@26ec041249acb0a944c0a47b6c0c13f05dbc5b44 # v1
         with:
           # Pass GLM token as anthropic_api_key to satisfy action validation.
           # Actual auth is handled by ANTHROPIC_AUTH_TOKEN (Bearer) below.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           additional_permissions: |
             actions: read
-          claude_args: '--model glm-5 --max-turns 10'
+          claude_args: '--model glm-5 --max-turns 10 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr comment:*),Bash(gh api:*),Bash(pytest:*),Bash(python:*),Bash(ruff:*),Read,Glob,Grep,Write,Edit"'
         env:
           # Redirect all API calls to GLM endpoint
           ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
