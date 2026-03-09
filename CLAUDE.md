@@ -4,7 +4,7 @@
 
 Runtime contract enforcement for AI agent tool calls. Deterministic pipeline: preconditions, postconditions, session contracts, principal-aware enforcement. Eight framework adapters (LangChain, CrewAI, Agno, Semantic Kernel, OpenAI Agents SDK, Claude Agent SDK, Nanobot, Google ADK). Zero runtime deps in core.
 
-Current version: 0.13.0 (PyPI: `edictum`)
+Current version: 0.15.0 (PyPI: `edictum`)
 
 ## Architecture: Core + Server
 
