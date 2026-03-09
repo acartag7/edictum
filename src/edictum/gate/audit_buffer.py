@@ -475,11 +475,14 @@ class AuditBuffer:
             response.raise_for_status()
         except Exception as exc:
             print(f"Gate audit flush error: {exc}", file=sys.stderr)
-            # Restore snapshot so events aren't lost
+            # Merge snapshot back into the live WAL (append, not replace)
+            # so concurrent writes since the snapshot aren't clobbered.
             try:
-                os.replace(str(snapshot), real_path)
+                with open(real_path, "ab") as live, open(str(snapshot), "rb") as snap:
+                    live.write(snap.read())
+                snapshot.unlink(missing_ok=True)
             except OSError:
-                pass
+                pass  # snapshot stays on disk for manual recovery
             return 0
         finally:
             client.close()

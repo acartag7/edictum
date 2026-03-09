@@ -439,6 +439,13 @@ def install_opencode(home: Path | None = None) -> str:
     plugins_dir.mkdir(parents=True, exist_ok=True)
 
     plugin_path = plugins_dir / "edictum-gate.ts"
+
+    # Idempotency: don't overwrite if already installed
+    if plugin_path.exists():
+        content = plugin_path.read_text()
+        if _EDICTUM_HOOK_MARKER in content:
+            return "Edictum gate plugin already installed for OpenCode"
+
     plugin_path.write_text(_OPENCODE_PLUGIN_CONTENT)
 
     return f"Installed edictum gate plugin at {plugin_path}"

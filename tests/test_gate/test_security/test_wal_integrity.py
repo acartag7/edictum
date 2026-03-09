@@ -85,11 +85,13 @@ class TestWalIntegrity:
         config = AuditConfig(buffer_path=str(wal_link))
         buffer = AuditBuffer(config)
         buffer.write(_make_event())
-        # Should NOT write to the symlink target outside expected dir
-        # The check compares realpath(wal) against realpath(wal.parent)
-        # Since symlink resolves to outside, it should be refused
-        # ... but if wal.parent is audit_dir and realpath(wal) = outside/stolen.txt,
-        # it won't start with realpath(audit_dir)
+
+        # Write must be denied — target file should remain empty
+        assert target.read_text() == "", "Symlink attack: write should have been refused"
+
+        # read_recent should also refuse the symlinked path
+        events = buffer.read_recent()
+        assert events == [], "Symlink attack: read_recent should return empty"
 
     def test_wal_large_event_written(self, tmp_path: Path) -> None:
         """Large tool_args are stored as full dict in the WAL."""
