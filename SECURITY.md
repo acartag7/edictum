@@ -28,6 +28,7 @@ If you discover a security vulnerability in Edictum, please report it responsibl
 This policy covers:
 
 - **edictum** -- core Python library (this repo, [PyPI](https://pypi.org/project/edictum/))
+- **edictum gate** -- coding assistant governance layer (`pip install edictum[gate]`)
 - **edictum-console** -- self-hostable operations console ([GitHub](https://github.com/acartag7/edictum-console))
 
 ## Safe Harbor

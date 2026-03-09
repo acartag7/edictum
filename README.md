@@ -67,14 +67,19 @@ Contracts are YAML. Enforcement is deterministic -- no LLM in the evaluation pat
 ## Works With Your Framework
 
 ```python
-# LangChain — 2 lines
+# LangChain — wrap your tools
+from edictum.adapters import LangChainAdapter
 adapter = LangChainAdapter(guard)
 tool = adapter.as_tool_wrapper(tool)
 
-# OpenAI Agents SDK
+# OpenAI Agents SDK — input/output guardrails
+from edictum.adapters import OpenAIAgentsAdapter
+adapter = OpenAIAgentsAdapter(guard)
 input_gr, output_gr = adapter.as_guardrails()
 
-# Claude Agent SDK
+# Claude Agent SDK — hook callables
+from edictum.adapters import ClaudeSDKAdapter
+adapter = ClaudeSDKAdapter(guard)
 hooks = adapter.to_hook_callables()
 ```
 
