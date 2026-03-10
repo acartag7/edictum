@@ -163,7 +163,7 @@ contracts:
 
     def test_allowed_domain_passes(self):
         guard = _guard(self.YAML)
-        result = guard.evaluate("web_fetch", {"url": "https://github.com/acartag7/edictum"})
+        result = guard.evaluate("web_fetch", {"url": "https://github.com/edictum-ai/edictum"})
         assert result.verdict == "allow"
 
     def test_disallowed_domain_denied(self):

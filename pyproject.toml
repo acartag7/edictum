@@ -26,8 +26,8 @@ dependencies = []
 [project.urls]
 Homepage = "https://edictum.ai"
 Documentation = "https://docs.edictum.ai"
-Repository = "https://github.com/acartag7/edictum"
-Changelog = "https://github.com/acartag7/edictum/releases"
+Repository = "https://github.com/edictum-ai/edictum"
+Changelog = "https://github.com/edictum-ai/edictum/releases"
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6.0", "jsonschema>=4.20"]
