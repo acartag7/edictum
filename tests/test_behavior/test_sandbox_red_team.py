@@ -104,7 +104,7 @@ class TestRedTeamLegitimateOps:
         assert result.verdict == "allow"
 
     def test_exec_git_clone(self, guard):
-        result = guard.evaluate("exec", {"command": "git clone https://github.com/acartag7/edictum"})
+        result = guard.evaluate("exec", {"command": "git clone https://github.com/edictum-ai/edictum"})
         assert result.verdict == "allow"
 
     def test_exec_curl(self, guard):
@@ -116,7 +116,7 @@ class TestRedTeamLegitimateOps:
         assert result.verdict == "allow"
 
     def test_web_fetch_github(self, guard):
-        result = guard.evaluate("web_fetch", {"url": "https://github.com/acartag7/edictum"})
+        result = guard.evaluate("web_fetch", {"url": "https://github.com/edictum-ai/edictum"})
         assert result.verdict == "allow"
 
     def test_write_tmp_file(self, guard):

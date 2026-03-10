@@ -141,7 +141,7 @@ pip install edictum[gate]
 edictum gate init
 ```
 
-Supports Claude Code, Cursor, Copilot CLI, Gemini CLI, and OpenCode. Self-protection contracts prevent the assistant from disabling governance. Optional sync to [Edictum Console](https://github.com/acartag7/edictum-console) for centralized audit.
+Supports Claude Code, Cursor, Copilot CLI, Gemini CLI, and OpenCode. Self-protection contracts prevent the assistant from disabling governance. Optional sync to [Edictum Console](https://github.com/edictum-ai/edictum-console) for centralized audit.
 
 See the [Gate guide](https://docs.edictum.ai/docs/guides/gate) for setup.
 
@@ -188,7 +188,7 @@ guard = await Edictum.from_server(
 )
 ```
 
-See [edictum-console](https://github.com/acartag7/edictum-console) for deployment.
+See [edictum-console](https://github.com/edictum-ai/edictum-console) for deployment.
 
 ## How It Compares
 
@@ -215,11 +215,11 @@ See [edictum-console](https://github.com/acartag7/edictum-console) for deploymen
 
 Edictum was evaluated across six regulated domains in the GAP benchmark.
 
-[Paper](https://arxiv.org/abs/2602.16943) -- [Benchmark](https://github.com/acartag7/gap-benchmark)
+[Paper](https://arxiv.org/abs/2602.16943) -- [Benchmark](https://github.com/edictum-ai/gap-benchmark)
 
 ## Demos & Examples
 
-- [edictum-demo](https://github.com/acartag7/edictum-demo) -- Full scenario demos, adversarial tests, benchmarks, and Grafana observability
+- [edictum-demo](https://github.com/edictum-ai/edictum-demo) -- Full scenario demos, adversarial tests, benchmarks, and Grafana observability
 - [Contract Patterns](https://docs.edictum.ai/docs/contracts/patterns) -- Real-world contract recipes by concern
 
 ## Security
@@ -229,8 +229,8 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 ## Links
 
 - [Documentation](https://docs.edictum.ai)
-- [Edictum Console](https://github.com/acartag7/edictum-console)
-- [GitHub](https://github.com/acartag7/edictum)
+- [Edictum Console](https://github.com/edictum-ai/edictum-console)
+- [GitHub](https://github.com/edictum-ai/edictum)
 - [PyPI](https://pypi.org/project/edictum/)
 - [Changelog](CHANGELOG.md)
 - [License](LICENSE) (MIT)

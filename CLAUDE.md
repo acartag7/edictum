@@ -78,7 +78,7 @@ The split follows one rule: **evaluation = core library, coordination = server.*
 - v0.8.1: RuleResult → ContractResult rename, terminology enforcement
 - v0.9.0: YAML extensibility (custom_operators, custom_selectors, metadata.* selector, template_dirs, from_yaml_string), adapter lifecycle (on_deny, on_allow, success_check, set_principal, principal_resolver), CompositeSink, CLI --json/--environment, OTel TLS
 - Docs overhaul: homepage, quickstart, concepts section, patterns, 7 guides
-- edictum-demo repo: github.com/acartag7/edictum-demo
+- edictum-demo repo: github.com/edictum-ai/edictum-demo
 - v0.10.0: HITL approval workflows (ApprovalBackend, effect: approve, timeout/timeout_effect), wildcard tool matching (fnmatch), Nanobot adapter, Server SDK package (edictum[server])
 - v0.11.0: Sandbox contracts (type: sandbox) — allowlist-based governance for file paths, commands, and domains. Pipeline stage between preconditions and session.
 - v0.11.1: Fix path traversal bypass in sandbox within/not_within checks (os.path.normpath normalization)
