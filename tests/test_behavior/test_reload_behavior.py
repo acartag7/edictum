@@ -140,23 +140,23 @@ class TestReloadStateIsConsistent:
         assert len(state.sandbox_contracts) == 1
 
 
-class TestReloadWipesInitShadowContracts:
+class TestReloadWipesInitObserveContracts:
     """reload() replaces _state entirely — init-time Python contracts are not preserved."""
 
     @pytest.mark.asyncio
-    async def test_reload_wipes_init_shadow_contracts(self):
+    async def test_reload_wipes_init_observe_contracts(self):
         from edictum.contracts import Verdict, precondition
 
         @precondition("bash")
-        def shadow_pre(envelope):
-            return Verdict.fail("Shadow deny.")
+        def observe_pre(envelope):
+            return Verdict.fail("Observe-mode deny.")
 
-        # Mark it as a shadow contract (as the composer does)
-        shadow_pre._edictum_shadow = True
+        # Mark it as an observe-mode contract (as the composer does)
+        observe_pre._edictum_shadow = True
 
         guard = Edictum(
             mode="enforce",
-            contracts=[shadow_pre],
+            contracts=[observe_pre],
             audit_sink=_NullSink(),
         )
 
