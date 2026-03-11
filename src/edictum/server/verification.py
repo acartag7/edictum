@@ -36,7 +36,7 @@ def verify_bundle_signature(
         from nacl.signing import VerifyKey
     except ImportError:
         raise ImportError(
-            "Bundle signature verification requires PyNaCl. " "Install with: pip install 'edictum[verified]'"
+            "Bundle signature verification requires PyNaCl. Install with: pip install 'edictum[verified]'"
         ) from None
 
     if not signature_b64:
