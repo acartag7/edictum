@@ -3,10 +3,42 @@
 from __future__ import annotations
 
 import os
+import re
+import shlex
 from typing import Any
 
 from edictum.contracts import Verdict
 from edictum.envelope import ToolEnvelope
+
+# Pattern for shell redirection operators at token start.
+# Matches: >>, >, <<, <, or fd-prefixed variants like 2>, 2>>.
+_REDIRECT_PREFIX_RE = re.compile(r"^(?:\d*>>|>>|\d*>|>|<<|<)")
+
+
+def _tokenize_command(cmd: str) -> list[str]:
+    """Shell-aware tokenization of a command string.
+
+    Uses shlex.split() for proper quote handling, then strips shell
+    redirection operators from token prefixes so paths after redirects
+    (e.g. ``>/etc/passwd``, ``</etc/shadow``) are exposed.
+
+    Falls back to basic split with quote stripping on parse error
+    (fail-closed: quoted paths are still extracted).
+    """
+    try:
+        raw_tokens = shlex.split(cmd)
+    except ValueError:
+        # Unclosed quotes — fall back with quote stripping
+        raw_tokens = [t.strip("'\"") for t in cmd.split()]
+
+    tokens: list[str] = []
+    for t in raw_tokens:
+        stripped = _REDIRECT_PREFIX_RE.sub("", t)
+        if stripped:
+            tokens.append(stripped)
+        # If stripping leaves nothing (bare < or >), skip it
+    return tokens
+
 
 _PATH_ARG_KEYS = frozenset(
     {
@@ -63,10 +95,10 @@ def _extract_paths(envelope: ToolEnvelope) -> list[str]:
         if isinstance(value, str) and value.startswith("/") and key not in _PATH_ARG_KEYS:
             _add(value)
 
-    # 4. Parse command string for path tokens
+    # 4. Parse command string for path tokens (shell-aware)
     cmd = envelope.bash_command or envelope.args.get("command", "")
     if cmd:
-        for token in cmd.split():
+        for token in _tokenize_command(cmd):
             if token.startswith("/"):
                 _add(token)
 
@@ -74,22 +106,57 @@ def _extract_paths(envelope: ToolEnvelope) -> list[str]:
 
 
 def _extract_command(envelope: ToolEnvelope) -> str | None:
-    """Extract the first command token from an envelope."""
+    """Extract the first command token from an envelope (shell-aware).
+
+    If the command string begins with a shell redirect operator
+    (e.g. ``> echo bad_cmd``), the actual command cannot be reliably
+    determined without full shell parsing.  Returns a sentinel that
+    never matches any allowed-command list so the sandbox denies.
+    """
     cmd = envelope.bash_command or envelope.args.get("command")
     if not cmd or not isinstance(cmd, str):
         return None
     stripped = cmd.strip()
     if not stripped:
         return None
-    return stripped.split()[0]
+    # If the raw first whitespace-token starts with a redirect operator,
+    # the "command" is actually a redirect target (filename).  We cannot
+    # recover the real command, so fail closed with a sentinel value that
+    # will never appear in any allowed_commands list.
+    raw_first = stripped.split(maxsplit=1)[0]
+    if _REDIRECT_PREFIX_RE.match(raw_first):
+        return "\x00"
+    tokens = _tokenize_command(stripped)
+    if not tokens:
+        return None
+    return tokens[0]
 
 
 def _extract_urls(envelope: ToolEnvelope) -> list[str]:
-    """Extract URL strings from envelope args."""
+    """Extract URL strings from envelope args (shell-aware).
+
+    For values that contain ``://`` but are not bare URLs (e.g. command
+    strings like ``curl https://evil.com``), tokenizes the value and
+    extracts individual URL tokens.
+    """
     urls: list[str] = []
+    seen: set[str] = set()
+
+    def _add_url(u: str) -> None:
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+
     for value in envelope.args.values():
         if isinstance(value, str) and "://" in value:
-            urls.append(value)
+            # Try as a bare URL first
+            if _extract_hostname(value) is not None:
+                _add_url(value)
+            else:
+                # Not a bare URL — tokenize and scan for embedded URLs
+                for token in _tokenize_command(value):
+                    if "://" in token and _extract_hostname(token) is not None:
+                        _add_url(token)
     return urls
 
 
