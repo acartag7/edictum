@@ -45,6 +45,8 @@ async def _from_server(
     principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     auto_watch: bool = True,
     allow_insecure: bool = False,
+    verify_signatures: bool = False,
+    signing_public_key: str | None = None,
 ) -> Edictum:
     """Create an Edictum instance wired to a remote edictum-server.
 
@@ -71,14 +73,20 @@ async def _from_server(
         auto_watch: If True (default), start an SSE background task.
         allow_insecure: If True, allow plaintext HTTP to non-loopback
             hosts (logs a warning). Defaults to False (raises ValueError).
+        verify_signatures: If True, verify Ed25519 signatures on bundles.
+            Requires the ``edictum[verified]`` extra (PyNaCl).
+        signing_public_key: Hex-encoded Ed25519 public key for signature
+            verification. Required when ``verify_signatures=True``.
 
     Returns:
         Configured Edictum instance connected to the server.
 
     Raises:
         EdictumConfigError: If the server is unreachable or returns
-            invalid data, or if assignment times out.
-        ValueError: If ``bundle_name`` is None and ``auto_watch`` is False.
+            invalid data, if signature verification fails, or if
+            assignment times out.
+        ValueError: If ``bundle_name`` is None and ``auto_watch`` is False,
+            or if ``verify_signatures=True`` without ``signing_public_key``.
     """
     from edictum.server.approval_backend import ServerApprovalBackend
     from edictum.server.audit_sink import ServerAuditSink
@@ -93,6 +101,9 @@ async def _from_server(
             "auto_watch must be True when bundle_name is None. "
             "Server-assigned mode requires the SSE connection to receive the bundle."
         )
+
+    if verify_signatures and signing_public_key is None:
+        raise ValueError("signing_public_key is required when verify_signatures=True")
 
     environment = env or "production"
 
@@ -121,6 +132,20 @@ async def _from_server(
         except Exception as exc:
             await client.close()
             raise EdictumConfigError(f"Failed to fetch contracts from server: {exc}") from exc
+
+        if verify_signatures:
+            from edictum.server.verification import BundleVerificationError, verify_bundle_signature
+
+            signature = response.get("signature")
+            if not signature:
+                await client.close()
+                raise EdictumConfigError("Server response does not include a signature, but verify_signatures=True")
+
+            try:
+                verify_bundle_signature(bundle_yaml, signature, signing_public_key)  # type: ignore[arg-type]
+            except BundleVerificationError as exc:
+                await client.close()
+                raise EdictumConfigError(f"Bundle signature verification failed: {exc}") from exc
 
         try:
             bundle_data, bundle_hash = load_bundle_string(bundle_yaml)
@@ -174,6 +199,8 @@ async def _from_server(
     guard._server_client = client
     guard._contract_source = ServerContractSource(client)
     guard._sse_task = None  # asyncio.Task | None, set by _start_sse_watcher
+    guard._verify_signatures = verify_signatures
+    guard._signing_public_key = signing_public_key
 
     if auto_watch:
         await _start_sse_watcher(guard)
@@ -215,9 +242,30 @@ async def _start_sse_watcher(self: Edictum) -> None:
                         )
                         yaml_b64 = response.get("yaml_bytes", "")
                         yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        signature = response.get("signature")
                     else:
                         yaml_b64 = bundle.get("yaml_bytes", "")
                         yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        signature = bundle.get("signature")
+
+                    if getattr(self, "_verify_signatures", False):
+                        from edictum.server.verification import (
+                            BundleVerificationError,
+                            verify_bundle_signature,
+                        )
+
+                        public_key = getattr(self, "_signing_public_key", None)
+
+                        if not signature:
+                            logger.warning("Unsigned bundle received with verify_signatures=True — rejecting")
+                            continue
+
+                        try:
+                            verify_bundle_signature(yaml_data, signature, public_key)
+                        except (BundleVerificationError, ImportError) as exc:
+                            logger.warning("Bundle signature verification failed: %s — rejecting", exc)
+                            continue
+
                     await self.reload(yaml_data)
                     if bundle.get("_assignment_changed"):
                         self._server_client.bundle_name = bundle["bundle_name"]
