@@ -512,6 +512,8 @@ class Edictum:
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
         auto_watch: bool = True,
         allow_insecure: bool = False,
+        verify_signatures: bool = False,
+        signing_public_key: str | None = None,
     ) -> Edictum:
         """Create an Edictum instance wired to a remote edictum-server."""
         from edictum._server_factory import _from_server
@@ -535,6 +537,8 @@ class Edictum:
             principal_resolver=principal_resolver,
             auto_watch=auto_watch,
             allow_insecure=allow_insecure,
+            verify_signatures=verify_signatures,
+            signing_public_key=signing_public_key,
         )
 
     async def run(

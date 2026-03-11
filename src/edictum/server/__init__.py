@@ -14,6 +14,8 @@ def __getattr__(name: str):
         "ServerAuditSink": "edictum.server.audit_sink",
         "ServerBackend": "edictum.server.backend",
         "ServerContractSource": "edictum.server.contract_source",
+        "BundleVerificationError": "edictum.server.verification",
+        "verify_bundle_signature": "edictum.server.verification",
     }
     if name in _imports:
         import importlib
@@ -24,10 +26,12 @@ def __getattr__(name: str):
 
 
 __all__ = [
+    "BundleVerificationError",
     "EdictumServerClient",
     "EdictumServerError",
     "ServerApprovalBackend",
     "ServerAuditSink",
     "ServerBackend",
     "ServerContractSource",
+    "verify_bundle_signature",
 ]
