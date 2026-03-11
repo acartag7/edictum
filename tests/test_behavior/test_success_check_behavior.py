@@ -58,7 +58,7 @@ class TestCustomSuccessCheckChangesToolSuccess:
 
         failed_events = [e for e in sink.events if e.action == AuditAction.CALL_FAILED]
         assert len(failed_events) == 1, (
-            "Custom success_check should mark HTTP 500 as failure, " f"but got {len(failed_events)} CALL_FAILED events"
+            f"Custom success_check should mark HTTP 500 as failure, but got {len(failed_events)} CALL_FAILED events"
         )
 
     async def test_default_heuristic_misses_http_error(self):

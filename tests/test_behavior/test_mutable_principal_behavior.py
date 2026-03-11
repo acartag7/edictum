@@ -132,8 +132,7 @@ class TestSetPrincipalPreservesSessionState:
 
         count_after = await adapter._session.attempt_count()
         assert count_after == 3, (
-            f"Expected 3 attempts after set_principal, got {count_after}. "
-            "set_principal must not reset session state."
+            f"Expected 3 attempts after set_principal, got {count_after}. set_principal must not reset session state."
         )
 
 
