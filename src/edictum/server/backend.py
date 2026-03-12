@@ -60,9 +60,10 @@ class ServerBackend:
         """Retrieve multiple session values in a single HTTP call.
 
         Falls back to individual get() calls if the server returns 404
-        (endpoint not available on older servers).
+        or 405 (endpoint not available on older servers, or route pattern
+        matches a catch-all that doesn't support POST).
 
-        Fail-closed: non-404 errors propagate so the pipeline denies
+        Fail-closed: other errors propagate so the pipeline denies
         rather than silently allowing with missing data.
         """
         if not keys:
@@ -75,7 +76,7 @@ class ServerBackend:
             values = response.get("values", {})
             return {key: values.get(key) for key in keys}
         except EdictumServerError as exc:
-            if exc.status_code == 404:
+            if exc.status_code in (404, 405):
                 # Server doesn't support batch endpoint -- fall back
                 result: dict[str, str | None] = {}
                 for key in keys:
