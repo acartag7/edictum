@@ -60,9 +60,10 @@ class ServerBackend:
         """Retrieve multiple session values in a single HTTP call.
 
         Falls back to individual get() calls if the server returns 404
-        (endpoint not available on older servers).
+        or 405 (endpoint not available on older servers, or route pattern
+        matches a catch-all that doesn't support POST).
 
-        Fail-closed: non-404 errors propagate so the pipeline denies
+        Fail-closed: other errors propagate so the pipeline denies
         rather than silently allowing with missing data.
         """
         if not keys:
