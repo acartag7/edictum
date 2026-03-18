@@ -71,6 +71,11 @@ class ServerContractSource:
                     "GET",
                     "/api/v1/stream",
                     params=params,
+                    # Separate connect timeout from stream idle timeout.
+                    # The default client timeout (30s) applies to all phases —
+                    # including read, which would kill SSE streams that are idle
+                    # longer than 30s between events.
+                    timeout=httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0),
                 ) as event_source:
                     self._connected = True
                     connected_at = time.monotonic()

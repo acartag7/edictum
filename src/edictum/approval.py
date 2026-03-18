@@ -75,6 +75,9 @@ class LocalApprovalBackend:
 
     def __init__(self) -> None:
         self._pending: dict[str, ApprovalRequest] = {}
+        from edictum.audit import RedactionPolicy
+
+        self._redaction = RedactionPolicy()
 
     async def request_approval(
         self,
@@ -101,7 +104,7 @@ class LocalApprovalBackend:
         self._pending[approval_id] = request
         print(f"[APPROVAL REQUIRED] {message}")
         print(f"  Tool: {tool_name}")
-        print(f"  Args: {tool_args}")
+        print(f"  Args: {self._redaction.redact_args(tool_args)}")
         print(f"  ID:   {approval_id}")
         sys.stdout.flush()
         return request

@@ -50,6 +50,11 @@ def verify_bundle_signature(
     except ValueError as exc:
         raise BundleVerificationError(f"Invalid public key hex encoding: {exc}") from exc
 
+    if len(public_key_bytes) != 32:
+        raise BundleVerificationError(
+            f"Invalid public key length: expected 32 bytes (Ed25519), got {len(public_key_bytes)}"
+        )
+
     try:
         signature_bytes = base64.b64decode(signature_b64, validate=True)
     except Exception as exc:

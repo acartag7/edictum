@@ -385,7 +385,34 @@ class GovernancePipeline:
                         f"\u26a0\ufe0f {verdict.message} Tool already executed \u2014 assess before proceeding."
                     )
 
-        # 2. After hooks (Fix 5: catch exceptions)
+        # 2. Observe-mode postconditions (from observe_alongside bundles)
+        for contract in self._guard.get_shadow_postconditions(envelope):
+            try:
+                verdict = contract(envelope, tool_response)
+                if asyncio.iscoroutine(verdict):
+                    verdict = await verdict
+            except Exception as exc:
+                logger.exception(
+                    "Observe-mode postcondition %s raised",
+                    getattr(contract, "__name__", "anonymous"),
+                )
+                verdict = Verdict.fail(f"Observe-mode postcondition error: {exc}", policy_error=True)
+
+            contract_record = {
+                "name": getattr(contract, "__name__", "anonymous"),
+                "type": "postcondition",
+                "passed": verdict.passed,
+                "message": verdict.message,
+                "observed": True,
+            }
+            if verdict.metadata:
+                contract_record["metadata"] = verdict.metadata
+            contracts_evaluated.append(contract_record)
+
+            if not verdict.passed:
+                warnings.append(f"\u26a0\ufe0f [observe] {verdict.message}")
+
+        # 3. After hooks (Fix 5: catch exceptions)
         for hook_reg in self._guard.get_hooks("after", envelope):
             if hook_reg.when and not hook_reg.when(envelope):
                 continue
