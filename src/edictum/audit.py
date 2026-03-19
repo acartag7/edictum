@@ -156,9 +156,14 @@ class RedactionPolicy:
             if self._detect_values and self._looks_like_secret(args):
                 return "[REDACTED]"
             # Apply bash redaction patterns to catch credentials in shell commands
-            redacted = args
-            for pattern, replacement in self._patterns:
-                redacted = re.sub(pattern, replacement, redacted)
+            # Gated on _detect_values so detect_secret_values=False suppresses all
+            # value-level scanning (bash patterns + secret patterns), not just secrets.
+            if self._detect_values:
+                redacted = args
+                for pattern, replacement in self._patterns:
+                    redacted = re.sub(pattern, replacement, redacted)
+            else:
+                redacted = args
             if len(redacted) > 1000:
                 return redacted[:997] + "..."
             return redacted

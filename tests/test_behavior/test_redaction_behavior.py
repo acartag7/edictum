@@ -6,6 +6,8 @@ Catches replace-vs-merge semantics bugs.
 
 from __future__ import annotations
 
+import pytest
+
 from edictum.audit import RedactionPolicy
 
 
@@ -95,6 +97,7 @@ class TestRedactionPolicyBashPatternsInStringArgs:
     (e.g., args={"command": "mysql --password hunter2"}) leak into audit events.
     """
 
+    @pytest.mark.security
     def test_password_flag_redacted_in_string_arg(self):
         """--password flag values must be redacted in string args."""
         policy = RedactionPolicy()
@@ -102,6 +105,7 @@ class TestRedactionPolicyBashPatternsInStringArgs:
         assert "hunter2" not in result["command"]
         assert "[REDACTED]" in result["command"]
 
+    @pytest.mark.security
     def test_url_credentials_redacted_in_string_arg(self):
         """Embedded URL credentials must be redacted in string args."""
         policy = RedactionPolicy()
@@ -109,6 +113,7 @@ class TestRedactionPolicyBashPatternsInStringArgs:
         assert "secret123" not in result["url"]
         assert "[REDACTED]" in result["url"]
 
+    @pytest.mark.security
     def test_export_env_var_redacted_in_string_arg(self):
         """Export statements with sensitive env vars must be redacted."""
         policy = RedactionPolicy()
@@ -116,6 +121,7 @@ class TestRedactionPolicyBashPatternsInStringArgs:
         assert "sk-abc123" not in result["script"]
         assert "[REDACTED]" in result["script"]
 
+    @pytest.mark.security
     def test_bare_string_arg_applies_bash_patterns(self):
         """Bash patterns must apply even when args is a bare string, not a dict."""
         policy = RedactionPolicy()
@@ -128,3 +134,9 @@ class TestRedactionPolicyBashPatternsInStringArgs:
         policy = RedactionPolicy()
         result = policy.redact_args({"command": "ls -la /tmp"})
         assert result["command"] == "ls -la /tmp"
+
+    def test_detect_secret_values_false_bypasses_bash_patterns(self):
+        """With detection off, bash patterns must not modify string args."""
+        policy = RedactionPolicy(detect_secret_values=False)
+        result = policy.redact_args({"command": "export MY_KEY=somevalue"})
+        assert result["command"] == "export MY_KEY=somevalue"
