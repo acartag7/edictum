@@ -96,6 +96,48 @@ class TestObserveModePostconditionsEvaluated:
 
     @pytest.mark.security
     @pytest.mark.asyncio
+    async def test_per_contract_observe_postcondition_does_not_affect_postconditions_passed(self):
+        """A per-contract mode:observe postcondition (from get_postconditions path)
+        must NOT set postconditions_passed=False.
+
+        This tests the FIRST loop in post_execute — per-contract observe mode
+        where contract_mode == "observe". Different from observe_alongside which
+        goes through get_observe_postconditions.
+        """
+        sink = CapturingAuditSink()
+        guard = Edictum(
+            environment="test",
+            audit_sink=sink,
+            backend=MemoryBackend(),
+        )
+
+        # Create an observe-mode postcondition (per-contract, NOT observe_alongside)
+        @postcondition("*")
+        def pii_check(envelope, response):
+            if "sensitive" in str(response):
+                return Verdict.fail("PII detected in output")
+            return Verdict.pass_()
+
+        pii_check._edictum_mode = "observe"
+
+        from dataclasses import replace
+
+        guard._state = replace(
+            guard._state,
+            postconditions=guard._state.postconditions + (pii_check,),
+        )
+
+        result = await guard.run("TestTool", {}, lambda: "sensitive data here")
+        assert result == "sensitive data here"
+
+        post_events = [e for e in sink.events if e.action == AuditAction.CALL_EXECUTED]
+        assert post_events[0].postconditions_passed is True, (
+            "Per-contract observe-mode postcondition set postconditions_passed=False. "
+            "This triggers on_postcondition_warn in all adapters, violating observe-mode safety."
+        )
+
+    @pytest.mark.security
+    @pytest.mark.asyncio
     async def test_observe_postcondition_does_not_affect_postconditions_passed(self):
         """A failing observe-mode postcondition must NOT set postconditions_passed=False.
 

@@ -349,6 +349,7 @@ class GovernancePipeline:
 
                 # Observe mode takes precedence
                 if contract_mode == "observe":
+                    contract_record["observed"] = True
                     warnings.append(f"\u26a0\ufe0f [observe] {verdict.message}")
                 elif effect == "redact" and is_safe:
                     patterns = getattr(contract, "_edictum_redact_patterns", [])
