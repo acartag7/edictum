@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: write  # Fixes #135: auto-create issues for warnings
+      issues: read
 
     steps:
       - name: Checkout repository
@@ -59,12 +59,6 @@ jobs:
       - name: Install review tools (NOT the project)
         run: pip install ruff
 
-      - name: Ensure review label exists
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          gh label create "review" --color "d4c5f9" --description "Auto-created by code review workflow" 2>/dev/null || true
-
       - name: Run Code Review
         id: review
         uses: anthropics/claude-code-action@9469d113c6afd29550c402740f22d1a97dd1209b # v1
@@ -73,8 +67,7 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           model: claude-sonnet-4-6
           # SECURITY: Claude writes /tmp/review.md only — no direct comment posting (#128).
-          # gh issue create/list added for auto-issue creation on warnings (#135).
-          claude_args: '--max-turns 30 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(cat:*),Bash(ruff:*),Read,Glob,Grep,Write"'
+          claude_args: '--max-turns 30 --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(cat:*),Bash(ruff:*),Read,Glob,Grep,Write"'
           prompt: |
             You are an adversarial code reviewer for Edictum — a **security product** (runtime contract enforcement for AI agent tool calls). A single vulnerability destroys the credibility of a startup that sells trust. Think like an attacker first, reviewer second.
 
@@ -151,15 +144,6 @@ jobs:
                  }
                  ```
                - If there are ZERO findings, do NOT create the file.
-
-            10. **Auto-create issues for warnings** (only when STATUS is `warn`):
-                For each warning-level finding, create a tracking issue unless one already exists:
-                ```
-                gh issue list --search "review: <short description>" --state open --limit 1
-                # Only create if no existing match:
-                gh issue create --title "review: <short description>" --body "<details with file, line, fix>" --label "review"
-                ```
-                This ensures warnings are tracked without blocking merge.
 
             ## Rules
             - One exhaustive pass. Find ALL issues, then stop. Do NOT re-scan looking for nitpicks.
