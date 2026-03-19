@@ -112,7 +112,7 @@ jobs:
                - **Critical** (STATUS: fail, blocks merge): injection, fail-open, data corruption, secrets leaking, deny bypass, tier boundary violation — concrete exploitable attack path
                - **Warning** (STATUS: warn, does NOT block merge): defense-in-depth gaps, missing tests, terminology violations, docs-code drift, adapter parity gaps — real findings without an immediate exploitable path
                - **Suggestion**: naming, file size, minor improvements
-               Use `fail` ONLY for issues with a concrete, exploitable attack path. Warnings are tracked as GitHub issues automatically.
+               Use `fail` ONLY for issues with a concrete, exploitable attack path. Warnings stay in the PR comment for the author to review.
 
             7. **Be exhaustive in ONE pass.** Find ALL issues in this single review — 5, 10, 20, however many exist. Do NOT stop at 2-3 and wait for another round. There will be no second pass. Use this checklist to ensure completeness:
                - [ ] Input validation on every trust boundary (user input, external data, storage keys)
