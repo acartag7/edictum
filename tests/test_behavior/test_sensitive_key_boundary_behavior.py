@@ -77,3 +77,32 @@ class TestSensitiveKeyTruePositives:
         policy = RedactionPolicy()
         result = policy.redact_args({"key": "secret"})
         assert result["key"] == "[REDACTED]"
+
+
+class TestSensitiveKeyPluralForms:
+    """Plural forms of sensitive words must also be caught."""
+
+    def test_user_credentials_redacted(self):
+        policy = RedactionPolicy()
+        result = policy.redact_args({"user_credentials": "secret"})
+        assert result["user_credentials"] == "[REDACTED]"
+
+    def test_api_tokens_redacted(self):
+        policy = RedactionPolicy()
+        result = policy.redact_args({"api_tokens": "secret"})
+        assert result["api_tokens"] == "[REDACTED]"
+
+    def test_db_passwords_redacted(self):
+        policy = RedactionPolicy()
+        result = policy.redact_args({"db_passwords": "secret"})
+        assert result["db_passwords"] == "[REDACTED]"
+
+    def test_oauth_secrets_redacted(self):
+        policy = RedactionPolicy()
+        result = policy.redact_args({"oauth_secrets": "secret"})
+        assert result["oauth_secrets"] == "[REDACTED]"
+
+    def test_encryption_keys_redacted(self):
+        policy = RedactionPolicy()
+        result = policy.redact_args({"encryption_keys": "secret"})
+        assert result["encryption_keys"] == "[REDACTED]"

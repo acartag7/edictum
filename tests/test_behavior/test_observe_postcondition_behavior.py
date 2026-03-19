@@ -93,3 +93,24 @@ class TestObserveModePostconditionsEvaluated:
         observe_contracts = [c for c in contracts if c.get("observed")]
         assert len(observe_contracts) == 1
         assert observe_contracts[0]["passed"] is True
+
+    @pytest.mark.security
+    @pytest.mark.asyncio
+    async def test_observe_postcondition_does_not_affect_postconditions_passed(self):
+        """A failing observe-mode postcondition must NOT set postconditions_passed=False.
+
+        postconditions_passed propagates to on_postcondition_warn in all 7 adapters.
+        If observe-mode contracts set it to False, observe mode silently becomes
+        enforcement — violating the core guarantee.
+        """
+        sink = CapturingAuditSink()
+        guard = _make_guard_with_observe_postconditions(sink)
+
+        await guard.run("TestTool", {}, lambda: "sensitive data here")
+
+        post_events = [e for e in sink.events if e.action == AuditAction.CALL_EXECUTED]
+        assert len(post_events) == 1
+        assert post_events[0].postconditions_passed is True, (
+            "Failing observe-mode postcondition set postconditions_passed=False. "
+            "This triggers on_postcondition_warn in all adapters, violating observe-mode safety."
+        )

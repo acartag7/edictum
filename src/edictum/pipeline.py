@@ -423,7 +423,10 @@ class GovernancePipeline:
             except Exception:
                 logger.exception("After hook %s raised", getattr(hook_reg.callback, "__name__", "anonymous"))
 
-        postconditions_passed = all(c["passed"] for c in contracts_evaluated) if contracts_evaluated else True
+        # Exclude observe-mode contracts — they must never affect postconditions_passed,
+        # which propagates to on_postcondition_warn callbacks in all adapters.
+        enforce_contracts = [c for c in contracts_evaluated if not c.get("observed")]
+        postconditions_passed = all(c["passed"] for c in enforce_contracts) if enforce_contracts else True
         pe = any(c.get("metadata", {}).get("policy_error") for c in contracts_evaluated)
 
         return PostDecision(
