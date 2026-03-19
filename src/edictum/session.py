@@ -2,7 +2,21 @@
 
 from __future__ import annotations
 
+from edictum.envelope import _validate_tool_name
 from edictum.storage import StorageBackend
+
+
+def _validate_session_id(session_id: str) -> None:
+    """Validate session_id: reject empty, control chars, colons, path separators.
+
+    Colons are storage key delimiters (``s:{sid}:attempts``). Allowing them
+    in session_id enables key collision attacks.
+    """
+    if not session_id:
+        raise ValueError(f"Invalid session_id: {session_id!r}")
+    for ch in session_id:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F or ch in ("/", "\\", ":"):
+            raise ValueError(f"Invalid session_id: {session_id!r}")
 
 
 class Session:
@@ -18,6 +32,7 @@ class Session:
     """
 
     def __init__(self, session_id: str, backend: StorageBackend):
+        _validate_session_id(session_id)
         self._sid = session_id
         self._backend = backend
 
@@ -34,6 +49,7 @@ class Session:
 
     async def record_execution(self, tool_name: str, success: bool) -> None:
         """Record a tool execution. Called in PostToolUse."""
+        _validate_tool_name(tool_name)
         await self._backend.increment(f"s:{self._sid}:execs")
         await self._backend.increment(f"s:{self._sid}:tool:{tool_name}")
 
@@ -46,6 +62,7 @@ class Session:
         return int(await self._backend.get(f"s:{self._sid}:execs") or 0)
 
     async def tool_execution_count(self, tool: str) -> int:
+        _validate_tool_name(tool)
         return int(await self._backend.get(f"s:{self._sid}:tool:{tool}") or 0)
 
     async def consecutive_failures(self) -> int:
@@ -72,6 +89,7 @@ class Session:
         key_labels = ["attempts", "execs"]
 
         if include_tool is not None:
+            _validate_tool_name(include_tool)
             keys.append(f"s:{self._sid}:tool:{include_tool}")
             key_labels.append(f"tool:{include_tool}")
 

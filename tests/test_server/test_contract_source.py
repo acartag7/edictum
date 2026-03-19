@@ -32,7 +32,7 @@ def _install_fake_httpx_sse(events: list[MagicMock], captured_params: list[dict]
     """Install a fake httpx_sse module that captures params and yields events."""
 
     @asynccontextmanager
-    async def fake_aconnect_sse(http_client, method, url, *, params=None):
+    async def fake_aconnect_sse(http_client, method, url, *, params=None, **kwargs):
         captured_params.append(params or {})
         source = MagicMock()
 
@@ -187,7 +187,7 @@ class TestServerContractSource:
         source = ServerContractSource(client)
 
         @asynccontextmanager
-        async def buggy_sse(http_client, method, url, *, params=None):
+        async def buggy_sse(http_client, method, url, *, params=None, **kwargs):
             source_mock = MagicMock()
 
             async def aiter():
@@ -215,7 +215,7 @@ class TestServerContractSource:
         sleep_delays: list[float] = []
 
         @asynccontextmanager
-        async def failing_sse(http_client, method, url, *, params=None):
+        async def failing_sse(http_client, method, url, *, params=None, **kwargs):
             nonlocal call_count
             call_count += 1
             # Simulate connection established then immediate drop
@@ -253,7 +253,7 @@ class TestServerContractSource:
         sleep_delays: list[float] = []
 
         @asynccontextmanager
-        async def sse_with_stable_then_drop(http_client, method, url, *, params=None):
+        async def sse_with_stable_then_drop(http_client, method, url, *, params=None, **kwargs):
             source_mock = MagicMock()
 
             async def aiter():
@@ -296,7 +296,7 @@ class TestServerContractSource:
         source = ServerContractSource(client, reconnect_delay=1.0)
 
         @asynccontextmanager
-        async def failing_sse(http_client, method, url, *, params=None):
+        async def failing_sse(http_client, method, url, *, params=None, **kwargs):
             raise ConnectionError("server unreachable")
             yield  # noqa: RET503
 
@@ -324,7 +324,7 @@ class TestServerContractSource:
         source = ServerContractSource(client, reconnect_delay=1.0)
 
         @asynccontextmanager
-        async def failing_sse(http_client, method, url, *, params=None):
+        async def failing_sse(http_client, method, url, *, params=None, **kwargs):
             raise ConnectionError("timeout")
             yield  # noqa: RET503
 
@@ -363,7 +363,7 @@ class TestServerContractSource:
         sleep_delays: list[float] = []
 
         @asynccontextmanager
-        async def sse_then_fail(http_client, method, url, *, params=None):
+        async def sse_then_fail(http_client, method, url, *, params=None, **kwargs):
             nonlocal attempt
             attempt += 1
             source_mock = MagicMock()
@@ -423,7 +423,7 @@ class TestServerContractSource:
         connected_during_sleep: list[bool] = []
 
         @asynccontextmanager
-        async def failing_sse(http_client, method, url, *, params=None):
+        async def failing_sse(http_client, method, url, *, params=None, **kwargs):
             source_mock = MagicMock()
 
             async def aiter():
@@ -458,7 +458,7 @@ class TestServerContractSource:
         connected_between_iterations: list[bool] = []
 
         @asynccontextmanager
-        async def sse_clean_then_check(http_client, method, url, *, params=None):
+        async def sse_clean_then_check(http_client, method, url, *, params=None, **kwargs):
             nonlocal attempt
             attempt += 1
 
@@ -495,7 +495,7 @@ class TestServerContractSource:
         sleep_delays: list[float] = []
 
         @asynccontextmanager
-        async def mixed_sse(http_client, method, url, *, params=None):
+        async def mixed_sse(http_client, method, url, *, params=None, **kwargs):
             nonlocal attempt
             attempt += 1
             source_mock = MagicMock()

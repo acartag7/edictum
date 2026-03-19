@@ -154,7 +154,10 @@ class RedactionPolicy:
 
     def _is_sensitive_key(self, key: str) -> bool:
         k = key.lower()
-        return k in self._keys or any(s in k for s in ("token", "key", "secret", "password", "credential"))
+        if k in self._keys:
+            return True
+        parts = re.split(r"[_\-]", k)
+        return any(p in ("token", "key", "secret", "password", "credential") for p in parts)
 
     def _looks_like_secret(self, value: str) -> bool:
         for pattern in self.SECRET_VALUE_PATTERNS:

@@ -213,6 +213,22 @@ class TestInvalidEncodings:
         with pytest.raises(BundleVerificationError, match="empty"):
             verify_bundle_signature(VALID_BUNDLE_YAML, "", public_key_hex)
 
+    @pytest.mark.security
+    def test_wrong_length_public_key_rejected(self, key_pair):
+        """Non-32-byte public key raises BundleVerificationError with clear message."""
+        sk, _vk = key_pair
+        signature_b64 = _sign(VALID_BUNDLE_YAML, sk)
+
+        # 16 bytes instead of 32
+        short_key_hex = "aa" * 16
+        with pytest.raises(BundleVerificationError, match="expected 32 bytes"):
+            verify_bundle_signature(VALID_BUNDLE_YAML, signature_b64, short_key_hex)
+
+        # 64 bytes instead of 32
+        long_key_hex = "bb" * 64
+        with pytest.raises(BundleVerificationError, match="expected 32 bytes"):
+            verify_bundle_signature(VALID_BUNDLE_YAML, signature_b64, long_key_hex)
+
 
 class TestSSEVerification:
     """SSE updates are verified when verify_signatures is enabled."""

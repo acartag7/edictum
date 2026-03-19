@@ -91,6 +91,8 @@ class ServerAuditSink:
 
     async def _flush(self) -> None:
         """Thread-safe flush: grab buffer under lock, send outside lock."""
+        from edictum.server.client import EdictumServerError
+
         with self._lock:
             if not self._buffer:
                 return
@@ -98,7 +100,17 @@ class ServerAuditSink:
             self._buffer.clear()
         try:
             await self._client.post("/api/v1/events", {"events": events})
-        except Exception:
+        except Exception as exc:
+            # Non-retryable client errors (4xx except 429): raise immediately.
+            # Auth errors (401/403) will never succeed on retry — surfacing them
+            # prevents silent credential failure and infinite buffer growth.
+            if isinstance(exc, EdictumServerError) and 400 <= exc.status_code < 500 and exc.status_code != 429:
+                logger.error(
+                    "Audit flush failed with non-retryable error (HTTP %d): %s",
+                    exc.status_code,
+                    exc.detail,
+                )
+                raise
             logger.warning("Failed to flush %d audit events, keeping in buffer for retry", len(events))
             self._restore_events(events)
         except BaseException:
