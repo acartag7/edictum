@@ -140,7 +140,7 @@ class RedactionPolicy:
         safe_compound_keys: set[str] | None = None,
     ):
         base_keys = self.DEFAULT_SENSITIVE_KEYS | sensitive_keys if sensitive_keys else self.DEFAULT_SENSITIVE_KEYS
-        self._keys = {k.lower() for k in base_keys}
+        self._keys = {k.lower().replace("-", "_") for k in base_keys}
         self._patterns = (custom_patterns or []) + self.BASH_REDACTION_PATTERNS
         self._detect_values = detect_secret_values
         extra_safe = {k.lower().replace("-", "_") for k in safe_compound_keys} if safe_compound_keys else set()
@@ -213,11 +213,11 @@ class RedactionPolicy:
 
     def _is_sensitive_key(self, key: str) -> bool:
         k = key.lower()
-        if k in self._keys:
-            return True
-        # Normalize hyphens to underscores for safe-key lookup so both
-        # max_tokens and max-tokens are recognized as safe.
+        # Normalize hyphens to underscores so both "api-key" and "api_key"
+        # match consistently across sensitive keys, safe keys, and word parts.
         normalized = k.replace("-", "_")
+        if normalized in self._keys:
+            return True
         if normalized in self._safe_compound_keys:
             return False
         parts = re.split(r"[_\-]", k)

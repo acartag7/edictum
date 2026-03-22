@@ -70,6 +70,18 @@ class TestCustomSensitiveKeysOverrideSafeList:
         result = policy.redact_args({"sort_keys": True})
         assert result["sort_keys"] is True
 
+    def test_hyphen_sensitive_key_overrides_underscore_safe_key(self):
+        """sensitive_keys={'max-tokens'} must redact max_tokens despite safe-list."""
+        policy = RedactionPolicy(sensitive_keys={"max-tokens"})
+        result = policy.redact_args({"max_tokens": 1024})
+        assert result["max_tokens"] == "[REDACTED]"
+
+    def test_underscore_sensitive_key_redacts_hyphen_arg(self):
+        """sensitive_keys={'api_key'} must redact 'api-key' argument."""
+        policy = RedactionPolicy(sensitive_keys={"api_key"})
+        result = policy.redact_args({"api-key": "secret"})
+        assert result["api-key"] == "[REDACTED]"
+
 
 class TestCustomSafeCompoundKeys:
     """User-supplied safe_compound_keys extends the built-in safe list."""
