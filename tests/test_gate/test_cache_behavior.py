@@ -23,14 +23,16 @@ class TestContractCache:
     def test_cache_invalidation_on_content_change(self, tmp_path: Path) -> None:
         yaml_file = tmp_path / "contracts.yaml"
         yaml_file.write_text("original content")
-        cache = ContractCache(cache_path=tmp_path / "cache.json")
+        # Disable TTL so is_valid always does full hash check, not mtime-only.
+        # Without this, sub-second writes on fast filesystems keep the same
+        # mtime, and the TTL fast-path returns True without comparing hashes.
+        cache = ContractCache(cache_path=tmp_path / "cache.json", ttl_seconds=0)
         cache.update(str(yaml_file))
         assert cache.is_valid(str(yaml_file))
 
-        # Change content
+        # Change content (mtime may not change on fast filesystems)
         yaml_file.write_text("changed content")
-        # Need a new cache instance since mtime changed
-        cache2 = ContractCache(cache_path=tmp_path / "cache.json")
+        cache2 = ContractCache(cache_path=tmp_path / "cache.json", ttl_seconds=0)
         assert not cache2.is_valid(str(yaml_file))
 
     def test_cache_corruption_recovery(self, tmp_path: Path) -> None:
