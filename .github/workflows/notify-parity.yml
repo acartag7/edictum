@@ -26,6 +26,8 @@ jobs:
 
       # SECURITY: Write title and body to files to prevent shell injection
       # via crafted PR titles containing quotes or shell metacharacters.
+      # Heredocs use quoted delimiters (<<'EOF') to disable shell expansion.
+      # PR_URL is injected separately via sed to avoid command substitution.
       - name: Prepare issue content
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -33,8 +35,8 @@ jobs:
         run: |
           printf 'Port: %s' "$PR_TITLE" > /tmp/issue-title.txt
 
-          cat > /tmp/issue-body-ts.md <<BODY_EOF
-          Python reference landed in ${PR_URL}
+          cat > /tmp/issue-body-ts.md <<'BODY_EOF'
+          Python reference landed in __PR_URL__
 
           Port this feature to TypeScript with matching behavior.
 
@@ -44,9 +46,10 @@ jobs:
           - [ ] TypeScript-native tests written
           - [ ] Security tests if touching security boundary
           BODY_EOF
+          sed -i "s|__PR_URL__|${PR_URL}|" /tmp/issue-body-ts.md
 
-          cat > /tmp/issue-body-go.md <<BODY_EOF
-          Python reference landed in ${PR_URL}
+          cat > /tmp/issue-body-go.md <<'BODY_EOF'
+          Python reference landed in __PR_URL__
 
           Port this feature to Go with matching behavior.
 
@@ -57,6 +60,7 @@ jobs:
           - [ ] Race detector passes
           - [ ] Security tests if touching security boundary
           BODY_EOF
+          sed -i "s|__PR_URL__|${PR_URL}|" /tmp/issue-body-go.md
 
       - name: Create TypeScript tracking issue
         env:
