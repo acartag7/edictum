@@ -2,16 +2,29 @@
 
 You are implementing a feature that affects multiple edictum repos. Follow this pipeline exactly.
 
+## Prerequisites
+
+This skill requires sibling repos to be cloned:
+- `../edictum/` (Python reference implementation)
+- `../edictum-schemas/` (shared fixtures)
+
+If either is absent, **stop and notify the user** before proceeding.
+
 ## Step 1: Check Fixture Coverage
 
-Before writing any code, check if shared behavioral fixtures exist for this feature:
+Before writing any code, **read** the Python reference implementation and check if shared behavioral fixtures exist:
 
 ```bash
-ls ../edictum-schemas/fixtures/behavioral/
-ls ../edictum-schemas/fixtures/adversarial/
+# Read the relevant module source (not just list files)
+cat ../edictum/src/edictum/<module>.py
+cat ../edictum/tests/test_behavior/test_<module>_behavior.py
+
+# Check existing fixtures
+cat ../edictum-schemas/fixtures/behavioral/<feature>.fixtures.yaml
+cat ../edictum-schemas/fixtures/adversarial/<feature>.fixtures.yaml
 ```
 
-If fixtures don't exist for the behavior you're changing, **write them first** in `edictum-schemas/fixtures/`. This is mandatory — no feature ships without fixtures.
+If the Python reference or fixtures don't exist for the behavior you're changing, **write them first**. This is mandatory — no feature ships without fixtures.
 
 ## Step 2: Write Fixtures (if needed)
 
@@ -48,7 +61,7 @@ Push fixtures as a separate PR to edictum-schemas FIRST.
 This repo is the reference implementation. Implement here first:
 
 1. Write the code in `src/edictum/`
-2. Write behavior tests in `tests/test_behavior/`
+2. Write behavior tests in `tests/test_behavior/test_{module}_behavior.py` (one file per module, under 200 lines)
 3. Write security tests with `@pytest.mark.security` if touching a security boundary
 4. Verify shared fixtures pass: `pytest tests/test_behavioral_fixtures.py --fixtures-dir=../edictum-schemas/fixtures/`
 5. Run full suite: `uv run pytest tests/ -v`
