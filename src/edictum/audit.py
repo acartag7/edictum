@@ -137,11 +137,14 @@ class RedactionPolicy:
         sensitive_keys: set[str] | None = None,
         custom_patterns: list[tuple[str, str]] | None = None,
         detect_secret_values: bool = True,
+        safe_compound_keys: set[str] | None = None,
     ):
         base_keys = self.DEFAULT_SENSITIVE_KEYS | sensitive_keys if sensitive_keys else self.DEFAULT_SENSITIVE_KEYS
-        self._keys = {k.lower() for k in base_keys}
+        self._keys = {k.lower().replace("-", "_") for k in base_keys}
         self._patterns = (custom_patterns or []) + self.BASH_REDACTION_PATTERNS
         self._detect_values = detect_secret_values
+        extra_safe = {k.lower().replace("-", "_") for k in safe_compound_keys} if safe_compound_keys else set()
+        self._safe_compound_keys: frozenset[str] = self._SAFE_COMPOUND_KEYS | extra_safe
 
     def redact_args(self, args: Any) -> Any:
         """Recursively redact sensitive data from tool arguments."""
@@ -169,19 +172,56 @@ class RedactionPolicy:
             return redacted
         return args
 
+    # Word parts that indicate a sensitive key when found as a standalone
+    # segment after splitting on _ or -. Includes plural forms (#139).
+    _SENSITIVE_PARTS: frozenset[str] = frozenset(
+        {
+            "token",
+            "tokens",
+            "key",
+            "keys",
+            "secret",
+            "secrets",
+            "password",
+            "passwords",
+            "credential",
+            "credentials",
+        }
+    )
+
+    # Common non-sensitive parameter names that happen to contain a sensitive
+    # word part. These are checked before the word-part scan to prevent
+    # false-positive redaction (#127, #144). Stored as normalized underscore
+    # form — lookup normalizes hyphens to underscores to cover both variants.
+    _SAFE_COMPOUND_KEYS: frozenset[str] = frozenset(
+        {
+            "max_tokens",
+            "num_tokens",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "completion_tokens",
+            "prompt_tokens",
+            "cached_tokens",
+            "reasoning_tokens",
+            "audio_tokens",
+            "cache_tokens",
+            "sort_keys",
+            "index_keys",
+        }
+    )
+
     def _is_sensitive_key(self, key: str) -> bool:
         k = key.lower()
-        if k in self._keys:
+        # Normalize hyphens to underscores so both "api-key" and "api_key"
+        # match consistently across sensitive keys, safe keys, and word parts.
+        normalized = k.replace("-", "_")
+        if normalized in self._keys:
             return True
-        _sensitive = {
-            "token",
-            "key",
-            "secret",
-            "password",
-            "credential",
-        }
+        if normalized in self._safe_compound_keys:
+            return False
         parts = re.split(r"[_\-]", k)
-        return any(p in _sensitive for p in parts)
+        return any(p in self._SENSITIVE_PARTS for p in parts)
 
     def _looks_like_secret(self, value: str) -> bool:
         for pattern in self.SECRET_VALUE_PATTERNS:
