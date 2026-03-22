@@ -27,15 +27,19 @@ jobs:
       # SECURITY: Write title and body to files to prevent shell injection
       # via crafted PR titles containing quotes or shell metacharacters.
       # Heredocs use quoted delimiters (<<'EOF') to disable shell expansion.
-      # PR_URL is injected separately via sed to avoid command substitution.
+      # PR_URL is injected via Python to avoid sed delimiter injection.
+      # Temp files are namespaced by run ID for self-hosted runner safety.
       - name: Prepare issue content
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          printf 'Port: %s' "$PR_TITLE" > /tmp/issue-title.txt
+          TMPDIR="/tmp/notify-parity-${RUN_ID}"
+          mkdir -p "$TMPDIR"
+          printf 'Port: %s' "$PR_TITLE" > "${TMPDIR}/issue-title.txt"
 
-          cat > /tmp/issue-body-ts.md <<'BODY_EOF'
+          cat > "${TMPDIR}/issue-body-ts.md" <<'BODY_EOF'
           Python reference landed in __PR_URL__
 
           Port this feature to TypeScript with matching behavior.
@@ -46,9 +50,8 @@ jobs:
           - [ ] TypeScript-native tests written
           - [ ] Security tests if touching security boundary
           BODY_EOF
-          sed -i "s|__PR_URL__|${PR_URL}|" /tmp/issue-body-ts.md
 
-          cat > /tmp/issue-body-go.md <<'BODY_EOF'
+          cat > "${TMPDIR}/issue-body-go.md" <<'BODY_EOF'
           Python reference landed in __PR_URL__
 
           Port this feature to Go with matching behavior.
@@ -60,22 +63,34 @@ jobs:
           - [ ] Race detector passes
           - [ ] Security tests if touching security boundary
           BODY_EOF
-          sed -i "s|__PR_URL__|${PR_URL}|" /tmp/issue-body-go.md
+
+          # Use Python for URL substitution to avoid sed delimiter injection
+          python3 -c "
+          import os, pathlib
+          url = os.environ['PR_URL']
+          for f in ['issue-body-ts.md', 'issue-body-go.md']:
+              p = pathlib.Path(os.environ['TMPDIR']) / f
+              p.write_text(p.read_text().replace('__PR_URL__', url))
+          "
 
       - name: Create TypeScript tracking issue
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUN_ID: ${{ github.run_id }}
         run: |
+          TMPDIR="/tmp/notify-parity-${RUN_ID}"
           gh issue create --repo edictum-ai/edictum-ts \
-            --title "$(cat /tmp/issue-title.txt)" \
+            --title "$(cat "${TMPDIR}/issue-title.txt")" \
             --label "parity:blocking,feature-parity" \
-            --body-file /tmp/issue-body-ts.md
+            --body-file "${TMPDIR}/issue-body-ts.md"
 
       - name: Create Go tracking issue
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RUN_ID: ${{ github.run_id }}
         run: |
+          TMPDIR="/tmp/notify-parity-${RUN_ID}"
           gh issue create --repo edictum-ai/edictum-go \
-            --title "$(cat /tmp/issue-title.txt)" \
+            --title "$(cat "${TMPDIR}/issue-title.txt")" \
             --label "parity:blocking,feature-parity" \
-            --body-file /tmp/issue-body-go.md
+            --body-file "${TMPDIR}/issue-body-go.md"
