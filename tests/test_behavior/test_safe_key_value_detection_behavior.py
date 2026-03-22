@@ -69,3 +69,37 @@ class TestCustomSensitiveKeysOverrideSafeList:
         policy = RedactionPolicy(sensitive_keys={"max_tokens"})
         result = policy.redact_args({"sort_keys": True})
         assert result["sort_keys"] is True
+
+
+class TestCustomSafeCompoundKeys:
+    """User-supplied safe_compound_keys extends the built-in safe list."""
+
+    def test_custom_safe_key_prevents_redaction(self):
+        """safe_compound_keys={"response_tokens"} must not redact despite 'tokens' word part."""
+        policy = RedactionPolicy(safe_compound_keys={"response_tokens"})
+        result = policy.redact_args({"response_tokens": 512})
+        assert result["response_tokens"] == 512
+
+    def test_custom_safe_key_with_hyphens(self):
+        """Hyphenated form must also be recognized as safe."""
+        policy = RedactionPolicy(safe_compound_keys={"context-tokens"})
+        result = policy.redact_args({"context-tokens": 100})
+        assert result["context-tokens"] == 100
+
+    def test_custom_safe_key_does_not_affect_builtin_sensitive(self):
+        """Adding safe keys must not suppress exact-match sensitive keys."""
+        policy = RedactionPolicy(safe_compound_keys={"response_tokens"})
+        result = policy.redact_args({"token": "abc123"})
+        assert result["token"] == "[REDACTED]"
+
+    def test_builtin_safe_keys_still_work_with_custom(self):
+        """Built-in safe keys are preserved when custom ones are added."""
+        policy = RedactionPolicy(safe_compound_keys={"response_tokens"})
+        result = policy.redact_args({"max_tokens": 1024})
+        assert result["max_tokens"] == 1024
+
+    def test_without_custom_safe_key_would_redact(self):
+        """Verify that without safe_compound_keys, the key IS redacted."""
+        policy = RedactionPolicy()
+        result = policy.redact_args({"response_tokens": 512})
+        assert result["response_tokens"] == "[REDACTED]"

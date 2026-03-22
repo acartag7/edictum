@@ -137,11 +137,14 @@ class RedactionPolicy:
         sensitive_keys: set[str] | None = None,
         custom_patterns: list[tuple[str, str]] | None = None,
         detect_secret_values: bool = True,
+        safe_compound_keys: set[str] | None = None,
     ):
         base_keys = self.DEFAULT_SENSITIVE_KEYS | sensitive_keys if sensitive_keys else self.DEFAULT_SENSITIVE_KEYS
         self._keys = {k.lower() for k in base_keys}
         self._patterns = (custom_patterns or []) + self.BASH_REDACTION_PATTERNS
         self._detect_values = detect_secret_values
+        extra_safe = {k.lower().replace("-", "_") for k in safe_compound_keys} if safe_compound_keys else set()
+        self._safe_compound_keys: frozenset[str] = self._SAFE_COMPOUND_KEYS | extra_safe
 
     def redact_args(self, args: Any) -> Any:
         """Recursively redact sensitive data from tool arguments."""
@@ -215,7 +218,7 @@ class RedactionPolicy:
         # Normalize hyphens to underscores for safe-key lookup so both
         # max_tokens and max-tokens are recognized as safe.
         normalized = k.replace("-", "_")
-        if normalized in self._SAFE_COMPOUND_KEYS:
+        if normalized in self._safe_compound_keys:
             return False
         parts = re.split(r"[_\-]", k)
         return any(p in self._SENSITIVE_PARTS for p in parts)
