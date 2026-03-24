@@ -17,6 +17,8 @@ _REDIRECT_PREFIX_RE = re.compile(r"^(?:\d*>>|>>|\d*>|>|<<|<)")
 # Shell command separators that allow chaining multiple commands.
 # If ANY of these appear anywhere in the raw command string, _extract_command()
 # returns a sentinel value that never matches any allowlist — failing closed.
+# The sandbox unconditionally denies sentinel results, even for path-only
+# sandboxes without allows.commands.
 # Covers: ;  |  &  &&  ||  \n  \r  `  $()  ${}  $'  <()  >()  <<<  <<
 _SHELL_SEPARATOR_RE = re.compile(
     r"[;|&\n\r`]"  # bare separators
@@ -244,12 +246,16 @@ def _compile_sandbox(contract: dict, mode: str) -> Any:
                             return Verdict.fail(msg)
 
         # Command checks
-        if allowed_commands:
-            first_token = _extract_command(envelope)
-            if first_token is not None:
-                if first_token not in allowed_commands:
-                    msg = _expand_message(message_template, envelope)
-                    return Verdict.fail(msg)
+        cmd_token = _extract_command(envelope)
+        # Sentinel means shell separators detected — always deny,
+        # even without allowed_commands (path-only sandboxes).
+        if cmd_token == "\x00":
+            msg = _expand_message(message_template, envelope)
+            return Verdict.fail(msg)
+        if allowed_commands and cmd_token is not None:
+            if cmd_token not in allowed_commands:
+                msg = _expand_message(message_template, envelope)
+                return Verdict.fail(msg)
 
         # Domain checks
         urls = _extract_urls(envelope)
