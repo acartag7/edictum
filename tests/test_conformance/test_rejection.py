@@ -75,16 +75,33 @@ REJECTION_DIR = _find_rejection_dir()
 # strict=True ensures we notice if jsonschema improves and the xfail
 # starts passing unexpectedly.
 
-_ERROR_MSG_XFAIL: frozenset[str] = frozenset({
-    # contract-structure: oneOf dispatch
-    "rej-014", "rej-016", "rej-017", "rej-018", "rej-019", "rej-020",
-    "rej-021", "rej-022", "rej-023", "rej-024", "rej-025", "rej-026",
-    "rej-027", "rej-028", "rej-029", "rej-030",
-    # required-fields: value-level reporting
-    "rej-002", "rej-005", "rej-006",
-    # constraints: value-level reporting
-    "rej-062",
-})
+_ERROR_MSG_XFAIL: frozenset[str] = frozenset(
+    {
+        # contract-structure: oneOf dispatch
+        "rej-014",
+        "rej-016",
+        "rej-017",
+        "rej-018",
+        "rej-019",
+        "rej-020",
+        "rej-021",
+        "rej-022",
+        "rej-023",
+        "rej-024",
+        "rej-025",
+        "rej-026",
+        "rej-027",
+        "rej-028",
+        "rej-029",
+        "rej-030",
+        # required-fields: value-level reporting
+        "rej-002",
+        "rej-005",
+        "rej-006",
+        # constraints: value-level reporting
+        "rej-062",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Collection
@@ -115,10 +132,12 @@ def _collect() -> tuple[list, list]:
             if "error_contains" in expected:
                 marks: list = []
                 if fid in _ERROR_MSG_XFAIL:
-                    marks.append(pytest.mark.xfail(
-                        reason="jsonschema oneOf/value-level error reporting",
-                        strict=True,
-                    ))
+                    marks.append(
+                        pytest.mark.xfail(
+                            reason="jsonschema oneOf/value-level error reporting",
+                            strict=True,
+                        )
+                    )
                 errmsg_params.append(
                     pytest.param(bundle_yaml, expected, id=test_id, marks=marks),
                 )
@@ -165,6 +184,4 @@ def test_error_message_parity(bundle_yaml: str, expected: dict) -> None:
 
     needle = expected["error_contains"]
     msg = str(exc_info.value).lower()
-    assert needle.lower() in msg, (
-        f"Expected error to contain '{needle}', got: {exc_info.value}"
-    )
+    assert needle.lower() in msg, f"Expected error to contain '{needle}', got: {exc_info.value}"
