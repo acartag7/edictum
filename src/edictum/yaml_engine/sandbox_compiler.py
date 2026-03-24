@@ -17,8 +17,8 @@ _REDIRECT_PREFIX_RE = re.compile(r"^(?:\d*>>|>>|\d*>|>|<<|<)")
 # Shell command separators that allow chaining multiple commands.
 # If ANY of these appear anywhere in the raw command string, _extract_command()
 # returns a sentinel value that never matches any allowlist — failing closed.
-# Covers: ;  |  &  &&  ||  \n  \r  `  $()  ${}  <()  >()
-_SHELL_SEPARATOR_RE = re.compile(r"[;|&\n\r`]|\$\(|\$\{|\<\(|>\(")
+# Covers: ;  |  &  &&  ||  \n  \r  `  $()  ${}  <()  >()  <<<  <<
+_SHELL_SEPARATOR_RE = re.compile(r"[;|&\n\r`]|\$\(|\$\{|\<\(|>\(|<<<|<<(?!<)")
 
 
 def _tokenize_command(cmd: str) -> list[str]:
@@ -116,7 +116,7 @@ def _extract_command(envelope: ToolEnvelope) -> str | None:
 
     Returns the sentinel ``\\x00`` (which never matches any allowlist) if:
     - The command contains shell separators/metacharacters that could chain
-      multiple commands (;  |  &&  ||  \\n  \\r  ``  $()  ${}  <()  >())
+      multiple commands (;  |  &&  ||  \\n  \\r  ``  $()  ${}  <()  >()  <<  <<<)
     - The command begins with a shell redirect operator (> >> < <<)
 
     This ensures command allowlists fail closed on any form of command
