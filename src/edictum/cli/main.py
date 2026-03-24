@@ -860,15 +860,22 @@ def test_cmd(file: str, cases: str | None, calls: str | None, json_output: bool,
 # gate subgroup (lazy import — requires edictum[gate])
 # ---------------------------------------------------------------------------
 
+
+def _should_warn_gate_import(exc: ImportError) -> bool:
+    """Return True if the gate ImportError should surface as a warning.
+
+    When the gate extra is genuinely not installed, the missing module is
+    ``edictum.cli.gate_cli`` — silently skip.  Any other ImportError (e.g.
+    a transitive dependency like jsonschema) should warn the user.
+    """
+    missing_module = getattr(exc, "name", None)
+    return missing_module != "edictum.cli.gate_cli"
+
+
 try:
     from edictum.cli.gate_cli import gate
 
     cli.add_command(gate)
 except ImportError as exc:
-    # If the import failed because gate_cli itself is missing, the gate
-    # extra is simply not installed — silently skip.  Any other
-    # ImportError (e.g. a transitive dependency like jsonschema missing)
-    # should surface so the user knows why `edictum gate` disappeared.
-    missing_module = getattr(exc, "name", None)
-    if missing_module != "edictum.cli.gate_cli":
+    if _should_warn_gate_import(exc):
         _err_console.print(f"[yellow]Warning: edictum gate failed to load: {escape(str(exc))}[/yellow]")
