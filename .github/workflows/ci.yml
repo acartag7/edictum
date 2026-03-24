@@ -57,6 +57,8 @@ jobs:
       - name: Security lint (bandit)
         run: bandit -r src/ -ll -ii
       - name: Audit Python dependencies
-        run: pip-audit
+        # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest on PyPI).
+        # Transitive dep from pdoc, pytest, rich. Remove ignore when patched version ships.
+        run: pip-audit --ignore-vuln CVE-2026-4539
       - name: Security boundary tests
         run: pytest -m security -v --tb=short
