@@ -87,12 +87,10 @@ def _analyze_structural(skill_dir: Path) -> StructuralFeatures:
     if not skill_dir.is_dir():
         return StructuralFeatures()
 
-    contracts_path = skill_dir / "contracts.yaml"
-    if not contracts_path.exists() or contracts_path.is_symlink():
-        contracts_path = skill_dir / "contracts.yml"
-
-    # Read with O_NOFOLLOW to atomically reject symlinks (no TOCTOU)
-    contracts_bytes = _read_no_follow(contracts_path, MAX_FILE_SIZE)
+    # Try both extensions atomically via O_NOFOLLOW — no exists()/is_symlink() pre-checks
+    contracts_bytes = _read_no_follow(skill_dir / "contracts.yaml", MAX_FILE_SIZE)
+    if contracts_bytes is None:
+        contracts_bytes = _read_no_follow(skill_dir / "contracts.yml", MAX_FILE_SIZE)
     has_contracts = contracts_bytes is not None
 
     contracts_valid: bool | None = None
