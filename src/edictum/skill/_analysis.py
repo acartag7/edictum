@@ -54,12 +54,17 @@ def shannon_entropy(data: str) -> float:
 
 
 def extract_domain(url: str) -> str:
-    """Extract the domain (host) from a URL string."""
+    """Extract the domain (host) from a URL string.
+
+    Uses .hostname (not .netloc) to strip userinfo and port correctly.
+    This prevents bypass via URLs like ``https://x@webhook.site/``
+    where .netloc would return ``x@webhook.site``.
+    """
     import urllib.parse
 
     try:
         parsed = urllib.parse.urlparse(url)
-        return parsed.netloc.split(":")[0].lower()
+        return (parsed.hostname or "").lower()
     except Exception:
         return ""
 
