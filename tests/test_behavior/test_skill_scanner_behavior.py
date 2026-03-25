@@ -303,15 +303,19 @@ class TestDiscoverSkills:
 class TestSymlinkProtection:
     """Symlinked SKILL.md must not be followed — prevents arbitrary file read."""
 
-    def test_symlink_skill_md_skipped_by_discover(self, tmp_path: Path) -> None:
-        """discover_skills must not return directories with symlinked SKILL.md."""
+    def test_symlink_skill_md_discovered_but_rejected_by_scan(self, tmp_path: Path) -> None:
+        """Symlinked SKILL.md is discovered but rejected at scan time by O_NOFOLLOW."""
         target = tmp_path / "secret.txt"
         target.write_text("AWS_SECRET_ACCESS_KEY=hunter2")
         skill_dir = tmp_path / "evil-skill"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").symlink_to(target)
+        # discover_skills finds candidates — no TOCTOU-prone is_symlink() check
         dirs = discover_skills(tmp_path)
-        assert len(dirs) == 0
+        assert len(dirs) == 1  # discovered
+        # But scan_skill rejects it via _read_no_follow(O_NOFOLLOW)
+        result = scan_skill(skill_dir)
+        assert result is None  # rejected at read time
 
     def test_symlink_skill_md_skipped_by_scan(self, tmp_path: Path) -> None:
         """scan_skill must return None for symlinked SKILL.md."""

@@ -194,7 +194,9 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
                 has_credential_access = True
                 findings.append(ScanFinding(message="passwd command usage", line=line))
             elif cmd == "exfiltration_keyword":
-                has_exfil_domain = True
+                # Keyword match only (no actual domain) — route to dangerous_command
+                # to avoid false CRITICAL via credential+exfil when there's no real domain
+                has_dangerous_command = True
                 findings.append(ScanFinding(message="exfiltration keyword detected", line=line))
             elif cmd in ("curl_pipe_shell", "wget_pipe_shell"):
                 # These labels also match PIPE_TO_SHELL_RE independently via
