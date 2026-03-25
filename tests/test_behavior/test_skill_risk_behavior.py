@@ -227,8 +227,10 @@ class TestEdgeCases:
         result = scan_skill(tmp_path)
         assert result is not None
         cls = classify_risk(result)
-        # pipe-to-shell + private IP = MEDIUM (not CRITICAL)
-        assert cls.level == RiskLevel.MEDIUM
+        # pipe-to-shell + private IP must NOT be CRITICAL
+        # (curl_pipe_shell is HIGH via has_dangerous_command; only public IP escalates to CRITICAL)
+        assert cls.level != RiskLevel.CRITICAL
+        assert cls.level >= RiskLevel.HIGH
 
     def test_public_ip_with_pipe_is_critical(self, tmp_path: Path) -> None:
         """Public IP + pipe-to-shell = CRITICAL."""
@@ -238,3 +240,57 @@ class TestEdgeCases:
         assert result is not None
         cls = classify_risk(result)
         assert cls.level == RiskLevel.CRITICAL
+
+
+# ---------------------------------------------------------------------------
+# Negative security tests — bypass vectors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.security
+class TestDangerousCommandBypass:
+    """Every dangerous command label must promote to at least HIGH.
+
+    These tests verify that a skill containing ONLY one dangerous command
+    pattern (and no other signals) is never classified as CLEAN.
+    """
+
+    def test_mkfs_alone_is_not_clean(self, tmp_path: Path) -> None:
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("# Disk Tool\n\n```bash\nmkfs.ext4 /dev/sda1\n```\n")
+        result = scan_skill(tmp_path)
+        assert result is not None
+        cls = classify_risk(result)
+        assert cls.level >= RiskLevel.HIGH
+
+    def test_destructive_rm_alone_is_not_clean(self, tmp_path: Path) -> None:
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("# Cleanup\n\n```bash\nrm -rf /\n```\n")
+        result = scan_skill(tmp_path)
+        assert result is not None
+        cls = classify_risk(result)
+        assert cls.level >= RiskLevel.HIGH
+
+    def test_passwd_alone_is_not_clean(self, tmp_path: Path) -> None:
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("# Admin\n\n```bash\npasswd root\n```\n")
+        result = scan_skill(tmp_path)
+        assert result is not None
+        cls = classify_risk(result)
+        assert cls.level >= RiskLevel.HIGH
+
+    def test_sudo_alone_is_high(self, tmp_path: Path) -> None:
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("# Elevate\n\n```bash\nsudo apt install foo\n```\n")
+        result = scan_skill(tmp_path)
+        assert result is not None
+        cls = classify_risk(result)
+        assert cls.level >= RiskLevel.HIGH
+
+    def test_eval_alone_is_high(self, tmp_path: Path) -> None:
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("# Dynamic\n\n```python\neval('print(1)')\n```\n")
+        result = scan_skill(tmp_path)
+        assert result is not None
+        cls = classify_risk(result)
+        assert cls.level >= RiskLevel.HIGH

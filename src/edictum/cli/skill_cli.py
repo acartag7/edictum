@@ -198,4 +198,4 @@ def _send_to_server(classifications: list, server_url: str, skills_dir: str) -> 
         else:
             _err_console.print(f"[yellow]Warning: server returned {resp.status_code}[/yellow]")
     except httpx.HTTPError as e:
-        _err_console.print(f"[yellow]Warning: failed to send results: {e}[/yellow]")
+        _err_console.print(f"[yellow]Warning: failed to send results: {escape(str(e))}[/yellow]")

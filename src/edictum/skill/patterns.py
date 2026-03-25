@@ -142,32 +142,6 @@ OBFUSCATION_SIGNALS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Frontmatter keys
-# ---------------------------------------------------------------------------
-
-KNOWN_FRONTMATTER_KEYS: frozenset[str] = frozenset(
-    {
-        "name",
-        "description",
-        "version",
-        "author",
-        "tags",
-        "requires",
-        "requires_bins",
-        "requires_env",
-        "requires_network",
-        "permissions",
-        "license",
-        "homepage",
-        "repository",
-        "dependencies",
-        "category",
-        "icon",
-        "aliases",
-    }
-)
-
-# ---------------------------------------------------------------------------
 # Script file extensions
 # ---------------------------------------------------------------------------
 

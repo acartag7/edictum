@@ -78,7 +78,6 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
     # Gather all features for cross-block analysis
     has_pipe_to_shell = False
     has_public_ip = False
-    public_ips: list[str] = []
     has_reverse_shell = False
     has_exfil_domain = False
     has_credential_access = False
@@ -89,6 +88,7 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
     has_chmod_dangerous = False
     has_dd_device = False
     has_obfuscation = False
+    has_dangerous_command = False
     has_high_entropy = False
     has_password_archive = False
     high_external_domains = False
@@ -110,7 +110,6 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
         for ip in cb.ip_addresses_found:
             if not is_private_ip(ip):
                 has_public_ip = True
-                public_ips.append(ip)
                 findings.append(
                     ScanFinding(
                         message=f"public IP address: {ip}",
@@ -192,12 +191,14 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
                 has_credential_access = True
                 findings.append(ScanFinding(message=f"credential-adjacent access: {cmd}", line=line))
             elif cmd == "passwd_access":
+                has_dangerous_command = True
                 findings.append(ScanFinding(message="passwd command usage", line=line))
             elif cmd == "exfiltration_keyword":
                 has_exfil_domain = True
                 findings.append(ScanFinding(message="exfiltration keyword detected", line=line))
             else:
-                # Generic dangerous command
+                # Catch-all: mkfs_format, destructive_rm_root, curl_pipe_shell, etc.
+                has_dangerous_command = True
                 findings.append(ScanFinding(message=f"dangerous command: {cmd}", line=line))
 
         # Obfuscation signals
@@ -278,7 +279,7 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
     if has_credential_access:
         return RiskClassification(RiskLevel.HIGH, tuple(unique_findings), result)
 
-    if has_eval_exec or has_sudo or has_chmod_dangerous or has_dd_device:
+    if has_eval_exec or has_sudo or has_chmod_dangerous or has_dd_device or has_dangerous_command:
         return RiskClassification(RiskLevel.HIGH, tuple(unique_findings), result)
 
     if has_b64_shell:
