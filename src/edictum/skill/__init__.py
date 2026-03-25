@@ -140,7 +140,9 @@ def scan_directory(
         for future in as_completed(futures):
             try:
                 result = future.result()
-            except Exception:
+            except Exception as exc:
+                skill_dir = futures[future]
+                print(f"Warning: error scanning {skill_dir}: {type(exc).__name__}", file=sys.stderr, flush=True)
                 continue
             if result is not None:
                 results.append(result)
