@@ -191,7 +191,7 @@ def classify_risk(result: SkillScanResult) -> RiskClassification:
                 has_credential_access = True
                 findings.append(ScanFinding(message=f"credential-adjacent access: {cmd}", line=line))
             elif cmd == "passwd_access":
-                has_dangerous_command = True
+                has_credential_access = True
                 findings.append(ScanFinding(message="passwd command usage", line=line))
             elif cmd == "exfiltration_keyword":
                 has_exfil_domain = True

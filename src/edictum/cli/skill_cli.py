@@ -175,30 +175,20 @@ def _output_structural_only(
 
 
 def _send_to_server(classifications: list, server_url: str, skills_dir: str) -> None:
-    """POST scan results to an Edictum Console server."""
+    """POST scan results to an Edictum Console server.
+
+    Networking lives in edictum.server (tier boundary: core is network-free).
+    """
     try:
-        import httpx
+        from edictum.server.skill_upload import upload_scan_results
     except ImportError:
         _err_console.print(
-            "[yellow]Warning: --server requires httpx. Install with: pip install edictum[server][/yellow]"
+            "[yellow]Warning: --server requires edictum[server]. Install with: pip install edictum[server][/yellow]"
         )
         return
 
-    from edictum.skill.formatters import format_json
-
-    payload = format_json(classifications, skills_dir=skills_dir)
-
-    url = server_url.rstrip("/") + "/api/v1/skill-scan"
-    try:
-        resp = httpx.post(
-            url,
-            content=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=30.0,
-        )
-        if resp.status_code < 300:
-            _console.print(f"[green]Results sent to {escape(server_url)}[/green]")
-        else:
-            _err_console.print(f"[yellow]Warning: server returned {resp.status_code}[/yellow]")
-    except httpx.HTTPError as e:
-        _err_console.print(f"[yellow]Warning: failed to send results: {escape(str(e))}[/yellow]")
+    ok, detail = upload_scan_results(classifications, server_url, skills_dir)
+    if ok:
+        _console.print(f"[green]Results sent to {escape(server_url)}[/green]")
+    else:
+        _err_console.print(f"[yellow]Warning: {escape(detail)}[/yellow]")
