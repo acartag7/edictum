@@ -56,9 +56,12 @@ _O_NOFOLLOW: int = getattr(os, "O_NOFOLLOW", 0)
 def _read_no_follow(path: Path, max_size: int) -> bytes | None:
     """Read a file without following symlinks. Returns None on error.
 
-    Uses O_NOFOLLOW to atomically reject symlinks at open time,
-    eliminating the TOCTOU window between is_symlink() and read_bytes().
+    Uses O_NOFOLLOW to atomically reject symlinks at open time.
+    On platforms without O_NOFOLLOW (Windows), falls back to an
+    explicit is_symlink() check (TOCTOU window, best-effort).
     """
+    if _O_NOFOLLOW == 0 and path.is_symlink():
+        return None
     try:
         fd = os.open(str(path), os.O_RDONLY | _O_NOFOLLOW)
     except OSError:
@@ -94,12 +97,22 @@ def _analyze_structural(skill_dir: Path) -> StructuralFeatures:
 
     contracts_valid: bool | None = None
     contracts_error: str | None = None
-    if has_contracts:
+    if has_contracts and contracts_bytes is not None:
+        # Validate in memory — never re-open the file by path (TOCTOU safe)
         try:
-            from edictum.yaml_engine.loader import load_bundle
+            from edictum.skill._analysis import _HAS_YAML
 
-            load_bundle(str(contracts_path))
-            contracts_valid = True
+            if _HAS_YAML:
+                import yaml
+
+                parsed = yaml.safe_load(contracts_bytes)
+                if isinstance(parsed, dict) and parsed.get("apiVersion") == "edictum/v1":
+                    contracts_valid = True
+                else:
+                    contracts_valid = False
+                    contracts_error = "not a valid Edictum contract bundle"
+            else:
+                contracts_valid = None  # can't validate without PyYAML
         except Exception as e:
             contracts_valid = False
             contracts_error = str(e)
