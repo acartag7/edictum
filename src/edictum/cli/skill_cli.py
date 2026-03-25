@@ -34,7 +34,8 @@ def skill() -> None:
 @click.option("--structural-only", is_flag=True, default=False, help="Only check contracts.yaml presence.")
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Show all skills, not just findings.")
 @click.option("--workers", type=int, default=1, help="Parallel workers for batch scanning.")
-@click.option("--server", type=str, default=None, help="Console server URL to send results.")
+@click.option("--server", type=str, default=None, help="Console server URL to send results (HTTPS required).")
+@click.option("--allow-http", is_flag=True, default=False, hidden=True, help="Allow HTTP for --server.")
 def scan(
     path: str,
     output_json: bool,
@@ -43,6 +44,7 @@ def scan(
     verbose: bool,
     workers: int,
     server: str | None,
+    allow_http: bool,
 ) -> None:
     """Scan skill directories for security issues.
 
@@ -66,16 +68,17 @@ def scan(
 
     scan_path = Path(path).resolve()
 
-    # Validate --server URL scheme
+    # Validate --server URL scheme — HTTPS required by default
     if server:
-        if not server.startswith("https://"):
-            if server.startswith("http://"):
-                _err_console.print(
-                    "[yellow]Warning: --server uses HTTP. Scan results may be transmitted in cleartext.[/yellow]"
-                )
-            else:
-                _err_console.print("[red]--server must be an HTTP(S) URL.[/red]")
-                sys.exit(2)
+        if server.startswith("http://") and not allow_http:
+            _err_console.print(
+                "[red]--server must use HTTPS. Scan results contain extracted IPs, domains, and credential paths.[/red]"
+            )
+            _err_console.print("[dim]Use --allow-http to override (not recommended).[/dim]")
+            sys.exit(2)
+        elif not server.startswith("https://") and not server.startswith("http://"):
+            _err_console.print("[red]--server must be an HTTP(S) URL.[/red]")
+            sys.exit(2)
 
     # Scan
     try:

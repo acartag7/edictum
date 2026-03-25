@@ -9,16 +9,16 @@ import signal
 from pathlib import Path
 from typing import Any
 
-from edictum.skill.patterns import SKILL_TIMEOUT_SECONDS
-from edictum.skill.scanner import (
+from edictum.skill._types import (
     Base64BlobInfo,
     CodeBlockFeatures,
     FrontmatterFeatures,
     RiskSignals,
     SkillScanResult,
     StructuralFeatures,
-    scan_skill,
 )
+from edictum.skill.patterns import SKILL_TIMEOUT_SECONDS
+from edictum.skill.scanner import scan_skill
 
 __all__ = [
     "Base64BlobInfo",
@@ -110,7 +110,6 @@ def scan_directory(
         return []
 
     if workers <= 1:
-        # Single-process: SIGALRM timeout is safe here
         scan_fn = _scan_skill_with_timeout if use_timeout else scan_skill
         results: list[SkillScanResult] = []
         for skill_dir in skill_dirs:
@@ -119,7 +118,7 @@ def scan_directory(
                 results.append(result)
         return results
 
-    # Multi-worker: SIGALRM not used — subprocess isolation provides containment
+    # Multi-worker: no SIGALRM — subprocess isolation provides containment
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
     results = []
