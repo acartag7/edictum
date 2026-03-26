@@ -88,22 +88,22 @@ Prompt engineering doesn't fix this. You need enforcement at the tool-call layer
 
 ```python
 # LangChain
-from edictum.adapters import LangChainAdapter
+from edictum.adapters.langchain import LangChainAdapter
 adapter = LangChainAdapter(guard)
 tool = adapter.as_tool_wrapper(tool)
 
 # OpenAI Agents SDK
-from edictum.adapters import OpenAIAgentsAdapter
+from edictum.adapters.openai_agents import OpenAIAgentsAdapter
 adapter = OpenAIAgentsAdapter(guard)
 input_gr, output_gr = adapter.as_guardrails()
 
 # Claude Agent SDK
-from edictum.adapters import ClaudeAgentSDKAdapter
+from edictum.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter
 adapter = ClaudeAgentSDKAdapter(guard)
 hooks = adapter.to_hook_callables()
 
 # Google ADK
-from edictum.adapters import GoogleADKAdapter
+from edictum.adapters.google_adk import GoogleADKAdapter
 adapter = GoogleADKAdapter(guard)
 plugin = adapter.as_plugin()
 ```
