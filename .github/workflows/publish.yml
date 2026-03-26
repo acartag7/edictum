@@ -23,7 +23,7 @@ jobs:
         run: |
           uv venv .sbom-venv
           uv pip install "cyclonedx-bom==4.6.1" dist/edictum-*.whl --python .sbom-venv/bin/python
-          .sbom-venv/bin/cyclonedx-py environment --output dist/sbom.cdx.json --format json
+          .sbom-venv/bin/cyclonedx-py environment -o dist/sbom.cdx.json --of JSON .sbom-venv
 
       - name: Publish to PyPI
         run: uv publish
