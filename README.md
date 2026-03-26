@@ -27,8 +27,8 @@ from edictum import Edictum, EdictumDenied
 
 guard = Edictum.from_template("file-agent")
 result = guard.evaluate("read_file", {"path": ".env"})
-print(result.allowed)  # False
-print(result.reason)   # "Sensitive file '.env' denied."
+print(result.verdict)         # "deny"
+print(result.deny_reasons[0])  # "Sensitive file '.env' denied."
 ```
 
 Full path -- your contract, your enforcement:
