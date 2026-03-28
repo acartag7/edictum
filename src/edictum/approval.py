@@ -132,7 +132,7 @@ class LocalApprovalBackend:
                 status=ApprovalStatus.TIMEOUT,
             )
 
-        approved = response.strip().lower() in ("y", "yes", "ask")
+        approved = response.strip().lower() in ("y", "yes", "approve")
         status = ApprovalStatus.APPROVED if approved else ApprovalStatus.DENIED
         return ApprovalDecision(
             approved=approved,

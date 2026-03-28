@@ -263,7 +263,7 @@ class TestEnvSelectorEdgeCases:
         guard = Edictum.from_yaml(bundle_path)
         result = guard.evaluate("Bash", {"command": "deploy"})
         assert result.decision == "block"
-        assert "maintenance window" in result.deny_reasons[0]
+        assert "maintenance window" in result.block_reasons[0]
 
     def test_env_message_template_unset_keeps_placeholder(self, tmp_path, monkeypatch):
         """When env var is unset, message placeholder is kept as-is."""

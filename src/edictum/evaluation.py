@@ -10,7 +10,7 @@ class RuleResult:
     """Result of evaluating a single rule."""
 
     rule_id: str
-    contract_type: str  # "precondition" | "postcondition" | "sandbox"
+    rule_type: str  # "precondition" | "postcondition" | "sandbox"
     passed: bool
     message: str | None = None
     tags: list[str] = field(default_factory=list)
@@ -26,7 +26,7 @@ class EvaluationResult:
     decision: str  # "allow" | "block" | "warn"
     tool_name: str
     rules: list[RuleResult] = field(default_factory=list)
-    deny_reasons: list[str] = field(default_factory=list)
+    block_reasons: list[str] = field(default_factory=list)
     warn_reasons: list[str] = field(default_factory=list)
-    contracts_evaluated: int = 0
+    rules_evaluated: int = 0
     policy_error: bool = False

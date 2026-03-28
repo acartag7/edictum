@@ -99,7 +99,7 @@ def _contracts_to_dicts(evaluation_result: Any) -> list[dict]:
         result.append(
             {
                 "name": c.rule_id,
-                "type": c.contract_type,
+                "type": c.rule_type,
                 "passed": c.passed,
                 "message": c.message,
                 "observed": c.observed,
@@ -151,7 +151,7 @@ def build_audit_event(
     action = _verdict_to_action(decision, mode)
     rules = _contracts_to_dicts(evaluation_result)
     pe = getattr(evaluation_result, "policy_error", False) if evaluation_result else False
-    evaluated_count = getattr(evaluation_result, "contracts_evaluated", 0) if evaluation_result else 0
+    evaluated_count = getattr(evaluation_result, "rules_evaluated", 0) if evaluation_result else 0
 
     # For backward compat with old WAL readers, include contracts_evaluated as count
     # if no rule details available

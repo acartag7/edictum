@@ -53,7 +53,7 @@ rules:
         guard = _guard(self.YAML)
         result = guard.evaluate("read_file", {"path": "/etc/shadow"})
         assert result.decision == "block"
-        assert "Outside workspace" in result.deny_reasons[0]
+        assert "Outside workspace" in result.block_reasons[0]
 
     def test_exact_within_path_allowed(self):
         guard = _guard(self.YAML)
@@ -345,7 +345,7 @@ rules:
         # In observe mode, denials become observations
         assert result.decision == "allow"
         # The rule was still evaluated
-        sandbox_results = [c for c in result.rules if c.contract_type == "sandbox"]
+        sandbox_results = [c for c in result.rules if c.rule_type == "sandbox"]
         assert len(sandbox_results) == 1
         assert sandbox_results[0].observed is True
 
@@ -408,7 +408,7 @@ rules:
         guard = _guard(self.YAML)
         result = guard.evaluate("read_file", {"path": "/danger/file"})
         assert result.decision == "block"
-        sandbox_contracts = [c for c in result.rules if c.contract_type == "sandbox"]
+        sandbox_contracts = [c for c in result.rules if c.rule_type == "sandbox"]
         assert len(sandbox_contracts) == 1
         assert sandbox_contracts[0].passed is False
 
@@ -416,7 +416,7 @@ rules:
         guard = _guard(self.YAML)
         result = guard.evaluate("read_file", {"path": "/safe/file.txt"})
         assert result.decision == "allow"
-        sandbox_contracts = [c for c in result.rules if c.contract_type == "sandbox"]
+        sandbox_contracts = [c for c in result.rules if c.rule_type == "sandbox"]
         assert len(sandbox_contracts) == 1
         assert sandbox_contracts[0].passed is True
 
@@ -505,4 +505,4 @@ rules:
         guard = _guard(self.YAML)
         result = guard.evaluate("exec", {"command": "rm -rf /"})
         assert result.decision == "block"
-        assert "Destructive" in result.deny_reasons[0]
+        assert "Destructive" in result.block_reasons[0]

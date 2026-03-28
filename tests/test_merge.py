@@ -214,7 +214,7 @@ class TestFromMultiple:
         assert "Duplicate rule id 'block-bash'" in caplog.text
         # First wins: message should be from guard A
         result = merged.evaluate("Bash", {"command": "rm -rf /"})
-        assert result.deny_reasons[0] == "Bash denied by guard A."
+        assert result.block_reasons[0] == "Bash denied by guard A."
 
     def test_contract_ordering_preserved(self, tmp_path):
         guard_a = _make_guard_with_yaml(tmp_path, "a", GUARD_A_YAML)

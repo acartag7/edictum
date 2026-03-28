@@ -785,8 +785,8 @@ def _run_calls(file: str, calls_path: str, json_output: bool, environment: str =
                 {
                     "decision": r.decision,
                     "tool_name": r.tool_name,
-                    "contracts_evaluated": r.contracts_evaluated,
-                    "deny_reasons": list(r.deny_reasons),
+                    "rules_evaluated": r.rules_evaluated,
+                    "block_reasons": list(r.block_reasons),
                     "warn_reasons": list(r.warn_reasons),
                     "policy_error": r.policy_error,
                     "rules": [asdict(c) for c in r.rules],
@@ -806,7 +806,7 @@ def _run_calls(file: str, calls_path: str, json_output: bool, environment: str =
         for i, r in enumerate(results, 1):
             if r.decision == "block":
                 verdict_styled = "[red bold]DENY[/red bold]"
-                details = "; ".join(r.deny_reasons) if r.deny_reasons else ""
+                details = "; ".join(r.block_reasons) if r.block_reasons else ""
             elif r.decision == "warn":
                 verdict_styled = "[yellow bold]WARN[/yellow bold]"
                 details = "; ".join(r.warn_reasons) if r.warn_reasons else ""
@@ -814,7 +814,7 @@ def _run_calls(file: str, calls_path: str, json_output: bool, environment: str =
                 verdict_styled = "[green bold]ALLOW[/green bold]"
                 details = "all rules passed"
 
-            table.add_row(str(i), r.tool_name, verdict_styled, str(r.contracts_evaluated), escape(details))
+            table.add_row(str(i), r.tool_name, verdict_styled, str(r.rules_evaluated), escape(details))
 
         _console.print(table)
 

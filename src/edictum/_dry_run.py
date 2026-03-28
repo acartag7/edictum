@@ -37,7 +37,7 @@ def _evaluate(
     )
 
     rules: list[RuleResult] = []
-    deny_reasons: list[str] = []
+    block_reasons: list[str] = []
     warn_reasons: list[str] = []
 
     # Evaluate all matching preconditions (exhaustive, no short-circuit)
@@ -48,13 +48,13 @@ def _evaluate(
         except Exception as exc:
             contract_result = RuleResult(
                 rule_id=rule_id,
-                contract_type="precondition",
+                rule_type="precondition",
                 passed=False,
                 message=f"Precondition error: {exc}",
                 policy_error=True,
             )
             rules.append(contract_result)
-            deny_reasons.append(contract_result.message)
+            block_reasons.append(contract_result.message)
             continue
 
         tags = decision.metadata.get("tags", []) if decision.metadata else []
@@ -63,7 +63,7 @@ def _evaluate(
 
         contract_result = RuleResult(
             rule_id=rule_id,
-            contract_type="precondition",
+            rule_type="precondition",
             passed=decision.passed,
             message=decision.message,
             tags=tags,
@@ -73,7 +73,7 @@ def _evaluate(
         rules.append(contract_result)
 
         if not decision.passed and not is_observed:
-            deny_reasons.append(decision.message or "")
+            block_reasons.append(decision.message or "")
 
     # Evaluate sandbox rules (exhaustive, no short-circuit)
     for rule in self.get_sandbox_contracts(tool_call):
@@ -83,13 +83,13 @@ def _evaluate(
         except Exception as exc:
             contract_result = RuleResult(
                 rule_id=rule_id,
-                contract_type="sandbox",
+                rule_type="sandbox",
                 passed=False,
                 message=f"Sandbox error: {exc}",
                 policy_error=True,
             )
             rules.append(contract_result)
-            deny_reasons.append(contract_result.message)
+            block_reasons.append(contract_result.message)
             continue
 
         tags = decision.metadata.get("tags", []) if decision.metadata else []
@@ -98,7 +98,7 @@ def _evaluate(
 
         contract_result = RuleResult(
             rule_id=rule_id,
-            contract_type="sandbox",
+            rule_type="sandbox",
             passed=decision.passed,
             message=decision.message,
             tags=tags,
@@ -108,7 +108,7 @@ def _evaluate(
         rules.append(contract_result)
 
         if not decision.passed and not is_observed:
-            deny_reasons.append(decision.message or "")
+            block_reasons.append(decision.message or "")
 
     # Evaluate postconditions only when output is provided
     if output is not None:
@@ -119,7 +119,7 @@ def _evaluate(
             except Exception as exc:
                 contract_result = RuleResult(
                     rule_id=rule_id,
-                    contract_type="postcondition",
+                    rule_type="postcondition",
                     passed=False,
                     message=f"Postcondition error: {exc}",
                     policy_error=True,
@@ -135,7 +135,7 @@ def _evaluate(
 
             contract_result = RuleResult(
                 rule_id=rule_id,
-                contract_type="postcondition",
+                rule_type="postcondition",
                 passed=decision.passed,
                 message=decision.message,
                 tags=tags,
@@ -149,7 +149,7 @@ def _evaluate(
                 warn_reasons.append(decision.message or "")
 
     # Compute decision
-    if deny_reasons:
+    if block_reasons:
         verdict_str = "block"
     elif warn_reasons:
         verdict_str = "warn"
@@ -160,9 +160,9 @@ def _evaluate(
         decision=verdict_str,
         tool_name=tool_name,
         rules=rules,
-        deny_reasons=deny_reasons,
+        block_reasons=block_reasons,
         warn_reasons=warn_reasons,
-        contracts_evaluated=len(rules),
+        rules_evaluated=len(rules),
         policy_error=any(r.policy_error for r in rules),
     )
 

@@ -215,7 +215,7 @@ def _run_check_inner(
             if not c.passed:
                 rule_id = c.rule_id
                 reason = c.message
-                decision_source = f"yaml_{c.contract_type}"
+                decision_source = f"yaml_{c.rule_type}"
                 if c.observed:
                     mode = "observe"
                 break
@@ -271,7 +271,7 @@ def _run_check_inner(
 
     # Observe mode: audit records would-block, but the assistant is told allow
     output_verdict = "allow" if (decision == "block" and mode == "observe") else decision
-    return format_handler.format_output(output_verdict, rule_id, reason, result.contracts_evaluated)
+    return format_handler.format_output(output_verdict, rule_id, reason, result.rules_evaluated)
 
 
 def _write_contract_manifest(

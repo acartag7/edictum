@@ -198,7 +198,7 @@ class TestThreePaths:
         # Extra layer added block-exec
         result = guard.evaluate("execute", {"command": "rm -rf /"})
         assert result.decision == "block"
-        assert "Dangerous command" in result.deny_reasons[0]
+        assert "Dangerous command" in result.block_reasons[0]
 
     def test_three_path_policy_version(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
@@ -342,7 +342,7 @@ class TestEvaluateDryRunExcludesObserveMode:
         guard = Edictum.from_yaml(base, candidate)
 
         result = guard.evaluate("read_file", {"path": "app.key"})
-        # Observe-mode rules should not appear in contracts_evaluated
+        # Observe-mode rules should not appear in rules_evaluated
         rule_ids = [r.rule_id for r in result.rules]
         assert not any(":candidate" in cid for cid in rule_ids)
 
