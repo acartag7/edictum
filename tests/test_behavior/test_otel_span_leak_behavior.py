@@ -207,23 +207,23 @@ class TestNanobotNoBackendDenial:
             await registry.execute("TestTool", {})
             mock_denial.assert_called_once()
 
-    async def test_no_backend_fires_on_deny(self):
+    async def test_no_backend_fires_on_block(self):
         from edictum.adapters.nanobot import GovernedToolRegistry
 
-        on_deny = MagicMock()
-        guard = _make_guard(rules=[_make_approval_contract()], on_deny=on_deny)
+        on_block = MagicMock()
+        guard = _make_guard(rules=[_make_approval_contract()], on_block=on_block)
         inner = MagicMock()
         inner.execute = AsyncMock(return_value="ok")
         registry = GovernedToolRegistry(inner, guard)
         await registry.execute("TestTool", {})
-        on_deny.assert_called_once()
-        assert "no approval backend" in on_deny.call_args[0][1].lower()
+        on_block.assert_called_once()
+        assert "no approval backend" in on_block.call_args[0][1].lower()
 
 
 class TestNanobotSpanEndOnDeny:
     """Nanobot execute() ends span even on block path (try/finally)."""
 
-    async def test_nanobot_execute_span_ended_on_deny(self):
+    async def test_nanobot_execute_span_ended_on_block(self):
         from edictum.adapters.nanobot import GovernedToolRegistry
 
         @precondition("*")

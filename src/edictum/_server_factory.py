@@ -38,7 +38,7 @@ async def _from_server(
     approval_backend: ApprovalBackend | None = None,
     storage_backend: StorageBackend | None = None,
     mode: str = "enforce",
-    on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+    on_block: Callable[[ToolCall, str, str | None], None] | None = None,
     on_allow: Callable[[ToolCall], None] | None = None,
     success_check: Callable[[str, Any], bool] | None = None,
     principal: Principal | None = None,
@@ -65,7 +65,7 @@ async def _from_server(
         approval_backend: Override the default ``ServerApprovalBackend``.
         storage_backend: Override the default ``ServerBackend``.
         mode: Enforcement mode (``"enforce"`` or ``"observe"``).
-        on_deny: Callback invoked when a tool call is denied.
+        on_block: Callback invoked when a tool call is denied.
         on_allow: Callback invoked when a tool call is allowed.
         success_check: Callable ``(tool_name, result) -> bool``.
         principal: Static principal for all tool calls.
@@ -176,7 +176,7 @@ async def _from_server(
             audit_sink=effective_sink,
             backend=effective_backend,
             policy_version=policy_version,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             success_check=success_check,
             principal=principal,
@@ -193,7 +193,7 @@ async def _from_server(
             audit_sink=effective_sink,
             backend=effective_backend,
             policy_version=None,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             success_check=success_check,
             principal=principal,

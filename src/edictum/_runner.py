@@ -137,11 +137,11 @@ async def _run(
                 # approval-granted path handles its own audit and callbacks.
             else:
                 self.telemetry.record_denial(tool_call, decision.reason or pre.reason)
-                if self._on_deny:
+                if self._on_block:
                     try:
-                        self._on_deny(tool_call, decision.reason or pre.reason or "", pre.decision_name)
+                        self._on_block(tool_call, decision.reason or pre.reason or "", pre.decision_name)
                     except Exception:
-                        logger.exception("on_deny callback raised")
+                        logger.exception("on_block callback raised")
                 span.set_attribute("governance.action", "denied")
                 span.set_attribute("governance.reason", decision.reason or pre.reason or "")
                 self.telemetry.set_span_error(span, decision.reason or pre.reason or "denied")
@@ -162,11 +162,11 @@ async def _run(
             await _emit_run_pre_audit(self, tool_call, session, audit_action, pre)
             self.telemetry.record_denial(tool_call, pre.reason)
             if self.mode == "enforce":
-                if self._on_deny:
+                if self._on_block:
                     try:
-                        self._on_deny(tool_call, pre.reason or "", pre.decision_name)
+                        self._on_block(tool_call, pre.reason or "", pre.decision_name)
                     except Exception:
-                        logger.exception("on_deny callback raised")
+                        logger.exception("on_block callback raised")
                 span.set_attribute("governance.action", "denied")
                 span.set_attribute("governance.reason", pre.reason or "")
                 self.telemetry.set_span_error(span, pre.reason or "denied")

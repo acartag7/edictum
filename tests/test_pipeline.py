@@ -91,7 +91,7 @@ class TestPreExecute:
         assert decision.action == "allow"
         assert len(decision.hooks_evaluated) == 1
 
-    async def test_precondition_deny(self, session):
+    async def test_precondition_block(self, session):
         @precondition("*")
         def must_have_name(tool_call):
             if "name" not in tool_call.args:

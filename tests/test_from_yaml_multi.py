@@ -211,16 +211,16 @@ class TestThreePaths:
 class TestObserveAlongside:
     """Load a YAML with observe_alongside: true, verify observe-mode rules."""
 
-    def test_observe_contracts_created(self, tmp_path):
+    def test_observe_rules_created(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard, report = Edictum.from_yaml(base, candidate, return_report=True)
 
         # Observe-mode rule should be in the report
-        assert len(report.observe_contracts) == 1
-        assert report.observe_contracts[0].rule_id == "block-sensitive-reads"
+        assert len(report.observe_rules) == 1
+        assert report.observe_rules[0].rule_id == "block-sensitive-reads"
 
-    def test_observe_contracts_in_observe_mode(self, tmp_path):
+    def test_observe_rules_in_observe_mode(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard = Edictum.from_yaml(base, candidate)
@@ -252,8 +252,8 @@ class TestReturnReport:
         guard, report = result
         assert isinstance(guard, Edictum)
         assert isinstance(report, CompositionReport)
-        assert len(report.overridden_contracts) == 1
-        assert report.overridden_contracts[0].rule_id == "block-sensitive-reads"
+        assert len(report.overridden_rules) == 1
+        assert report.overridden_rules[0].rule_id == "block-sensitive-reads"
 
     def test_return_report_with_single_path(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
@@ -263,8 +263,8 @@ class TestReturnReport:
         guard, report = result
         assert isinstance(guard, Edictum)
         assert isinstance(report, CompositionReport)
-        assert report.overridden_contracts == []
-        assert report.observe_contracts == []
+        assert report.overridden_rules == []
+        assert report.observe_rules == []
 
     def test_without_return_report(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
@@ -323,7 +323,7 @@ class TestEdgeCases:
 class TestEvaluateDryRunExcludesObserveMode:
     """evaluate() must NOT include observe-mode rules in dry-run results."""
 
-    def test_evaluate_ignores_observe_contracts(self, tmp_path):
+    def test_evaluate_ignores_observe_rules(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard = Edictum.from_yaml(base, candidate)
@@ -336,7 +336,7 @@ class TestEvaluateDryRunExcludesObserveMode:
         result = guard.evaluate("read_file", {"path": "app.env"})
         assert result.decision == "block"
 
-    def test_evaluate_does_not_report_observe_contracts(self, tmp_path):
+    def test_evaluate_does_not_report_observe_rules(self, tmp_path):
         base = _write_yaml(tmp_path, "base.yaml", BASE_BUNDLE)
         candidate = _write_yaml(tmp_path, "candidate.yaml", OBSERVE_ALONGSIDE_BUNDLE)
         guard = Edictum.from_yaml(base, candidate)

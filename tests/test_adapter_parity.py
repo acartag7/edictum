@@ -237,20 +237,20 @@ ALL_ADAPTER_IDS = [c[0] for c in ALL_CONFIGS]
 
 
 class TestParityOnDeny:
-    """All adapters must fire on_deny exactly once when a precondition denies."""
+    """All adapters must fire on_block exactly once when a precondition denies."""
 
     @pytest.mark.parametrize("name,cls,pre_fn", ALL_CONFIGS, ids=ALL_ADAPTER_IDS)
-    async def test_on_deny_fires_once(self, name, cls, pre_fn):
+    async def test_on_block_fires_once(self, name, cls, pre_fn):
         @precondition("*")
         def block_all(tool_call):
             return Decision.fail("not allowed")
 
-        on_deny = MagicMock()
-        guard = _make_guard(rules=[block_all], on_deny=on_deny)
+        on_block = MagicMock()
+        guard = _make_guard(rules=[block_all], on_block=on_block)
         adapter = cls(guard)
         await pre_fn(adapter)
 
-        assert on_deny.call_count == 1, f"{name} fired on_deny {on_deny.call_count} times, expected 1"
+        assert on_block.call_count == 1, f"{name} fired on_block {on_block.call_count} times, expected 1"
 
 
 class TestParityOnAllow:

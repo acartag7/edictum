@@ -223,34 +223,34 @@ def _make_allow_guard(**kwargs):
 
 
 class TestOnDenyCallback:
-    """on_deny must fire exactly once with correct args on precondition denial."""
+    """on_block must fire exactly once with correct args on precondition denial."""
 
-    async def test_on_deny_fires_exactly_once(self):
-        """on_deny fires once when a precondition denies in enforce mode."""
+    async def test_on_block_fires_exactly_once(self):
+        """on_block fires once when a precondition denies in enforce mode."""
         from edictum.adapters.crewai import CrewAIAdapter
 
         callback = MagicMock()
-        guard = _make_deny_guard(on_deny=callback)
+        guard = _make_deny_guard(on_block=callback)
         adapter = CrewAIAdapter(guard)
 
         ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
         await adapter._before_hook(ctx)
 
-        assert callback.call_count == 1, f"on_deny called {callback.call_count} times, expected exactly 1."
+        assert callback.call_count == 1, f"on_block called {callback.call_count} times, expected exactly 1."
 
-    async def test_on_deny_receives_correct_args(self):
-        """on_deny receives (tool_call, reason_string, contract_name)."""
+    async def test_on_block_receives_correct_args(self):
+        """on_block receives (tool_call, reason_string, contract_name)."""
         from edictum.adapters.crewai import CrewAIAdapter
 
         callback = MagicMock()
-        guard = _make_deny_guard(on_deny=callback)
+        guard = _make_deny_guard(on_block=callback)
         adapter = CrewAIAdapter(guard)
 
         ctx = SimpleNamespace(tool_name="TestTool", tool_input={"k": "v"}, agent=None, task=None)
         await adapter._before_hook(ctx)
 
         args = callback.call_args[0]
-        assert len(args) == 3, f"on_deny received {len(args)} args, expected 3"
+        assert len(args) == 3, f"on_block received {len(args)} args, expected 3"
         tool_call, reason, contract_name = args
         assert tool_call.tool_name == "TestTool"
         assert "budget exceeded" in reason
@@ -290,33 +290,33 @@ class TestOnAllowCallback:
 
 
 class TestOnDenyNotInObserveMode:
-    """on_deny must NOT fire in observe mode (denials are observe-mode only)."""
+    """on_block must NOT fire in observe mode (denials are observe-mode only)."""
 
-    async def test_on_deny_skipped_in_observe_mode(self):
-        """Observe mode logs would-block but must not invoke on_deny."""
+    async def test_on_block_skipped_in_observe_mode(self):
+        """Observe mode logs would-block but must not invoke on_block."""
         from edictum.adapters.crewai import CrewAIAdapter
 
         callback = MagicMock()
-        guard = _make_deny_guard(on_deny=callback, mode="observe")
+        guard = _make_deny_guard(on_block=callback, mode="observe")
         adapter = CrewAIAdapter(guard)
 
         ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)
         await adapter._before_hook(ctx)
 
-        assert callback.call_count == 0, f"on_deny fired {callback.call_count} times in observe mode, expected 0."
+        assert callback.call_count == 0, f"on_block fired {callback.call_count} times in observe mode, expected 0."
 
 
 class TestOnDenyCallbackError:
     """Callback errors must be caught -- never crash the pipeline."""
 
-    async def test_on_deny_error_does_not_crash(self):
-        """A failing on_deny callback must not prevent denial from propagating."""
+    async def test_on_block_error_does_not_crash(self):
+        """A failing on_block callback must not prevent denial from propagating."""
         from edictum.adapters.crewai import CrewAIAdapter
 
         def bad_callback(tool_call, reason, contract_name):
             raise RuntimeError("callback exploded")
 
-        guard = _make_deny_guard(on_deny=bad_callback)
+        guard = _make_deny_guard(on_block=bad_callback)
         adapter = CrewAIAdapter(guard)
 
         ctx = SimpleNamespace(tool_name="TestTool", tool_input={}, agent=None, task=None)

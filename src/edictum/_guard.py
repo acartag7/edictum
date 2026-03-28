@@ -75,7 +75,7 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         policy_version: str | None = None,
-        on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+        on_block: Callable[[ToolCall, str, str | None], None] | None = None,
         on_allow: Callable[[ToolCall], None] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
         principal: Principal | None = None,
@@ -95,7 +95,7 @@ class Edictum:
             self.audit_sink = self._local_sink
         self.telemetry = GovernanceTelemetry()
         self._gov_tracer = get_tracer("edictum.governance")
-        self._on_deny = on_deny
+        self._on_block = on_block
         self._on_allow = on_allow
         self._success_check = success_check
         self._principal = principal
@@ -356,7 +356,7 @@ class Edictum:
         backend: StorageBackend | None = None,
         environment: str = "production",
         return_report: bool = False,
-        on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+        on_block: Callable[[ToolCall, str, str | None], None] | None = None,
         on_allow: Callable[[ToolCall], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolCall], dict[str, Any]]] | None = None,
@@ -378,7 +378,7 @@ class Edictum:
             backend=backend,
             environment=environment,
             return_report=return_report,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             custom_operators=custom_operators,
             custom_selectors=custom_selectors,
@@ -399,7 +399,7 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
-        on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+        on_block: Callable[[ToolCall, str, str | None], None] | None = None,
         on_allow: Callable[[ToolCall], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolCall], dict[str, Any]]] | None = None,
@@ -420,7 +420,7 @@ class Edictum:
             redaction=redaction,
             backend=backend,
             environment=environment,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             custom_operators=custom_operators,
             custom_selectors=custom_selectors,
@@ -442,7 +442,7 @@ class Edictum:
         redaction: RedactionPolicy | None = None,
         backend: StorageBackend | None = None,
         environment: str = "production",
-        on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+        on_block: Callable[[ToolCall, str, str | None], None] | None = None,
         on_allow: Callable[[ToolCall], None] | None = None,
         custom_operators: dict[str, Callable[[Any, Any], bool]] | None = None,
         custom_selectors: dict[str, Callable[[ToolCall], dict[str, Any]]] | None = None,
@@ -464,7 +464,7 @@ class Edictum:
             redaction=redaction,
             backend=backend,
             environment=environment,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             custom_operators=custom_operators,
             custom_selectors=custom_selectors,
@@ -505,7 +505,7 @@ class Edictum:
         approval_backend: ApprovalBackend | None = None,
         storage_backend: StorageBackend | None = None,
         mode: str = "enforce",
-        on_deny: Callable[[ToolCall, str, str | None], None] | None = None,
+        on_block: Callable[[ToolCall, str, str | None], None] | None = None,
         on_allow: Callable[[ToolCall], None] | None = None,
         success_check: Callable[[str, Any], bool] | None = None,
         principal: Principal | None = None,
@@ -530,7 +530,7 @@ class Edictum:
             approval_backend=approval_backend,
             storage_backend=storage_backend,
             mode=mode,
-            on_deny=on_deny,
+            on_block=on_block,
             on_allow=on_allow,
             success_check=success_check,
             principal=principal,

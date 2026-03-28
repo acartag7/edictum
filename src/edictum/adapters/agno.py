@@ -179,11 +179,11 @@ class AgnoAdapter:
             if decision.action == "block":
                 await self._emit_audit_pre(tool_call, decision)
                 self._guard.telemetry.record_denial(tool_call, decision.reason)
-                if self._guard._on_deny:
+                if self._guard._on_block:
                     try:
-                        self._guard._on_deny(tool_call, decision.reason or "", decision.decision_name)
+                        self._guard._on_block(tool_call, decision.reason or "", decision.decision_name)
                     except Exception:
-                        logger.exception("on_deny callback raised")
+                        logger.exception("on_block callback raised")
                 span.set_attribute("governance.action", "denied")
                 self._guard.telemetry.set_span_error(span, decision.reason or "denied")
                 span.end()

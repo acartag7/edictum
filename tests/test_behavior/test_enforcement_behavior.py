@@ -71,7 +71,7 @@ class TestPreconditionDenyEnforcement:
 class TestPostconditionDenyEnforcement:
     """Postcondition action=block must not silently degrade to warn."""
 
-    async def test_postcondition_deny_is_reflected_in_post_result(self):
+    async def test_postcondition_block_is_reflected_in_post_result(self):
         """When a postcondition has action=block, post result must indicate failure."""
 
         @postcondition("TestTool")
@@ -102,7 +102,7 @@ class TestPostconditionDenyEnforcement:
             "Postcondition with action=block must report postconditions_passed=False"
         )
 
-    async def test_postcondition_deny_output_guardrail_rejects(self):
+    async def test_postcondition_block_output_guardrail_rejects(self):
         """Output guardrail must return reject (not allow) when postcondition has action=block."""
         import sys
         from types import ModuleType

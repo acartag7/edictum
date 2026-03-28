@@ -89,8 +89,8 @@ class TestContractMerge:
 
         result = compose_bundles((base, "base.yaml"), (override, "override.yaml"))
 
-        assert len(result.report.overridden_contracts) == 1
-        ov = result.report.overridden_contracts[0]
+        assert len(result.report.overridden_rules) == 1
+        ov = result.report.overridden_rules[0]
         assert ov.rule_id == "block-rm"
         assert ov.overridden_by == "override.yaml"
         assert ov.original_source == "base.yaml"
@@ -102,7 +102,7 @@ class TestContractMerge:
         result = compose_bundles((base, "base"), (layer, "layer"))
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["a", "b"]
-        assert len(result.report.overridden_contracts) == 0
+        assert len(result.report.overridden_rules) == 0
 
     def test_mixed_replace_and_append(self):
         base = _base_bundle(rules=[_contract("a"), _contract("b")])
@@ -111,8 +111,8 @@ class TestContractMerge:
         result = compose_bundles((base, "base"), (layer, "layer"))
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["a", "b", "c"]
-        assert len(result.report.overridden_contracts) == 1
-        assert result.report.overridden_contracts[0].rule_id == "b"
+        assert len(result.report.overridden_rules) == 1
+        assert result.report.overridden_rules[0].rule_id == "b"
 
     def test_three_layers_last_wins(self):
         b1 = _base_bundle(rules=[_contract("x", then={"action": "block", "message": "v1"})])
@@ -121,7 +121,7 @@ class TestContractMerge:
 
         result = compose_bundles((b1, "l1"), (b2, "l2"), (b3, "l3"))
         assert result.bundle["rules"][0]["then"]["message"] == "v3"
-        assert len(result.report.overridden_contracts) == 2
+        assert len(result.report.overridden_rules) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ class TestObservabilityMerge:
 
 
 class TestObserveAlongside:
-    def test_observe_contracts_added_with_candidate_suffix(self):
+    def test_observe_rules_added_with_candidate_suffix(self):
         base = _base_bundle(rules=[_contract("pharma")])
         candidate = _base_bundle(rules=[_contract("pharma")])
         candidate["observe_alongside"] = True
@@ -271,8 +271,8 @@ class TestObserveAlongside:
         candidate["observe_alongside"] = True
 
         result = compose_bundles((base, "base"), (candidate, "candidate"))
-        assert len(result.report.observe_contracts) == 1
-        sc = result.report.observe_contracts[0]
+        assert len(result.report.observe_rules) == 1
+        sc = result.report.observe_rules[0]
         assert sc.rule_id == "pharma"
         assert sc.enforced_source == "base"
         assert sc.observed_source == "candidate"
@@ -285,7 +285,7 @@ class TestObserveAlongside:
         result = compose_bundles((base, "base"), (candidate, "candidate"))
         enforced = [c for c in result.bundle["rules"] if c["id"] == "pharma"][0]
         assert enforced["then"]["message"] == "original"
-        assert len(result.report.overridden_contracts) == 0
+        assert len(result.report.overridden_rules) == 0
 
     def test_observe_alongside_new_contract_no_enforced_counterpart(self):
         base = _base_bundle(rules=[_contract("existing")])
@@ -297,7 +297,7 @@ class TestObserveAlongside:
         assert "existing" in ids
         assert "brand-new:candidate" in ids
 
-        sc = result.report.observe_contracts[0]
+        sc = result.report.observe_rules[0]
         assert sc.rule_id == "brand-new"
         assert sc.enforced_source == ""  # no enforced counterpart
 
@@ -320,8 +320,8 @@ class TestObserveAlongside:
         result = compose_bundles((base, "base"), (override, "override"), (candidate, "candidate"))
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["a", "b", "b:candidate"]
-        assert len(result.report.overridden_contracts) == 1
-        assert len(result.report.observe_contracts) == 1
+        assert len(result.report.overridden_rules) == 1
+        assert len(result.report.observe_rules) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -354,8 +354,8 @@ class TestComposerEdgeCases:
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["x"]
         assert result.bundle["rules"][0]["then"]["message"] == "new"
-        assert len(result.report.observe_contracts) == 0
-        assert len(result.report.overridden_contracts) == 1
+        assert len(result.report.observe_rules) == 0
+        assert len(result.report.overridden_rules) == 1
 
     def test_empty_contracts_list_in_overlay(self):
         """Layer with empty rules list — should not crash, no overrides."""
@@ -365,7 +365,7 @@ class TestComposerEdgeCases:
         result = compose_bundles((base, "base"), (layer, "layer"))
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["a"]
-        assert len(result.report.overridden_contracts) == 0
+        assert len(result.report.overridden_rules) == 0
 
     def test_empty_contracts_in_base(self):
         """Base with empty rules, layer adds new ones."""
@@ -385,7 +385,7 @@ class TestComposerEdgeCases:
         result = compose_bundles((base, "base"), (candidate, "candidate"))
         ids = [c["id"] for c in result.bundle["rules"]]
         assert ids == ["a"]
-        assert len(result.report.observe_contracts) == 0
+        assert len(result.report.observe_rules) == 0
 
     def test_observe_alongside_as_first_bundle(self):
         """observe_alongside as the first bundle (unusual but valid)."""

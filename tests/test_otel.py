@@ -343,7 +343,7 @@ class TestOTelIntegration:
 
         exporter.clear()
 
-    async def test_governance_span_on_deny(self):
+    async def test_governance_span_on_block(self):
         """When a tool call is denied, governance span should have ERROR status."""
         from opentelemetry.trace import StatusCode
 

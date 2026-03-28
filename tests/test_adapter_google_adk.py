@@ -290,17 +290,17 @@ class TestGoogleADKAdapter:
         assert isinstance(result, PostCallResult)
         assert result.output_suppressed is True
 
-    async def test_on_deny_callback(self):
+    async def test_on_block_callback(self):
         @precondition("*")
         def always_deny(tool_call):
             return Decision.fail("not allowed")
 
-        on_deny = MagicMock()
-        guard = make_guard(rules=[always_deny], on_deny=on_deny)
+        on_block = MagicMock()
+        guard = make_guard(rules=[always_deny], on_block=on_block)
         adapter = GoogleADKAdapter(guard)
 
         await adapter._pre(tool_name="TestTool", tool_input={}, call_id="call-1")
-        assert on_deny.call_count == 1
+        assert on_block.call_count == 1
 
     async def test_on_allow_callback(self):
         on_allow = MagicMock()

@@ -1,4 +1,4 @@
-"""Behavior tests for SemanticKernelAdapter.terminate_on_deny parameter."""
+"""Behavior tests for SemanticKernelAdapter.terminate_on_block parameter."""
 
 from __future__ import annotations
 
@@ -82,9 +82,9 @@ def _make_context(tool_name="TestTool"):
 
 
 class TestTerminateOnDeny:
-    """terminate_on_deny controls whether a denial stops the kernel's remaining tool calls."""
+    """terminate_on_block controls whether a denial stops the kernel's remaining tool calls."""
 
-    async def test_terminate_on_deny_true_by_default(self):
+    async def test_terminate_on_block_true_by_default(self):
         """Default behavior: denial sets context.terminate = True."""
         _, cleanup = _install_sk_mocks()
         try:
@@ -105,8 +105,8 @@ class TestTerminateOnDeny:
         finally:
             cleanup()
 
-    async def test_terminate_on_deny_false_does_not_terminate(self):
-        """With terminate_on_deny=False, denial does NOT set context.terminate = True."""
+    async def test_terminate_on_block_false_does_not_terminate(self):
+        """With terminate_on_block=False, denial does NOT set context.terminate = True."""
         _, cleanup = _install_sk_mocks()
         try:
 
@@ -115,7 +115,7 @@ class TestTerminateOnDeny:
                 return Decision.fail("not allowed")
 
             guard = _make_guard(rules=[always_deny])
-            adapter = SemanticKernelAdapter(guard, terminate_on_deny=False)
+            adapter = SemanticKernelAdapter(guard, terminate_on_block=False)
             kernel, captured = _make_kernel_and_capture()
             adapter.register(kernel)
 
@@ -126,8 +126,8 @@ class TestTerminateOnDeny:
         finally:
             cleanup()
 
-    async def test_terminate_on_deny_false_still_denies(self):
-        """With terminate_on_deny=False, the tool is still denied (result set, next not called)."""
+    async def test_terminate_on_block_false_still_denies(self):
+        """With terminate_on_block=False, the tool is still denied (result set, next not called)."""
         mock_fr_cls, cleanup = _install_sk_mocks()
         try:
 
@@ -136,7 +136,7 @@ class TestTerminateOnDeny:
                 return Decision.fail("not allowed")
 
             guard = _make_guard(rules=[always_deny])
-            adapter = SemanticKernelAdapter(guard, terminate_on_deny=False)
+            adapter = SemanticKernelAdapter(guard, terminate_on_block=False)
             kernel, captured = _make_kernel_and_capture()
             adapter.register(kernel)
 
@@ -152,8 +152,8 @@ class TestTerminateOnDeny:
         finally:
             cleanup()
 
-    async def test_terminate_on_deny_true_explicit(self):
-        """Explicit terminate_on_deny=True behaves same as default."""
+    async def test_terminate_on_block_true_explicit(self):
+        """Explicit terminate_on_block=True behaves same as default."""
         _, cleanup = _install_sk_mocks()
         try:
 
@@ -162,7 +162,7 @@ class TestTerminateOnDeny:
                 return Decision.fail("not allowed")
 
             guard = _make_guard(rules=[always_deny])
-            adapter = SemanticKernelAdapter(guard, terminate_on_deny=True)
+            adapter = SemanticKernelAdapter(guard, terminate_on_block=True)
             kernel, captured = _make_kernel_and_capture()
             adapter.register(kernel)
 
@@ -173,12 +173,12 @@ class TestTerminateOnDeny:
         finally:
             cleanup()
 
-    async def test_allowed_calls_unaffected_by_terminate_on_deny(self):
-        """terminate_on_deny only affects denied calls; allowed calls don't set terminate."""
+    async def test_allowed_calls_unaffected_by_terminate_on_block(self):
+        """terminate_on_block only affects denied calls; allowed calls don't set terminate."""
         _, cleanup = _install_sk_mocks()
         try:
             guard = _make_guard()
-            adapter = SemanticKernelAdapter(guard, terminate_on_deny=False)
+            adapter = SemanticKernelAdapter(guard, terminate_on_block=False)
             kernel, captured = _make_kernel_and_capture()
             adapter.register(kernel)
 

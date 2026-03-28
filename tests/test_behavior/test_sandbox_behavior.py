@@ -453,7 +453,7 @@ rules:
 """
 
     @pytest.mark.asyncio
-    async def test_precondition_deny_prevents_sandbox_evaluation(self):
+    async def test_precondition_block_prevents_sandbox_evaluation(self):
         from edictum.pipeline import CheckPipeline
         from edictum.session import Session
         from edictum.storage import MemoryBackend

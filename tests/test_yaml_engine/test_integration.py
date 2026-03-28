@@ -128,7 +128,7 @@ class TestPolicyVersionInAudit:
         for event in sink.events:
             assert event.policy_version == guard.policy_version
 
-    async def test_policy_version_stamped_on_deny(self):
+    async def test_policy_version_stamped_on_block(self):
         sink = NullAuditSink()
         guard = Edictum.from_yaml(
             FIXTURES / "valid_bundle.yaml",

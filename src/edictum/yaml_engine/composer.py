@@ -28,8 +28,8 @@ class ObserveContract:
 class CompositionReport:
     """Report of what happened during composition."""
 
-    overridden_contracts: list[CompositionOverride] = field(default_factory=list)
-    observe_contracts: list[ObserveContract] = field(default_factory=list)
+    overridden_rules: list[CompositionOverride] = field(default_factory=list)
+    observe_rules: list[ObserveContract] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,8 @@ def compose_bundles(*bundles: tuple[dict[str, Any], str]) -> ComposedBundle:
     return ComposedBundle(
         bundle=merged,
         report=CompositionReport(
-            overridden_contracts=overrides,
-            observe_contracts=observes,
+            overridden_rules=overrides,
+            observe_rules=observes,
         ),
     )
 

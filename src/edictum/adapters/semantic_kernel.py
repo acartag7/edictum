@@ -36,7 +36,7 @@ class SemanticKernelAdapter:
         guard: Edictum,
         session_id: str | None = None,
         principal: Principal | None = None,
-        terminate_on_deny: bool = True,
+        terminate_on_block: bool = True,
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     ):
         self._guard = guard
@@ -46,7 +46,7 @@ class SemanticKernelAdapter:
         self._call_index = 0
         self._pending: dict[str, tuple[Any, Any]] = {}
         self._principal = principal
-        self._terminate_on_deny = terminate_on_deny
+        self._terminate_on_block = terminate_on_block
         self._principal_resolver = principal_resolver
 
     @property
@@ -108,7 +108,7 @@ class SemanticKernelAdapter:
             if isinstance(pre_result, str):
                 # Denied — set result and don't call next
                 context.function_result = _wrap_result(context, pre_result)
-                if adapter._terminate_on_deny:
+                if adapter._terminate_on_block:
                     context.terminate = True
                 return
 
@@ -160,11 +160,11 @@ class SemanticKernelAdapter:
             if decision.action == "block":
                 await self._emit_audit_pre(tool_call, decision)
                 self._guard.telemetry.record_denial(tool_call, decision.reason)
-                if self._guard._on_deny:
+                if self._guard._on_block:
                     try:
-                        self._guard._on_deny(tool_call, decision.reason or "", decision.decision_name)
+                        self._guard._on_block(tool_call, decision.reason or "", decision.decision_name)
                     except Exception:
-                        logger.exception("on_deny callback raised")
+                        logger.exception("on_block callback raised")
                 span.set_attribute("governance.action", "denied")
                 self._guard.telemetry.set_span_error(span, decision.reason or "denied")
                 span.end()

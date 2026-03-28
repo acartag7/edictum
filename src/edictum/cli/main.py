@@ -29,16 +29,16 @@ from edictum.yaml_engine.loader import load_bundle
 
 def _print_composition_report(report: Any) -> None:
     """Print composition report (overrides and observe-mode rules)."""
-    if not report.overridden_contracts and not report.observe_contracts:
+    if not report.overridden_rules and not report.observe_rules:
         return
 
     _console.print("\n[bold]Composition report:[/bold]")
-    for o in report.overridden_contracts:
+    for o in report.overridden_rules:
         _console.print(
             f"  \u21c4 {escape(o.rule_id)} \u2014 overridden by "
             f"{escape(o.overridden_by)} (was in {escape(o.original_source)})"
         )
-    for s in report.observe_contracts:
+    for s in report.observe_rules:
         _console.print(
             f"  \u2295 {escape(s.rule_id)} \u2014 observe-mode from "
             f"{escape(s.observed_source)} (enforced in {escape(s.enforced_source)})"
@@ -199,8 +199,8 @@ def _count_contracts(bundle_data: dict) -> dict[str, int]:
 
 def _composition_report_to_dict(report: Any) -> dict:
     """Convert a composition report to a JSON-serializable dict."""
-    result: dict[str, list] = {"overrides": [], "observe_contracts": []}
-    for o in report.overridden_contracts:
+    result: dict[str, list] = {"overrides": [], "observe_rules": []}
+    for o in report.overridden_rules:
         result["overrides"].append(
             {
                 "rule_id": o.rule_id,
@@ -208,8 +208,8 @@ def _composition_report_to_dict(report: Any) -> dict:
                 "original_source": o.original_source,
             }
         )
-    for s in report.observe_contracts:
-        result["observe_contracts"].append(
+    for s in report.observe_rules:
+        result["observe_rules"].append(
             {
                 "rule_id": s.rule_id,
                 "observed_source": s.observed_source,
@@ -513,7 +513,7 @@ def diff(files: tuple[str, ...], json_output: bool) -> None:
     composed = compose_bundles(*loaded)
     report = composed.report
 
-    if report.overridden_contracts or report.observe_contracts:
+    if report.overridden_rules or report.observe_rules:
         # For 3+ files (no standard diff), composition is the primary output
         if len(files) > 2:
             has_changes = True

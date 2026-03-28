@@ -273,7 +273,7 @@ class TestGovernedToolRegistry:
         assert AuditAction.CALL_ALLOWED in actions
         assert AuditAction.CALL_EXECUTED in actions
 
-    async def test_audit_events_on_deny(self):
+    async def test_audit_events_on_block(self):
         @precondition("*")
         def always_deny(tool_call):
             return Decision.fail("denied")
@@ -288,18 +288,18 @@ class TestGovernedToolRegistry:
         actions = [e.action for e in sink.events]
         assert AuditAction.CALL_DENIED in actions
 
-    async def test_on_deny_callback(self):
+    async def test_on_block_callback(self):
         @precondition("*")
         def always_deny(tool_call):
             return Decision.fail("not allowed")
 
-        on_deny = MagicMock()
-        guard = make_guard(rules=[always_deny], on_deny=on_deny)
+        on_block = MagicMock()
+        guard = make_guard(rules=[always_deny], on_block=on_block)
         inner = make_registry()
         governed = GovernedToolRegistry(inner, guard)
 
         await governed.execute("read_file", {"path": "/tmp/test.txt"})
-        assert on_deny.call_count == 1
+        assert on_block.call_count == 1
 
     async def test_on_allow_callback(self):
         on_allow = MagicMock()

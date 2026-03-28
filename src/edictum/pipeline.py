@@ -299,7 +299,7 @@ class CheckPipeline:
         pe = any(c.get("metadata", {}).get("policy_error") for c in contracts_evaluated)
 
         # 7. Observe-mode rule evaluation (never affects the decision)
-        observe_results = await self._evaluate_observe_contracts(tool_call, session)
+        observe_results = await self._evaluate_observe_rules(tool_call, session)
 
         return PreDecision(
             action="allow",
@@ -441,7 +441,7 @@ class CheckPipeline:
             output_suppressed=output_suppressed,
         )
 
-    async def _evaluate_observe_contracts(
+    async def _evaluate_observe_rules(
         self,
         tool_call: ToolCall,
         session: Session,
