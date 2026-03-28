@@ -29,8 +29,10 @@ def _get_schema(version: str) -> dict:
 
     global _schema_cache  # noqa: PLW0603
     if version not in _schema_cache:
-        schema_text = _resources.files("edictum.yaml_engine").joinpath(f"edictum-{version}.schema.json").read_text(
-            encoding="utf-8"
+        schema_text = (
+            _resources.files("edictum.yaml_engine")
+            .joinpath(f"edictum-{version}.schema.json")
+            .read_text(encoding="utf-8")
         )
         _schema_cache[version] = json.loads(schema_text)
     return _schema_cache[version]
@@ -49,9 +51,6 @@ class BundleHash:
 def _compute_hash(raw_bytes: bytes) -> BundleHash:
     """Compute SHA256 hash of raw YAML bytes."""
     return BundleHash(hex=hashlib.sha256(raw_bytes).hexdigest())
-
-
-
 
 
 def _validate_schema(data: dict) -> None:

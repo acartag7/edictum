@@ -24,9 +24,7 @@ class ClaudeCodeFormat:
         cwd = data.get("cwd", os.getcwd())
         return tool_name, tool_input, cwd
 
-    def format_output(
-        self, decision: str, rule_id: str | None, reason: str | None, evaluated: int
-    ) -> tuple[str, int]:
+    def format_output(self, decision: str, rule_id: str | None, reason: str | None, evaluated: int) -> tuple[str, int]:
         """Format decision for Claude Code.
 
         Allow: empty JSON, exit 0.

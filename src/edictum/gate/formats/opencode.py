@@ -58,9 +58,7 @@ class OpenCodeFormat:
         cwd = data.get("directory", os.getcwd())
         return tool_name, tool_input, cwd
 
-    def format_output(
-        self, decision: str, rule_id: str | None, reason: str | None, evaluated: int
-    ) -> tuple[str, int]:
+    def format_output(self, decision: str, rule_id: str | None, reason: str | None, evaluated: int) -> tuple[str, int]:
         """Format decision for OpenCode.
 
         Allow: {"allow": true}.

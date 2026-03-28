@@ -16,9 +16,7 @@ class RawFormat:
         cwd = data.get("cwd", os.getcwd())
         return tool_name, tool_input, cwd
 
-    def format_output(
-        self, decision: str, rule_id: str | None, reason: str | None, evaluated: int
-    ) -> tuple[str, int]:
+    def format_output(self, decision: str, rule_id: str | None, reason: str | None, evaluated: int) -> tuple[str, int]:
         """Format full decision details.
 
         Exit code: 0 for allow, 1 for block.
