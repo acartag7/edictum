@@ -74,13 +74,13 @@ Pipeline.pre_execute() — 5 steps:
 
 **Postconditions are observe-only.** They emit warnings, never block. For pure/read tools: suggest retry. For write/irreversible: warn only.
 
-**Observe mode** (`mode="observe"`): full pipeline runs, audit emits `CALL_WOULD_BLOCK`, but tool executes anyway.
+**Observe mode** (`mode="observe"`): full pipeline runs, audit emits `CALL_WOULD_DENY`, but tool executes anyway.
 
 **Zero runtime deps.** OpenTelemetry via optional `edictum[otel]`.
 
 **Redaction at write time.** Destructive by design — no recovery. Sensitive keys, secret value patterns (OpenAI/AWS/JWT/GitHub/Slack), 32KB payload cap.
 
-**BashClassifier is a heuristic, not a security boundary.** Conservative READ allowlist + shell operator detection. Defense in depth with `block_sensitive_reads()`.
+**BashClassifier is a heuristic, not a security boundary.** Conservative READ allowlist + shell operator detection. Defense in depth with `deny_sensitive_reads()`.
 
 ## Usage Modes
 

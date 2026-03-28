@@ -37,7 +37,7 @@
 
 ### Removed
 - **`ShadowContract` deprecation alias** — import `ObserveContract` from `edictum.yaml_engine` instead (deprecated since v0.15.0)
-- **`"shadows"` key in `edictum diff --json`** — use `"observe_rules"` instead (deprecated since v0.15.0)
+- **`"shadows"` key in `edictum diff --json`** — use `"observe_contracts"` instead (deprecated since v0.15.0)
 
 ### Security
 - **GitHub Actions supply chain hardening** — SHA-pinned actions, restricted permissions, injection-resistant review workflow (#94, #97)

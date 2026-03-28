@@ -25,3 +25,5 @@ class HookDecision:
         if len(reason) > 500:
             reason = reason[:497] + "..."
         return cls(result=HookResult.DENY, reason=reason)
+
+    deny = block  # deprecated alias; kept for compatibility
