@@ -25,6 +25,23 @@ rules:
       message: "Ticket references must not be in customer messages."
 """
 
+WORKFLOW_TEMPLATE = """\
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: template-workflow
+stages:
+  - id: read-context
+    tools: [Read]
+    exit:
+      - condition: file_read("spec.md")
+        message: "Read the spec first"
+  - id: implement
+    entry:
+      - condition: stage_complete("read-context")
+    tools: [Edit]
+"""
+
 
 @pytest.fixture()
 def custom_dir(tmp_path):
@@ -100,8 +117,8 @@ class TestFromTemplateSearchOrder:
 
         guard = Edictum.from_template("my-agent", template_dirs=[dir_a, dir_b])
         # Should load from dir_a (first in list)
-        rule_id = getattr(guard._state.preconditions[0], "_edictum_id", None)
-        assert rule_id == "block-ticket-leak"
+        contract_id = getattr(guard._state.preconditions[0], "_edictum_id", None)
+        assert contract_id == "block-ticket-leak"
 
 
 class TestFromTemplateErrorMessage:
@@ -118,6 +135,23 @@ class TestFromTemplateErrorMessage:
         # Should not raise on the dir itself, only on missing template
         with pytest.raises(EdictumConfigError, match="not found"):
             Edictum.from_template("nope", template_dirs=[fake])
+
+
+class TestFromTemplateWorkflowLoading:
+    """from_template() forwards explicit workflow loading parameters."""
+
+    def test_workflow_path_constructs_runtime(self, custom_dir, tmp_path):
+        workflow_path = tmp_path / "workflow.yaml"
+        workflow_path.write_text(WORKFLOW_TEMPLATE, encoding="utf-8")
+
+        guard = Edictum.from_template(
+            "support-agent",
+            template_dirs=[custom_dir],
+            workflow_path=workflow_path,
+        )
+
+        assert guard._workflow_runtime is not None
+        assert guard._workflow_runtime.definition.metadata.name == "template-workflow"
 
 
 class TestListTemplatesBuiltins:

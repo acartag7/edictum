@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class TemplateInfo:
-    """Metadata about a discovered contract template."""
+    """Metadata about a discovered rule template."""
 
     name: str
     path: Path
@@ -61,7 +61,7 @@ def _build_guard_from_compiled(
     approval_backend: ApprovalBackend | None,
     workflow_runtime: WorkflowRuntime | None,
 ) -> Edictum:
-    """Shared guard construction from compiled contracts and bundle data."""
+    """Shared guard construction from compiled rules and bundle data."""
     # Handle observability config
     obs_config = bundle_data.get("observability", {})
     otel_config = obs_config.get("otel", {})
@@ -159,10 +159,10 @@ def _from_yaml(
     workflow_path: str | Path | None = None,
     workflow_exec_evaluator_enabled: bool = False,
 ) -> Edictum | tuple[Edictum, CompositionReport]:
-    """Create an Edictum instance from one or more YAML contract bundles.
+    """Create an Edictum instance from one or more YAML rule bundles.
 
     Args:
-        *paths: One or more paths to YAML contract files. When multiple
+        *paths: One or more paths to YAML rule files. When multiple
             paths are given, bundles are composed left-to-right (later
             layers override earlier ones).
         tools: Tool side-effect classifications. Merged with any ``tools:``
@@ -333,6 +333,8 @@ def _from_template(
     principal: Principal | None = None,
     principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     approval_backend: ApprovalBackend | None = None,
+    workflow_path: str | Path | None = None,
+    workflow_exec_evaluator_enabled: bool = False,
 ) -> Edictum:
     """Create an Edictum instance from a named template.
 
@@ -363,6 +365,8 @@ def _from_template(
                 principal=principal,
                 principal_resolver=principal_resolver,
                 approval_backend=approval_backend,
+                workflow_path=workflow_path,
+                workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
             )
             if isinstance(result, tuple):
                 return result[0]
@@ -381,7 +385,7 @@ def _list_templates(
     cls: type[Edictum],
     template_dirs: list[str | Path] | None = None,
 ) -> list[TemplateInfo]:
-    """Discover available contract templates.
+    """Discover available rule templates.
 
     Returns templates from user-provided directories and built-in
     templates. When a user template has the same name as a built-in,

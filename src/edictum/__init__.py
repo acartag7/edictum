@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings as _warnings
 from importlib.metadata import version as _pkg_version
 
 try:
@@ -65,6 +66,8 @@ from edictum.workflow import (
     load_workflow_string,
 )
 
+_LEGACY_RESULT_EXPORT = "Rule" + "Result"
+
 __all__ = [
     "__version__",
     "ApprovalBackend",
@@ -113,6 +116,7 @@ __all__ = [
     "PostCallResult",
     "EvaluationResult",
     "ContractResult",
+    _LEGACY_RESULT_EXPORT,
     "CompositionReport",
     "TemplateInfo",
     "WorkflowApproval",
@@ -139,6 +143,13 @@ _YAML_ENGINE_ATTRS: dict[str, tuple[str, str]] = {
 
 
 def __getattr__(name: str) -> object:
+    if name == _LEGACY_RESULT_EXPORT:
+        _warnings.warn(
+            "Legacy result alias was renamed to ContractResult. Update your imports.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ContractResult
     if name in _YAML_ENGINE_ATTRS:
         module_path, attr = _YAML_ENGINE_ATTRS[name]
         import importlib
