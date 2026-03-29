@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from edictum._exceptions import EdictumConfigError
 from edictum._validators import validate_custom_operators, validate_custom_selectors
@@ -347,26 +347,26 @@ def _from_template(
     for directory in search_dirs:
         candidate = directory / f"{name}.yaml"
         if candidate.exists():
-            return cast(
-                Edictum,
-                cls.from_yaml(
-                    candidate,
-                    tools=tools,
-                    mode=mode,
-                    audit_sink=audit_sink,
-                    redaction=redaction,
-                    backend=backend,
-                    environment=environment,
-                    on_block=on_block,
-                    on_allow=on_allow,
-                    custom_operators=custom_operators,
-                    custom_selectors=custom_selectors,
-                    success_check=success_check,
-                    principal=principal,
-                    principal_resolver=principal_resolver,
-                    approval_backend=approval_backend,
-                ),
+            result = cls.from_yaml(
+                candidate,
+                tools=tools,
+                mode=mode,
+                audit_sink=audit_sink,
+                redaction=redaction,
+                backend=backend,
+                environment=environment,
+                on_block=on_block,
+                on_allow=on_allow,
+                custom_operators=custom_operators,
+                custom_selectors=custom_selectors,
+                success_check=success_check,
+                principal=principal,
+                principal_resolver=principal_resolver,
+                approval_backend=approval_backend,
             )
+            if isinstance(result, tuple):
+                return result[0]
+            return result
 
     all_templates: set[str] = set()
     for directory in search_dirs:
