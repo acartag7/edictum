@@ -77,7 +77,7 @@ class AutoDenyBackend(AutoApproveBackend):
         return ApprovalDecision(
             approved=False,
             approver="tests",
-            reason="denied in test",
+            reason="blocked in test",
             status=ApprovalStatus.DENIED,
         )
 

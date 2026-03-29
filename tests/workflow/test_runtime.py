@@ -18,8 +18,6 @@ from .conftest import AutoApproveBackend, make_envelope, make_runtime, workflow_
 def _normalize_decision(action: str) -> str:
     if action == "pending_approval":
         return "pause"
-    if action == "block":
-        return "deny"
     return action
 
 

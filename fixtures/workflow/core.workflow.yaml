@@ -99,7 +99,7 @@ fixtures:
             path: src/app.ts
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: read-context
           completed_stages: []
           approvals: {}
@@ -184,7 +184,7 @@ fixtures:
 
   - id: wf-004
     workflow: core-dev-process
-    description: "push to main denied"
+    description: "push to main blocked"
     initial_state:
       session_id: session-004
       active_stage: commit-push
@@ -209,7 +209,7 @@ fixtures:
             command: git push origin main
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: commit-push
           completed_stages:
             - read-context
@@ -247,7 +247,7 @@ fixtures:
             content: "export const value = 1;"
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: implement
           completed_stages: [read-context]
           approvals: {}
@@ -278,7 +278,7 @@ fixtures:
             command: git push origin feature-branch
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: local-verify
           completed_stages:
             - read-context
@@ -309,7 +309,7 @@ fixtures:
             command: npm test
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: implement
           completed_stages: []
           approvals: {}
@@ -345,14 +345,14 @@ fixtures:
             reads: []
             stage_calls: {}
 
-      - id: edit-still-denied
+      - id: edit-still-blocked
         call:
           tool: Edit
           args:
             path: src/app.ts
         execution: not_run
         expect:
-          decision: deny
+          decision: block
           active_stage: read-context
           completed_stages: []
           approvals: {}

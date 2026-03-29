@@ -284,7 +284,7 @@ class Edictum:
                     idempotent=config.get("idempotent", False),
                 )
 
-        logger.info("Contracts reloaded, policy_version=%s", self._state.policy_version)
+        logger.info("Rules reloaded, policy_version=%s", self._state.policy_version)
 
     def set_principal(self, principal: Principal) -> None:
         """Update the principal used for subsequent tool calls."""
