@@ -334,6 +334,7 @@ def _from_template(
     principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
     approval_backend: ApprovalBackend | None = None,
     workflow_path: str | Path | None = None,
+    workflow_content: str | bytes | None = None,
     workflow_exec_evaluator_enabled: bool = False,
 ) -> Edictum:
     """Create an Edictum instance from a named template.
@@ -349,25 +350,46 @@ def _from_template(
     for directory in search_dirs:
         candidate = directory / f"{name}.yaml"
         if candidate.exists():
-            result = cls.from_yaml(
-                candidate,
-                tools=tools,
-                mode=mode,
-                audit_sink=audit_sink,
-                redaction=redaction,
-                backend=backend,
-                environment=environment,
-                on_block=on_block,
-                on_allow=on_allow,
-                custom_operators=custom_operators,
-                custom_selectors=custom_selectors,
-                success_check=success_check,
-                principal=principal,
-                principal_resolver=principal_resolver,
-                approval_backend=approval_backend,
-                workflow_path=workflow_path,
-                workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
-            )
+            if workflow_content is None:
+                result = cls.from_yaml(
+                    candidate,
+                    tools=tools,
+                    mode=mode,
+                    audit_sink=audit_sink,
+                    redaction=redaction,
+                    backend=backend,
+                    environment=environment,
+                    on_block=on_block,
+                    on_allow=on_allow,
+                    custom_operators=custom_operators,
+                    custom_selectors=custom_selectors,
+                    success_check=success_check,
+                    principal=principal,
+                    principal_resolver=principal_resolver,
+                    approval_backend=approval_backend,
+                    workflow_path=workflow_path,
+                    workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
+                )
+            else:
+                result = cls.from_yaml_string(
+                    candidate.read_bytes(),
+                    tools=tools,
+                    mode=mode,
+                    audit_sink=audit_sink,
+                    redaction=redaction,
+                    backend=backend,
+                    environment=environment,
+                    on_block=on_block,
+                    on_allow=on_allow,
+                    custom_operators=custom_operators,
+                    custom_selectors=custom_selectors,
+                    success_check=success_check,
+                    principal=principal,
+                    principal_resolver=principal_resolver,
+                    approval_backend=approval_backend,
+                    workflow_content=workflow_content,
+                    workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
+                )
             if isinstance(result, tuple):
                 return result[0]
             return result

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from edictum.workflow.evaluator import EvaluateRequest, FactResult
 
 MAX_EXEC_EVIDENCE_OUTPUT = 4096
+MAX_EXEC_TIMEOUT_SECONDS = 30.0
 
 
 class ExecEvaluator:
@@ -28,9 +29,17 @@ class ExecEvaluator:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
-        stdout, _ = await proc.communicate()
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=MAX_EXEC_TIMEOUT_SECONDS)
+        except TimeoutError as exc:
+            proc.kill()
+            await proc.communicate()
+            raise ValueError(
+                f'workflow: exec evaluator "{parsed.arg}" timed out after {MAX_EXEC_TIMEOUT_SECONDS} seconds'
+            ) from exc
         output = (stdout or b"").decode("utf-8", errors="replace")
         exit_code = proc.returncode
+        assert exit_code is not None
         return FactResult(
             passed=exit_code == parsed.exit_code,
             evidence=f"exit_code={exit_code} output={_truncate_exec_output(output)}",

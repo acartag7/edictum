@@ -469,6 +469,7 @@ class Edictum:
         principal_resolver: Callable[[str, dict[str, Any]], Principal] | None = None,
         approval_backend: ApprovalBackend | None = None,
         workflow_path: str | Path | None = None,
+        workflow_content: str | bytes | None = None,
         workflow_exec_evaluator_enabled: bool = False,
     ) -> Edictum:
         """Create an Edictum instance from a named template."""
@@ -493,6 +494,7 @@ class Edictum:
             principal_resolver=principal_resolver,
             approval_backend=approval_backend,
             workflow_path=workflow_path,
+            workflow_content=workflow_content,
             workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
         )
 

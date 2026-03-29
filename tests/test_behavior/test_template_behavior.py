@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from edictum import Edictum, EdictumConfigError, EdictumDenied, TemplateInfo
+from edictum.storage import MemoryBackend
 
 CUSTOM_TEMPLATE = """\
 apiVersion: edictum/v1
@@ -117,8 +118,8 @@ class TestFromTemplateSearchOrder:
 
         guard = Edictum.from_template("my-agent", template_dirs=[dir_a, dir_b])
         # Should load from dir_a (first in list)
-        contract_id = getattr(guard._state.preconditions[0], "_edictum_id", None)
-        assert contract_id == "block-ticket-leak"
+        rule_id = getattr(guard._state.preconditions[0], "_edictum_id", None)
+        assert rule_id == "block-ticket-leak"
 
 
 class TestFromTemplateErrorMessage:
@@ -148,6 +149,17 @@ class TestFromTemplateWorkflowLoading:
             "support-agent",
             template_dirs=[custom_dir],
             workflow_path=workflow_path,
+        )
+
+        assert guard._workflow_runtime is not None
+        assert guard._workflow_runtime.definition.metadata.name == "template-workflow"
+
+    def test_workflow_content_constructs_runtime(self, custom_dir):
+        guard = Edictum.from_template(
+            "support-agent",
+            template_dirs=[custom_dir],
+            workflow_content=WORKFLOW_TEMPLATE,
+            backend=MemoryBackend(),
         )
 
         assert guard._workflow_runtime is not None

@@ -24,6 +24,23 @@ BANNED_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"\ball contracts passed\b", re.IGNORECASE), "all rules passed", "banned CLI string"),
 ]
 
+# "denied" is a banned prose term; allow existing code identifiers that
+# happen to contain the word while flagging user-facing wording.
+DENIED_PATTERN = re.compile(r"\bdenied\b", re.IGNORECASE)
+DENIED_ALLOWLIST = {
+    "ApprovalStatus.DENIED",
+    "CALL_DENIED",
+    "CALL_APPROVAL_DENIED",
+    "AutoDenyBackend",
+    "_on_deny",
+    "_deny(",
+    "denied =",
+    " denied,",
+    '"denied in test"',
+    'governance.action", "denied"',
+    'or "denied"',
+}
+
 # "shadow" needs special handling — prose should say "observe mode" / "observe-mode".
 # All shadow_* code identifiers were renamed to observe_* in v0.15.0.
 # Only real filesystem references remain in the allowlist.
@@ -83,6 +100,12 @@ def check_file(path: Path) -> list[str]:
             if pattern.search(line):
                 violations.append(f"  {path}:{i}: {desc} — use '{fix}' instead")
                 violations.append(f"    {line.strip()}")
+
+        if DENIED_PATTERN.search(line):
+            line_stripped = line.strip()
+            if not any(allowed in line_stripped for allowed in DENIED_ALLOWLIST):
+                violations.append(f"  {path}:{i}: 'denied' — use 'blocked' instead")
+                violations.append(f"    {line_stripped}")
 
         # Check "shadow" with allowlist
         if SHADOW_PATTERN.search(line):

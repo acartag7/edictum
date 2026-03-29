@@ -37,3 +37,34 @@ async def test_exec_evaluator_runs_when_enabled():
     await runtime.record_result(session, decision.stage_id, create_envelope("Bash", {"command": "python3 -V"}))
     state = await runtime.state(session)
     assert state.active_stage == ""
+
+
+@pytest.mark.asyncio
+async def test_exec_evaluator_times_out(monkeypatch):
+    from edictum.workflow import evaluator_exec
+
+    runtime = WorkflowRuntime(
+        load_workflow_string(
+            """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: exec-timeout
+stages:
+  - id: wait-for-check
+    exit:
+      - condition: exec("python3 -c \\"import time; time.sleep(1)\\"", exit_code=0)
+        message: command must finish
+  - id: verify
+    entry:
+      - condition: stage_complete("wait-for-check")
+    tools: [Bash]
+"""
+        ),
+        exec_evaluator_enabled=True,
+    )
+    session = Session("exec-timeout", MemoryBackend())
+    monkeypatch.setattr(evaluator_exec, "MAX_EXEC_TIMEOUT_SECONDS", 0.01)
+
+    with pytest.raises(ValueError, match="timed out"):
+        await runtime.evaluate(session, create_envelope("Bash", {"command": "python3 -V"}))
