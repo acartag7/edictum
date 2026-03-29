@@ -122,7 +122,7 @@ async def _run(
                         logger.exception("on_allow callback raised")
                 span.set_attribute("governance.action", "approved")
 
-        # Determine if this is a real deny or just per-contract observed denials
+        # Determine if this is a real block or just per-rule observed blocks
         real_deny = pre.action == "block" and not pre.observed
 
         # Skip pre-execution audit for approval-granted path (already handled above)
@@ -150,7 +150,7 @@ async def _run(
             span.set_attribute("governance.action", "would_deny")
             span.set_attribute("governance.would_deny_reason", pre.reason or "")
         else:
-            # Emit CALL_WOULD_DENY for any per-contract observed denials
+            # Emit CALL_WOULD_DENY for any per-rule observed blocks
             for cr in pre.contracts_evaluated:
                 if cr.get("observed") and not cr.get("passed"):
                     observed_event = AuditEvent(
@@ -300,6 +300,7 @@ async def _resolve_pending_approval(
     pre: PreDecision,
 ):
     if self._approval_backend is None:
+        await _emit_run_pre_audit(self, envelope, session, AuditAction.CALL_DENIED, pre)
         raise EdictumDenied(
             reason=f"Approval required but no approval backend configured: {pre.reason}",
             decision_source=pre.decision_source,
