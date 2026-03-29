@@ -18,12 +18,7 @@ def workflow_fixture_path() -> Path:
     candidates = []
     if env_dir is not None:
         candidates.append(env_dir / "fixtures" / "workflow" / "core.workflow.yaml")
-    candidates.extend(
-        [
-            Path("fixtures/workflow/core.workflow.yaml"),
-            Path("/Users/acartagena/project/edictum-schemas/fixtures/workflow/core.workflow.yaml"),
-        ]
-    )
+    candidates.append(Path("fixtures/workflow/core.workflow.yaml"))
     for candidate in candidates:
         if candidate.is_file():
             return candidate

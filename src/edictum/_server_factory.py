@@ -18,6 +18,7 @@ from edictum.storage import StorageBackend
 if TYPE_CHECKING:
     from edictum._guard import Edictum
     from edictum.envelope import ToolCall
+    from edictum.workflow import WorkflowRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ async def _from_server(
     allow_insecure: bool = False,
     verify_signatures: bool = False,
     signing_public_key: str | None = None,
+    workflow_runtime: WorkflowRuntime | None = None,
     workflow_path: str | Path | None = None,
     workflow_content: str | bytes | None = None,
     workflow_exec_evaluator_enabled: bool = False,
@@ -81,6 +83,8 @@ async def _from_server(
             Requires the ``edictum[verified]`` extra (PyNaCl).
         signing_public_key: Hex-encoded Ed25519 public key for signature
             verification. Required when ``verify_signatures=True``.
+        workflow_runtime: Pre-built workflow runtime for explicit M1 workflow
+            loading with server-backed rules.
         workflow_path: Explicit local workflow YAML path for M1 workflow gates.
         workflow_content: Explicit local workflow YAML content for M1 workflow gates.
         workflow_exec_evaluator_enabled: Enable trusted ``exec(...)`` workflow
@@ -113,6 +117,8 @@ async def _from_server(
 
     if verify_signatures and signing_public_key is None:
         raise ValueError("signing_public_key is required when verify_signatures=True")
+    if workflow_runtime is not None and (workflow_path is not None or workflow_content is not None):
+        raise EdictumConfigError("Specify workflow_runtime or workflow_path/workflow_content, not both")
 
     environment = env or "production"
 
@@ -129,7 +135,7 @@ async def _from_server(
     effective_sink = audit_sink or ServerAuditSink(client)
     effective_approval = approval_backend or ServerApprovalBackend(client)
     effective_backend = storage_backend or ServerBackend(client)
-    workflow_runtime = _load_workflow_runtime(
+    effective_workflow_runtime = workflow_runtime or _load_workflow_runtime(
         workflow_path=workflow_path,
         workflow_content=workflow_content,
         workflow_exec_evaluator_enabled=workflow_exec_evaluator_enabled,
@@ -196,7 +202,7 @@ async def _from_server(
             principal=principal,
             principal_resolver=principal_resolver,
             approval_backend=effective_approval,
-            workflow_runtime=workflow_runtime,
+            workflow_runtime=effective_workflow_runtime,
         )
     else:
         guard = cls(
@@ -214,7 +220,7 @@ async def _from_server(
             principal=principal,
             principal_resolver=principal_resolver,
             approval_backend=effective_approval,
-            workflow_runtime=workflow_runtime,
+            workflow_runtime=effective_workflow_runtime,
         )
         guard._assignment_ready = asyncio.Event()
 

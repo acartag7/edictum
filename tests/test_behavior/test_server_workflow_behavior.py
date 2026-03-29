@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from edictum import Edictum
+from edictum.workflow import WorkflowRuntime, load_workflow_string
 
 _BUNDLE = """\
 apiVersion: edictum/v1
@@ -168,4 +169,25 @@ class TestFromServerWorkflowBehavior:
             )
 
             assert guard._workflow_runtime is not None
+            await guard.close()
+
+    @pytest.mark.asyncio
+    async def test_workflow_runtime_parameter_preserves_runtime(self):
+        runtime = WorkflowRuntime(load_workflow_string(_WORKFLOW))
+
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            mock_cls.return_value = _make_client_mock()
+            mock_src_cls.return_value = _make_source_mock()
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name="default",
+                auto_watch=False,
+                workflow_runtime=runtime,
+            )
+
+            assert guard._workflow_runtime is runtime
             await guard.close()

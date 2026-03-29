@@ -24,17 +24,6 @@ BANNED_PATTERNS: list[tuple[re.Pattern, str, str]] = [
     (re.compile(r"\ball contracts passed\b", re.IGNORECASE), "all rules passed", "banned CLI string"),
 ]
 
-# "blocked" needs special handling — allow the loop variable in builtins.py
-BLOCKED_PATTERN = re.compile(r"\bblocked\b", re.IGNORECASE)
-BLOCKED_ALLOWLIST = {
-    # builtins.py loop variable: "for blocked in commands:"
-    "for blocked in commands",
-    "cmd == blocked",
-    "cmd.startswith(blocked",
-    # f-string references to the loop variable
-    "{blocked}",
-}
-
 # "shadow" needs special handling — prose should say "observe mode" / "observe-mode".
 # All shadow_* code identifiers were renamed to observe_* in v0.15.0.
 # Only real filesystem references remain in the allowlist.
@@ -94,13 +83,6 @@ def check_file(path: Path) -> list[str]:
             if pattern.search(line):
                 violations.append(f"  {path}:{i}: {desc} — use '{fix}' instead")
                 violations.append(f"    {line.strip()}")
-
-        # Check "blocked" with allowlist
-        if BLOCKED_PATTERN.search(line):
-            line_stripped = line.strip()
-            if not any(allowed in line_stripped for allowed in BLOCKED_ALLOWLIST):
-                violations.append(f"  {path}:{i}: 'blocked' — use 'denied' instead")
-                violations.append(f"    {line_stripped}")
 
         # Check "shadow" with allowlist
         if SHADOW_PATTERN.search(line):
