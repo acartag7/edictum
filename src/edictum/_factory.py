@@ -492,14 +492,14 @@ def _from_multiple(cls: type[Edictum], guards: list[Edictum]) -> Edictum:
             *((a, seen_regular_ids) for a in regular_attrs),
             *((a, seen_observe_ids) for a in observe_attrs),
         ):
-            for contract in getattr(guard._state, attr):
-                cid = getattr(contract, "_edictum_id", None)
+            for rule in getattr(guard._state, attr):
+                cid = getattr(rule, "_edictum_id", None)
                 if cid and cid in seen:
                     logger.warning("Duplicate rule id '%s' in from_multiple() — first wins", cid)
                     continue
                 if cid:
                     seen.add(cid)
-                collected[attr].append(contract)
+                collected[attr].append(rule)
 
     merged._state = _CompiledState(
         preconditions=tuple(collected["preconditions"]),

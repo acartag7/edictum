@@ -9,6 +9,7 @@ from edictum import Edictum, EdictumDenied, EdictumToolError
 from edictum.audit import AuditAction
 from edictum.session import Session
 from edictum.storage import MemoryBackend
+from edictum.workflow import WorkflowCheck, WorkflowDefinition, WorkflowMetadata, WorkflowRuntime, WorkflowStage
 from edictum.workflow.result import WorkflowEvidence, WorkflowState
 from edictum.workflow.state import save_state
 
@@ -116,6 +117,37 @@ stages:
     assert state.active_stage == "implement"
     assert state.completed_stages == []
     assert state.approvals == {}
+
+
+@pytest.mark.asyncio
+async def test_programmatic_workflow_check_enforces_regex_without_manual_compilation():
+    runtime = WorkflowRuntime(
+        WorkflowDefinition(
+            api_version="edictum/v1",
+            kind="Workflow",
+            metadata=WorkflowMetadata(name="programmatic-check"),
+            stages=(
+                WorkflowStage(
+                    id="verify",
+                    tools=("Bash",),
+                    checks=(
+                        WorkflowCheck(
+                            message="Only git status is allowed",
+                            command_matches=r"^git status$",
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    session = Session("programmatic-check", MemoryBackend())
+
+    allowed = await runtime.evaluate(session, make_envelope("Bash", {"command": "git status"}))
+    blocked = await runtime.evaluate(session, make_envelope("Bash", {"command": "rm -rf /"}))
+
+    assert allowed.action == "allow"
+    assert blocked.action == "block"
+    assert blocked.reason == "Only git status is allowed"
 
 
 @pytest.mark.asyncio

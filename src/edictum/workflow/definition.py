@@ -43,6 +43,22 @@ class WorkflowCheck:
     command_matches_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
     command_not_matches_re: re.Pattern[str] | None = field(default=None, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        from edictum.workflow.evaluator import compile_workflow_regex
+
+        if self.command_matches is not None and self.command_matches_re is None:
+            object.__setattr__(
+                self,
+                "command_matches_re",
+                compile_workflow_regex(self.command_matches, self.command_matches),
+            )
+        if self.command_not_matches is not None and self.command_not_matches_re is None:
+            object.__setattr__(
+                self,
+                "command_not_matches_re",
+                compile_workflow_regex(self.command_not_matches, self.command_not_matches),
+            )
+
 
 @dataclass(frozen=True)
 class WorkflowStage:
@@ -57,7 +73,7 @@ class WorkflowStage:
     approval: WorkflowApproval | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class WorkflowDefinition:
     """Validated workflow document."""
 
@@ -77,12 +93,13 @@ class WorkflowDefinition:
         if not self.stages:
             raise ValueError("workflow: stages must contain at least one item")
 
-        self.index = {}
+        index: dict[str, int] = {}
         for idx, stage in enumerate(self.stages):
             _validate_stage(stage)
-            if stage.id in self.index:
+            if stage.id in index:
                 raise ValueError(f'workflow: duplicate stage id "{stage.id}"')
-            self.index[stage.id] = idx
+            index[stage.id] = idx
+        object.__setattr__(self, "index", index)
 
     def stage_index(self, stage_id: str) -> int | None:
         return self.index.get(stage_id)

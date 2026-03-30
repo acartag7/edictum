@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from edictum import EdictumConfigError
@@ -81,3 +83,20 @@ stages:
         message: nope
 """
         )
+
+
+def test_loaded_workflow_definition_is_immutable():
+    definition = load_workflow_string(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: frozen-definition
+stages:
+  - id: read-context
+    tools: [Read]
+"""
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        definition.kind = "Ruleset"

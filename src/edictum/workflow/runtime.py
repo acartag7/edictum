@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from edictum.envelope import ToolCall
 from edictum.session import Session
-from edictum.workflow.definition import WorkflowDefinition, WorkflowGate, WorkflowStage
+from edictum.workflow.definition import WorkflowCheck, WorkflowDefinition, WorkflowGate, WorkflowStage
 from edictum.workflow.evaluator import (
     ApprovalEvaluator,
     CommandEvaluator,
@@ -270,15 +270,23 @@ def tool_allowed(stage, envelope: ToolCall) -> bool:
     return envelope.tool_name in stage.tools
 
 
-def stage_is_boundary_only(stage) -> bool:
+def stage_is_boundary_only(stage: WorkflowStage) -> bool:
     return not stage.tools and not stage.checks and (stage.approval is not None or bool(stage.exit))
 
 
-def evaluate_check(check, envelope: ToolCall) -> tuple[bool, str]:
+def evaluate_check(check: WorkflowCheck, envelope: ToolCall) -> tuple[bool, str]:
     command = envelope.bash_command or ""
-    if check.command_matches_re is not None and check.command_matches is not None:
+    if check.command_matches is not None:
+        if check.command_matches_re is None:
+            raise ValueError(
+                f"workflow: command_matches regex {check.command_matches!r} was not compiled before evaluation"
+            )
         return bool(check.command_matches_re.search(command)), check.command_matches
-    if check.command_not_matches_re is not None and check.command_not_matches is not None:
+    if check.command_not_matches is not None:
+        if check.command_not_matches_re is None:
+            raise ValueError(
+                f"workflow: command_not_matches regex {check.command_not_matches!r} was not compiled before evaluation"
+            )
         return not check.command_not_matches_re.search(command), check.command_not_matches
     return True, ""
 

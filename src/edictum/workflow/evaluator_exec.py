@@ -14,7 +14,11 @@ MAX_EXEC_TIMEOUT_SECONDS = 30.0
 
 
 class ExecEvaluator:
-    """Run trusted exec(...) workflow gate conditions."""
+    """Run trusted exec(...) workflow gate conditions.
+
+    Subprocess stdout is copied into workflow evidence and may reach audit sinks.
+    Callers should only enable this evaluator for commands whose output is safe to retain.
+    """
 
     async def evaluate(self, req: EvaluateRequest) -> FactResult:
         from edictum.workflow.evaluator import FactResult
