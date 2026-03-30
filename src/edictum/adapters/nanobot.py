@@ -287,7 +287,10 @@ class GovernedToolRegistry:
             await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_APPROVAL_DENIED)
 
         if approved:
-            span.set_attribute("governance.action", "approved")
+            span_action = "approved"
+            if approval_decision.status == ApprovalStatus.TIMEOUT and decision.approval_timeout_action == "allow":
+                span_action = "timeout_allow"
+            span.set_attribute("governance.action", span_action)
             return None  # Proceed with execution
 
         reason = approval_decision.reason or decision.reason or "Approval blocked"
@@ -358,7 +361,7 @@ class GovernedToolRegistry:
 
     def _check_tool_success(self, tool_name: str, result: Any) -> bool:
         if self._guard._success_check is not None:
-            return self._guard._success_check(tool_name, result)
+            return bool(self._guard._success_check(tool_name, result))
         if result is None:
             return True
         if isinstance(result, dict):

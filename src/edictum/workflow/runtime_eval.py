@@ -23,7 +23,8 @@ async def evaluate_runtime(runtime: WorkflowRuntime, session: Session, envelope:
     changed = False
     events: list[dict[str, Any]] = []
 
-    while True:
+    max_iterations = len(runtime.definition.stages) + 1
+    for _ in range(max_iterations):
         stage = runtime.definition.stage_by_id(state.active_stage)
         if stage is None:
             raise ValueError(f'workflow: active stage "{state.active_stage}" not found')
@@ -74,6 +75,8 @@ async def evaluate_runtime(runtime: WorkflowRuntime, session: Session, envelope:
         )
         changed = True
 
+    raise RuntimeError(f"workflow: exceeded stage iteration limit ({max_iterations})")
+
 
 async def evaluate_completion(
     runtime: WorkflowRuntime,
@@ -83,8 +86,8 @@ async def evaluate_completion(
     has_next: bool,
 ) -> tuple[WorkflowEvaluation, bool]:
     if stage.exit:
-        failure, denied = await evaluate_gates(runtime, stage, state, envelope, stage.exit)
-        if denied:
+        failure, blocked = await evaluate_gates(runtime, stage, state, envelope, stage.exit)
+        if blocked:
             return failure, False
 
     if stage.approval is not None and state.approvals.get(stage.id) != "approved":
@@ -129,8 +132,8 @@ async def evaluate_completion(
     next_state = clone_state(state)
     if not next_state.completed(stage.id):
         next_state.completed_stages.append(stage.id)
-    failure, denied = await evaluate_gates(runtime, next_stage, next_state, envelope, next_stage.entry)
-    if denied:
+    failure, blocked = await evaluate_gates(runtime, next_stage, next_state, envelope, next_stage.entry)
+    if blocked:
         return failure, False
     return WorkflowEvaluation(), True
 

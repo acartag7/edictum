@@ -6,6 +6,7 @@ from edictum.envelope import create_envelope
 from edictum.session import Session
 from edictum.storage import MemoryBackend
 from edictum.workflow import WorkflowRuntime, load_workflow_string
+from edictum.workflow.result import WorkflowEvaluation
 
 EXEC_WORKFLOW = """
 apiVersion: edictum/v1
@@ -68,3 +69,36 @@ stages:
 
     with pytest.raises(ValueError, match="timed out"):
         await runtime.evaluate(session, create_envelope("Bash", {"command": "python3 -V"}))
+
+
+@pytest.mark.asyncio
+async def test_runtime_evaluation_stops_after_stage_iteration_limit(monkeypatch):
+    runtime = WorkflowRuntime(
+        load_workflow_string(
+            """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: iteration-limit
+stages:
+  - id: review
+    tools: [Read]
+"""
+        )
+    )
+    session = Session("iteration-limit", MemoryBackend())
+
+    monkeypatch.setattr(
+        runtime,
+        "evaluate_current_stage",
+        lambda stage, envelope: (False, WorkflowEvaluation(), None),
+    )
+
+    async def _complete(stage, state, envelope, has_next):
+        return WorkflowEvaluation(), True
+
+    monkeypatch.setattr(runtime, "evaluate_completion", _complete)
+    monkeypatch.setattr(runtime, "next_index", lambda stage_id: (0, True))
+
+    with pytest.raises(RuntimeError, match="stage iteration limit"):
+        await runtime.evaluate(session, create_envelope("Read", {"path": "spec.md"}))

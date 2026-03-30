@@ -120,7 +120,10 @@ async def _run(
                         self._on_allow(envelope)
                     except Exception:
                         logger.exception("on_allow callback raised")
-                span.set_attribute("governance.action", "approved")
+                span_action = "approved"
+                if decision.status == ApprovalStatus.TIMEOUT and pre.approval_timeout_action == "allow":
+                    span_action = "timeout_allow"
+                span.set_attribute("governance.action", span_action)
 
         # Determine if this is a real block or just per-rule observed blocks
         real_deny = pre.action == "block" and not pre.observed

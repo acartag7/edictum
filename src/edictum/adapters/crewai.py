@@ -479,7 +479,10 @@ class CrewAIAdapter:
             await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_APPROVAL_DENIED)
 
         if approved:
-            span.set_attribute("governance.action", "approved")
+            span_action = "approved"
+            if approval_decision.status == ApprovalStatus.TIMEOUT and decision.approval_timeout_action == "allow":
+                span_action = "timeout_allow"
+            span.set_attribute("governance.action", span_action)
             return None
 
         reason = approval_decision.reason or decision.reason or "Approval blocked"
@@ -497,7 +500,7 @@ class CrewAIAdapter:
 
     def _check_tool_success(self, tool_name: str, tool_result: Any) -> bool:
         if self._guard._success_check is not None:
-            return self._guard._success_check(tool_name, tool_result)
+            return bool(self._guard._success_check(tool_name, tool_result))
         if tool_result is None:
             return True
         if isinstance(tool_result, dict):

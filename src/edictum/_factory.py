@@ -463,7 +463,7 @@ def _from_multiple(cls: type[Edictum], guards: list[Edictum]) -> Edictum:
         redaction=first.redaction,
         backend=first.backend,
         policy_version=first.policy_version,
-        on_block=first._on_block,
+        on_block=first._on_deny,
         on_allow=first._on_allow,
         success_check=first._success_check,
         approval_backend=first._approval_backend,
