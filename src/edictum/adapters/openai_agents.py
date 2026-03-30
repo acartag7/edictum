@@ -38,8 +38,8 @@ class OpenAIAgentsAdapter:
     single-threaded per agent run.
 
     Note: Native guardrails (as_guardrails) cannot substitute tool results.
-    Postcondition effect=redact requires the wrapper integration path.
-    Postcondition effect=block is enforced natively via reject_content.
+    Postcondition action=redact requires the wrapper integration path.
+    Postcondition action=block is enforced natively via reject_content.
     """
 
     def __init__(
@@ -100,7 +100,7 @@ class OpenAIAgentsAdapter:
         has_redact = any(getattr(p, "_edictum_effect", "warn") == "redact" for p in self._guard._state.postconditions)
         if has_redact:
             logger.warning(
-                "Postcondition effect=redact requires the wrapper integration path "
+                "Postcondition action=redact requires the wrapper integration path "
                 "for full enforcement. Native guardrails cannot substitute tool results."
             )
 
