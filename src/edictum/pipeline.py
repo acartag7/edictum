@@ -149,7 +149,7 @@ class CheckPipeline:
             contracts_evaluated.append(contract_record)
 
             if not decision.passed:
-                # Per-contract observe mode: record but don't block (Fix 4)
+                # Per-rule observe mode: record but don't block (Fix 4)
                 if contract_mode == "observe":
                     contract_record["observed"] = True
                     has_observed_deny = True
