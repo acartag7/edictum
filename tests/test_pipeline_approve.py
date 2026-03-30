@@ -217,6 +217,7 @@ class TestRunApprovalBackend:
         actions = [e.action for e in sink.events]
         assert AuditAction.CALL_APPROVAL_REQUESTED in actions
         assert AuditAction.CALL_APPROVAL_GRANTED in actions
+        assert actions.count(AuditAction.CALL_ALLOWED) == 0
 
     async def test_on_allow_fires_exactly_once_on_approval(self):
         """on_allow must fire exactly once when approval is granted (not twice)."""

@@ -97,7 +97,6 @@ class Edictum:
             self.audit_sink = self._local_sink
         self.telemetry = GovernanceTelemetry()
         self._gov_tracer = get_tracer("edictum.governance")
-        self._on_block = on_block
         self._on_deny = on_block
         self._on_allow = on_allow
         self._success_check = success_check

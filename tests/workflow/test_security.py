@@ -8,6 +8,8 @@ from edictum.envelope import create_envelope
 from edictum.session import Session
 from edictum.storage import MemoryBackend
 from edictum.workflow import WorkflowRuntime, load_workflow_string
+from edictum.workflow.result import WorkflowState
+from edictum.workflow.state import record_result
 
 _APPROVAL_WORKFLOW = """
 apiVersion: edictum/v1
@@ -104,3 +106,15 @@ async def test_command_matches_newline_payload_is_blocked():
 
     assert decision.action == "block"
     assert "release push" in (decision.reason or "")
+
+
+@pytest.mark.security
+def test_record_result_rejects_control_characters_in_evidence():
+    state = WorkflowState(session_id="control-evidence", active_stage="review")
+
+    with pytest.raises(ValueError, match="control characters"):
+        record_result(
+            state,
+            "review",
+            create_envelope("Read", {"path": "specs/\nmalicious.md"}),
+        )

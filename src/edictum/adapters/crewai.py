@@ -469,7 +469,7 @@ class CrewAIAdapter:
         )
 
         approved = approval_decision.approved
-        if not approved and approval_decision.status == ApprovalStatus.TIMEOUT:
+        if approval_decision.status == ApprovalStatus.TIMEOUT:
             await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_APPROVAL_TIMEOUT)
             if decision.approval_timeout_action == "allow":
                 approved = True

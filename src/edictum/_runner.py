@@ -90,8 +90,9 @@ async def _run(
         await _emit_workflow_events(self, envelope, pre.workflow_events)
 
         # Handle pending_approval: request approval from backend
+        approval_audit_handled = False
         if pre.action == "pending_approval":
-            approved, decision, pre = await _resolve_pending_approval(
+            approved, decision, pre, approval_audit_handled = await _resolve_pending_approval(
                 self,
                 pipeline,
                 session,
@@ -129,7 +130,7 @@ async def _run(
         real_deny = pre.action == "block" and not pre.observed
 
         # Skip pre-execution audit for approval-granted path (already handled above)
-        if pre.action == "pending_approval":
+        if approval_audit_handled:
             pass  # Fall through directly to tool execution
         elif real_deny:
             audit_action = AuditAction.CALL_WOULD_DENY if self.mode == "observe" else AuditAction.CALL_DENIED
@@ -338,16 +339,16 @@ async def _resolve_pending_approval(
             await _emit_run_pre_audit(self, envelope, session, AuditAction.CALL_APPROVAL_DENIED, current)
 
         if not approved:
-            return False, decision, current
+            return False, decision, current, False
 
         if current.decision_source != "workflow" or not current.workflow_stage_id or self._workflow_runtime is None:
-            return True, decision, current
+            return True, decision, current, True
 
         await self._workflow_runtime.record_approval(session, current.workflow_stage_id)
         current = await pipeline.pre_execute(envelope, session)
         await _emit_workflow_events(self, envelope, current.workflow_events)
         if current.action != "pending_approval":
-            return True, decision, current
+            return True, decision, current, False
 
     raise RuntimeError(f"workflow: exceeded maximum approval rounds ({_MAX_WORKFLOW_APPROVAL_ROUNDS})")
 

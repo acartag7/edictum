@@ -10,6 +10,7 @@ from edictum.workflow.result import WorkflowEvidence, WorkflowState
 
 APPROVED_STATUS = "approved"
 MAX_WORKFLOW_EVIDENCE_ITEMS = 1000
+MAX_WORKFLOW_EVIDENCE_LENGTH = 4096
 
 
 def workflow_state_key(name: str) -> str:
@@ -79,7 +80,7 @@ def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall) -> No
     if envelope.tool_name == "Read" and envelope.file_path:
         state.evidence.reads = _append_unique_capped(
             state.evidence.reads,
-            envelope.file_path,
+            _validate_evidence_string(envelope.file_path),
             MAX_WORKFLOW_EVIDENCE_ITEMS,
         )
         return
@@ -87,7 +88,7 @@ def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall) -> No
         calls = state.evidence.stage_calls.get(stage_id, [])
         state.evidence.stage_calls[stage_id] = _append_capped(
             calls,
-            envelope.bash_command,
+            _validate_evidence_string(envelope.bash_command),
             MAX_WORKFLOW_EVIDENCE_ITEMS,
         )
 
@@ -102,3 +103,12 @@ def _append_capped(items: list[str], item: str, limit: int) -> list[str]:
     if len(items) >= limit:
         return items
     return [*items, item]
+
+
+def _validate_evidence_string(value: str) -> str:
+    if len(value) > MAX_WORKFLOW_EVIDENCE_LENGTH:
+        raise ValueError(f"workflow: evidence string too long ({len(value)} chars)")
+    for ch in value:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+            raise ValueError("workflow: evidence string contains control characters")
+    return value

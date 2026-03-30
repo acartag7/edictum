@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 MAX_EXEC_EVIDENCE_OUTPUT = 4096
 MAX_EXEC_TIMEOUT_SECONDS = 30.0
+MAX_EXEC_REAP_TIMEOUT_SECONDS = 5.0
 
 
 class ExecEvaluator:
@@ -37,7 +38,10 @@ class ExecEvaluator:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=MAX_EXEC_TIMEOUT_SECONDS)
         except TimeoutError as exc:
             proc.kill()
-            await proc.communicate()
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=MAX_EXEC_REAP_TIMEOUT_SECONDS)
+            except (TimeoutError, OSError):
+                pass
             raise ValueError(
                 f'workflow: exec evaluator "{parsed.arg}" timed out after {MAX_EXEC_TIMEOUT_SECONDS} seconds'
             ) from exc

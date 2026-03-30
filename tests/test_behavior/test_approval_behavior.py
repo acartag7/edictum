@@ -144,13 +144,12 @@ class TestApprovalBackendFromMultiple:
     def test_from_multiple_preserves_deny_callback(self):
         callback = MagicMock()
         first = _make_guard(on_block=callback)
-        first._on_block = None
         second = _make_guard()
 
         merged = Edictum.from_multiple([first, second])
 
         assert merged._on_deny is callback
-        assert merged._on_block is callback
+        assert not hasattr(merged, "_on_block")
 
 
 # ---------------------------------------------------------------------------
