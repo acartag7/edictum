@@ -344,6 +344,9 @@ def _from_template(
     Raises:
         EdictumConfigError: If the template is not found in any directory.
     """
+    if workflow_path is not None and workflow_content is not None:
+        raise EdictumConfigError("Specify only one of workflow_path or workflow_content")
+
     builtin_dir = Path(__file__).parent / "yaml_engine" / "templates"
     search_dirs = [Path(d) for d in (template_dirs or [])] + [builtin_dir]
 

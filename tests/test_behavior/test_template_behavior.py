@@ -165,6 +165,19 @@ class TestFromTemplateWorkflowLoading:
         assert guard._workflow_runtime is not None
         assert guard._workflow_runtime.definition.metadata.name == "template-workflow"
 
+    def test_conflicting_workflow_sources_raise(self, custom_dir, tmp_path):
+        workflow_path = tmp_path / "workflow.yaml"
+        workflow_path.write_text(WORKFLOW_TEMPLATE, encoding="utf-8")
+
+        with pytest.raises(EdictumConfigError, match="Specify only one of workflow_path or workflow_content"):
+            Edictum.from_template(
+                "support-agent",
+                template_dirs=[custom_dir],
+                workflow_path=workflow_path,
+                workflow_content=WORKFLOW_TEMPLATE,
+                backend=MemoryBackend(),
+            )
+
 
 class TestListTemplatesBuiltins:
     """list_templates() discovers built-in templates."""
