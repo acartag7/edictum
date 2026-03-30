@@ -155,12 +155,12 @@ class ClaudeAgentSDKAdapter:
                 return self._deny(decision.reason or "")
 
             if decision.action == "pending_approval":
-                denied, decision = await self._resolve_pending_approval(envelope, decision, span)
-                if denied is not None:
+                blocked_result, decision = await self._resolve_pending_approval(envelope, decision, span)
+                if blocked_result is not None:
                     span.end()
                     self._pending.pop(tool_use_id, None)
                     self._pending_decisions.pop(tool_use_id, None)
-                    return denied
+                    return blocked_result
 
             # Handle per-rule observed denials
             if decision.observed:
@@ -363,9 +363,9 @@ class ClaudeAgentSDKAdapter:
     ) -> tuple[dict | None, Any]:
         current = decision
         for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
-            denied = await self._handle_approval(envelope, current, span)
-            if denied is not None:
-                return denied, current
+            blocked_result = await self._handle_approval(envelope, current, span)
+            if blocked_result is not None:
+                return blocked_result, current
             if (
                 current.decision_source != "workflow"
                 or not current.workflow_stage_id
@@ -423,7 +423,7 @@ class ClaudeAgentSDKAdapter:
             span.set_attribute("governance.action", "approved")
             return None
 
-        reason = approval_decision.reason or decision.reason or "Approval denied"
+        reason = approval_decision.reason or decision.reason or "Approval blocked"
         if not approved and approval_decision.status == ApprovalStatus.TIMEOUT:
             reason = f"Approval timed out: {reason}"
         self._guard.telemetry.record_denial(envelope, reason)
@@ -434,7 +434,7 @@ class ClaudeAgentSDKAdapter:
                 logger.exception("on_deny callback raised")
         span.set_attribute("governance.action", "denied")
         self._guard.telemetry.set_span_error(span, reason)
-        return self._deny(f"Approval denied: {reason}")
+        return self._deny(f"Approval blocked: {reason}")
 
     def _check_tool_success(self, tool_name: str, tool_response: Any) -> bool:
         if self._guard._success_check is not None:

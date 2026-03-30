@@ -74,8 +74,8 @@ class GovernedToolRegistry:
     async def execute(self, name: str, args: dict) -> str:
         """Execute a tool with governance wrapping.
 
-        Returns a string result. Denials are returned as "[DENIED] reason"
-        strings so the LLM can see the denial reason and adjust.
+        Returns a string result. Blocks reuse the adapter's existing marker
+        so the LLM can see the reason and adjust.
         """
         call_id = str(uuid.uuid4())
 
@@ -106,7 +106,7 @@ class GovernedToolRegistry:
                 span.set_attribute("governance.would_deny_reason", decision.reason)
                 # Fall through to execute
             elif decision.action == "block":
-                # Enforce mode: return denial string
+                # Enforce mode: return a blocked marker string.
                 await self._emit_audit_pre(envelope, decision)
                 self._guard.telemetry.record_denial(envelope, decision.reason)
                 if self._guard._on_deny:
@@ -124,7 +124,7 @@ class GovernedToolRegistry:
                     return result
                 # Approved — fall through to execute
             else:
-                # Handle per-contract observed denials
+                # Handle per-rule observed blocks
                 if decision.observed:
                     for cr in decision.contracts_evaluated:
                         if cr.get("observed") and not cr.get("passed"):
@@ -228,9 +228,9 @@ class GovernedToolRegistry:
     ) -> tuple[str | None, Any]:
         current = decision
         for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
-            denied = await self._handle_approval(envelope, current, span)
-            if denied is not None:
-                return denied, current
+            blocked_result = await self._handle_approval(envelope, current, span)
+            if blocked_result is not None:
+                return blocked_result, current
             if (
                 current.decision_source != "workflow"
                 or not current.workflow_stage_id
@@ -290,7 +290,7 @@ class GovernedToolRegistry:
             span.set_attribute("governance.action", "approved")
             return None  # Proceed with execution
 
-        reason = approval_decision.reason or decision.reason or "Approval denied"
+        reason = approval_decision.reason or decision.reason or "Approval blocked"
         self._guard.telemetry.record_denial(envelope, reason)
         if self._guard._on_deny:
             try:
@@ -299,7 +299,7 @@ class GovernedToolRegistry:
                 logger.exception("on_deny callback raised")
         span.set_attribute("governance.action", "denied")
         self._guard.telemetry.set_span_error(span, reason)
-        return f"[DENIED] Approval denied: {reason}"
+        return f"[DENIED] Approval blocked: {reason}"
 
     async def _emit_workflow_events(self, envelope: Any, events: list[dict]) -> None:
         for record in events:

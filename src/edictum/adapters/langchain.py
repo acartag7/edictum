@@ -252,13 +252,13 @@ class LangChainAdapter:
                 return self._deny(decision.reason or "", tool_call_id)
 
             if decision.action == "pending_approval":
-                denied, decision = await self._resolve_pending_approval(envelope, decision, span, tool_call_id)
-                if denied is not None:
+                blocked_result, decision = await self._resolve_pending_approval(envelope, decision, span, tool_call_id)
+                if blocked_result is not None:
                     self._pending.pop(tool_call_id, None)
                     self._pending_decisions.pop(tool_call_id, None)
-                    return denied
+                    return blocked_result
 
-            # Handle per-contract observed denials
+            # Handle per-rule observed blocks
             if decision.observed:
                 for cr in decision.contracts_evaluated:
                     if cr.get("observed") and not cr.get("passed"):
@@ -441,9 +441,9 @@ class LangChainAdapter:
     ) -> tuple[Any | None, Any]:
         current = decision
         for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
-            denied = await self._handle_approval(envelope, current, span, tool_call_id)
-            if denied is not None:
-                return denied, current
+            blocked_result = await self._handle_approval(envelope, current, span, tool_call_id)
+            if blocked_result is not None:
+                return blocked_result, current
             if (
                 current.decision_source != "workflow"
                 or not current.workflow_stage_id
@@ -508,7 +508,7 @@ class LangChainAdapter:
             span.set_attribute("governance.action", "approved")
             return None
 
-        reason = approval_decision.reason or decision.reason or "Approval denied"
+        reason = approval_decision.reason or decision.reason or "Approval blocked"
         if not approved and approval_decision.status == ApprovalStatus.TIMEOUT:
             reason = f"Approval timed out: {reason}"
         self._guard.telemetry.record_denial(envelope, reason)
@@ -520,7 +520,7 @@ class LangChainAdapter:
         span.set_attribute("governance.action", "denied")
         self._guard.telemetry.set_span_error(span, reason)
         span.end()
-        return self._deny(f"Approval denied: {reason}", tool_call_id)
+        return self._deny(f"Approval blocked: {reason}", tool_call_id)
 
     def _check_tool_success(self, tool_name: str, result: Any) -> bool:
         if self._guard._success_check is not None:

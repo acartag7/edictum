@@ -172,7 +172,7 @@ class GoogleADKAdapter:
                 self._pending_decisions[call_id] = decision
                 return None
 
-            # Handle per-contract observed denials
+            # Handle per-rule observed blocks
             if decision.observed:
                 for cr in decision.contracts_evaluated:
                     if cr.get("observed") and not cr.get("passed"):
@@ -433,9 +433,9 @@ class GoogleADKAdapter:
     ) -> tuple[dict | None, Any]:
         current = decision
         for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
-            denied = await self._handle_approval(envelope, current, span)
-            if denied is not None:
-                return denied, current
+            blocked_result = await self._handle_approval(envelope, current, span)
+            if blocked_result is not None:
+                return blocked_result, current
             if (
                 current.decision_source != "workflow"
                 or not current.workflow_stage_id
@@ -498,7 +498,7 @@ class GoogleADKAdapter:
             span.set_attribute("governance.action", "approved")
             return None  # Proceed with execution
 
-        reason = approval_decision.reason or decision.reason or "Approval denied"
+        reason = approval_decision.reason or decision.reason or "Approval blocked"
         if not approved and approval_decision.status == ApprovalStatus.TIMEOUT:
             reason = f"Approval timed out: {reason}"
         self._guard.telemetry.record_denial(envelope, reason)
@@ -510,7 +510,7 @@ class GoogleADKAdapter:
         span.set_attribute("governance.action", "denied")
         self._guard.telemetry.set_span_error(span, reason)
         span.end()
-        return self._deny(f"Approval denied: {reason}")
+        return self._deny(f"Approval blocked: {reason}")
 
     def as_plugin(
         self,

@@ -42,7 +42,7 @@ class TestGoogleADKAdapter:
     async def test_deny_returns_dict(self):
         @precondition("*")
         def always_deny(tool_call):
-            return Decision.fail("denied")
+            return Decision.fail("blocked")
 
         guard = make_guard(rules=[always_deny])
         adapter = GoogleADKAdapter(guard)
@@ -55,7 +55,7 @@ class TestGoogleADKAdapter:
         assert isinstance(result, dict)
         assert "error" in result
         assert "DENIED:" in result["error"]
-        assert "denied" in result["error"]
+        assert "blocked" in result["error"]
 
     async def test_deny_dict_format(self):
         result = GoogleADKAdapter._deny("reason")
@@ -101,7 +101,7 @@ class TestGoogleADKAdapter:
     async def test_observe_mode_would_deny(self):
         @precondition("*")
         def always_deny(tool_call):
-            return Decision.fail("would be denied")
+            return Decision.fail("would be blocked")
 
         sink = NullAuditSink()
         guard = make_guard(mode="observe", rules=[always_deny], audit_sink=sink)
@@ -388,7 +388,7 @@ class TestPluginIntegration:
     async def test_plugin_before_tool_deny(self):
         @precondition("*")
         def always_deny(tool_call):
-            return Decision.fail("denied by policy")
+            return Decision.fail("blocked by policy")
 
         mock_base_plugin_cls, originals = self._mock_adk_modules()
         try:
@@ -530,7 +530,7 @@ class TestAgentCallbacks:
     async def test_agent_before_callback_deny(self):
         @precondition("*")
         def always_deny(tool_call):
-            return Decision.fail("denied by policy")
+            return Decision.fail("blocked by policy")
 
         guard = make_guard(rules=[always_deny])
         adapter = GoogleADKAdapter(guard)
@@ -682,7 +682,7 @@ class TestApproval:
         result = await adapter._pre(tool_name="TestTool", tool_input={}, call_id="call-1")
         assert isinstance(result, dict)
         assert "DENIED:" in result["error"]
-        assert "Approval denied" in result["error"]
+        assert "Approval blocked" in result["error"]
 
     async def test_approval_timeout_deny(self):
         @precondition("*")
