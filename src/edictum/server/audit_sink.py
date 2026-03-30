@@ -79,6 +79,7 @@ class ServerAuditSink:
             "schema_version": event.schema_version,
             "call_id": event.call_id,
             "agent_id": self._client.agent_id,
+            "bundle_name": self._client.bundle_name,
             "tool_name": event.tool_name,
             "tool_args": event.tool_args,
             "side_effect": event.side_effect,

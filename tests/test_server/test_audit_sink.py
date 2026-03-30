@@ -61,6 +61,7 @@ class TestServerAuditSink:
         assert len(events) == 1
         assert events[0]["call_id"] == "call-1"
         assert events[0]["agent_id"] == "test-agent"
+        assert events[0]["bundle_name"] == "default"
         assert events[0]["tool_name"] == "read_file"
         assert events[0]["action"] == "call_allowed"
 
@@ -110,6 +111,7 @@ class TestServerAuditSink:
         assert payload["tool_name"] == "write_file"
         assert payload["action"] == "call_blocked"
         assert payload["mode"] == "enforce"
+        assert payload["bundle_name"] == "default"
         assert payload["side_effect"] == "irreversible"
         assert payload["environment"] == "staging"
         assert payload["principal"] == {"role": "admin"}
@@ -166,6 +168,13 @@ class TestServerAuditSink:
         event = _make_event(contracts_evaluated=[{"id": "rule-1", "passed": True}])
         mapped = sink._map_event(event)
         assert mapped[RULES_EVALUATED_KEY] == [{"id": "rule-1", "passed": True}]
+
+    @pytest.mark.asyncio
+    async def test_event_mapping_preserves_bundle_name(self, mock_client):
+        """bundle_name stays available in the flattened server event payload."""
+        sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
+        mapped = sink._map_event(_make_event())
+        assert mapped["bundle_name"] == "default"
 
     @pytest.mark.asyncio
     async def test_event_mapping_uses_client_env_as_fallback(self, mock_client):
