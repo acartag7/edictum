@@ -48,10 +48,13 @@ class WorkflowRuntime:
 
         self.definition = definition
         self.evaluators = evaluators
-        self._lock = asyncio.Lock()
+        self._session_locks: dict[str, asyncio.Lock] = {}
+
+    def _session_lock(self, session: Session) -> asyncio.Lock:
+        return self._session_locks.setdefault(session.session_id, asyncio.Lock())
 
     async def state(self, session: Session) -> WorkflowState:
-        async with self._lock:
+        async with self._session_lock(session):
             return await self.load_state(session)
 
     async def load_state(self, session: Session) -> WorkflowState:
@@ -61,11 +64,11 @@ class WorkflowRuntime:
         await save_state(session, self.definition, state)
 
     async def evaluate(self, session: Session, envelope: ToolCall) -> WorkflowEvaluation:
-        async with self._lock:
+        async with self._session_lock(session):
             return await evaluate_runtime(self, session, envelope)
 
     async def reset(self, session: Session, stage_id: str) -> None:
-        async with self._lock:
+        async with self._session_lock(session):
             idx = self.definition.stage_index(stage_id)
             if idx is None:
                 raise ValueError(f'workflow: unknown reset stage "{stage_id}"')
@@ -81,7 +84,7 @@ class WorkflowRuntime:
             await self.save_state(session, state)
 
     async def record_approval(self, session: Session, stage_id: str) -> None:
-        async with self._lock:
+        async with self._session_lock(session):
             if self.definition.stage_by_id(stage_id) is None:
                 raise ValueError(f'workflow: unknown approval stage "{stage_id}"')
             state = await self.load_state(session)
@@ -91,7 +94,7 @@ class WorkflowRuntime:
     async def record_result(self, session: Session, stage_id: str, envelope: ToolCall) -> list[dict[str, Any]]:
         if not stage_id:
             return []
-        async with self._lock:
+        async with self._session_lock(session):
             state = await self.load_state(session)
             record_result(state, stage_id, envelope)
             events = await self.advance_after_success(state, stage_id, envelope)
