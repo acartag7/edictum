@@ -7,7 +7,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -33,7 +33,7 @@ def _install_fake_httpx_sse(events: list[MagicMock], captured_params: list[dict]
 
     @asynccontextmanager
     async def fake_aconnect_sse(http_client, method, url, *, params=None, **kwargs):
-        captured_params.append(params or {})
+        captured_params.append({"_url": url, **(params or {})})
         source = MagicMock()
 
         async def aiter():
@@ -107,6 +107,21 @@ class TestServerContractSource:
         assert captured[0]["bundle_name"] == "devops-agent"
 
     @pytest.mark.asyncio
+    async def test_watch_uses_canonical_stream_path(self):
+        """SSE connections use the canonical /v1/stream endpoint."""
+        client = _make_client()
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"yaml": "test", "revision_hash": "abc"})
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        async for _bundle in source.watch():
+            await source.close()
+
+        assert captured[0]["_url"] == "/v1/stream"
+
+    @pytest.mark.asyncio
     async def test_watch_passes_policy_version_after_first_update(self):
         """After receiving a contract_update, _current_revision is updated."""
         client = _make_client()
@@ -129,6 +144,26 @@ class TestServerContractSource:
         assert "policy_version" not in captured[0]
         # After events, _current_revision should be set to last received
         assert source._current_revision == "rev-def"
+
+    @pytest.mark.asyncio
+    async def test_watch_fetches_current_ruleset_on_ruleset_updated(self):
+        """ruleset_updated triggers a fetch of the current canonical ruleset."""
+        client = _make_client(env="staging", bundle_name="devops-agent")
+        client.get = AsyncMock(return_value={"yaml": "kind: Ruleset\n", "version": 4})
+        source = ServerContractSource(client)
+
+        event = _make_sse_event({"name": "devops-agent", "version": 4}, event_type="ruleset_updated")
+        captured: list[dict] = []
+        _install_fake_httpx_sse([event], captured)
+
+        received = []
+        async for bundle in source.watch():
+            received.append(bundle)
+            await source.close()
+
+        client.get.assert_called_once_with("/v1/rulesets/devops-agent/current", env="staging")
+        assert received == [{"yaml": "kind: Ruleset\n", "version": 4}]
+        assert source._current_revision == "4"
 
     @pytest.mark.asyncio
     async def test_watch_skips_non_dict_json_payload(self, caplog):

@@ -7,7 +7,7 @@ import base64
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from edictum._exceptions import EdictumConfigError
 from edictum.approval import ApprovalBackend
@@ -25,6 +25,33 @@ logger = logging.getLogger(__name__)
 # How long from_server() waits for the server to push a bundle in
 # server-assigned mode (bundle_name=None) before raising EdictumConfigError.
 _ASSIGNMENT_TIMEOUT_SECS = 30.0
+
+
+def _decode_ruleset_yaml(response: dict[str, Any]) -> bytes:
+    """Decode rules YAML from canonical or legacy server responses."""
+    yaml_bytes = response.get("yaml_bytes")
+    if isinstance(yaml_bytes, str):
+        return base64.b64decode(yaml_bytes, validate=True) if yaml_bytes else b""
+
+    yaml_text = response.get("yaml")
+    if isinstance(yaml_text, str):
+        return yaml_text.encode("utf-8")
+
+    raise ValueError("Server response does not include rules YAML")
+
+
+async def _fetch_current_ruleset(
+    client: Any,
+    ruleset_name: str,
+) -> dict[str, Any]:
+    """Fetch the current ruleset from the canonical server API."""
+    return cast(
+        dict[str, Any],
+        await client.get(
+            f"/v1/rulesets/{ruleset_name}/current",
+            env=client.env,
+        ),
+    )
 
 
 async def _from_server(
@@ -71,7 +98,7 @@ async def _from_server(
         approval_backend: Override the default ``ServerApprovalBackend``.
         storage_backend: Override the default ``ServerBackend``.
         mode: Enforcement mode (``"enforce"`` or ``"observe"``).
-        on_block: Callback invoked when a tool call is denied.
+        on_block: Callback invoked when a tool call is blocked.
         on_allow: Callback invoked when a tool call is allowed.
         success_check: Callable ``(tool_name, result) -> bool``.
         principal: Static principal for all tool calls.
@@ -143,12 +170,8 @@ async def _from_server(
 
     if bundle_name is not None:
         try:
-            response = await client.get(
-                f"/api/v1/bundles/{bundle_name}/current",
-                env=client.env,
-            )
-            yaml_b64 = response.get("yaml_bytes", "")
-            bundle_yaml = base64.b64decode(yaml_b64) if yaml_b64 else b""
+            response = await _fetch_current_ruleset(client, bundle_name)
+            bundle_yaml = _decode_ruleset_yaml(response)
         except Exception as exc:
             await client.close()
             raise EdictumConfigError(f"Failed to fetch rules from server: {exc}") from exc
@@ -270,16 +293,13 @@ async def _start_sse_watcher(self: Edictum) -> None:
                         if server_client is None:
                             logger.warning("Server client missing during SSE assignment update")
                             continue
-                        response = await server_client.get(
-                            f"/api/v1/bundles/{new_name}/current",
-                            env=server_client.env,
-                        )
-                        yaml_b64 = response.get("yaml_bytes", "")
-                        yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        response = bundle
+                        if "yaml" not in response and "yaml_bytes" not in response:
+                            response = await _fetch_current_ruleset(server_client, new_name)
+                        yaml_data = _decode_ruleset_yaml(response)
                         signature = response.get("signature")
                     else:
-                        yaml_b64 = bundle.get("yaml_bytes", "")
-                        yaml_data = base64.b64decode(yaml_b64) if yaml_b64 else b""
+                        yaml_data = _decode_ruleset_yaml(bundle)
                         signature = bundle.get("signature")
 
                     if getattr(self, "_verify_signatures", False):

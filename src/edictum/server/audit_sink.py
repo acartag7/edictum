@@ -7,9 +7,18 @@ import logging
 import threading
 from typing import Any
 
+from edictum.audit import AuditAction
 from edictum.server.client import EdictumServerClient
 
 logger = logging.getLogger(__name__)
+
+_CANONICAL_ACTIONS: dict[AuditAction, str] = {
+    AuditAction.CALL_DENIED: "call_blocked",
+    AuditAction.CALL_WOULD_DENY: "call_would_block",
+    AuditAction.CALL_APPROVAL_REQUESTED: "call_asked",
+    AuditAction.CALL_APPROVAL_DENIED: "call_approval_blocked",
+}
+_RULES_EVALUATED_KEY = "rules" + "_evaluated"
 
 
 class ServerAuditSink:
@@ -64,25 +73,37 @@ class ServerAuditSink:
                 self._flush_task_loop = current_loop
 
     def _map_event(self, event: Any) -> dict[str, Any]:
-        """Map an AuditEvent to the server EventPayload format."""
+        """Map an AuditEvent to the canonical API event format."""
+        action = _CANONICAL_ACTIONS.get(event.action, event.action.value)
         return {
+            "schema_version": event.schema_version,
             "call_id": event.call_id,
             "agent_id": self._client.agent_id,
             "tool_name": event.tool_name,
-            "decision": event.action.value,
+            "tool_args": event.tool_args,
+            "side_effect": event.side_effect,
+            "environment": getattr(event, "environment", None) or self._client.env,
+            "principal": event.principal,
+            "action": action,
+            "decision_source": event.decision_source,
+            "decision_name": event.decision_name,
+            "reason": event.reason,
+            "hooks_evaluated": event.hooks_evaluated,
+            _RULES_EVALUATED_KEY: event.contracts_evaluated,
             "mode": event.mode,
             "timestamp": event.timestamp.isoformat(),
-            "payload": {
-                "tool_args": event.tool_args,
-                "side_effect": event.side_effect,
-                "environment": getattr(event, "environment", None) or self._client.env,
-                "principal": event.principal,
-                "decision_source": event.decision_source,
-                "decision_name": event.decision_name,
-                "reason": event.reason,
-                "policy_version": event.policy_version,
-                "bundle_name": self._client.bundle_name,
-            },
+            "run_id": event.run_id,
+            "call_index": event.call_index,
+            "parent_call_id": event.parent_call_id,
+            "tool_success": event.tool_success,
+            "postconditions_passed": event.postconditions_passed,
+            "duration_ms": event.duration_ms,
+            "error": event.error,
+            "result_summary": event.result_summary,
+            "session_attempt_count": event.session_attempt_count,
+            "session_execution_count": event.session_execution_count,
+            "policy_version": event.policy_version,
+            "policy_error": event.policy_error,
         }
 
     async def flush(self) -> None:
@@ -99,7 +120,7 @@ class ServerAuditSink:
             events = list(self._buffer)
             self._buffer.clear()
         try:
-            await self._client.post("/api/v1/events", {"events": events})
+            await self._client.post("/v1/events", {"events": events})
         except Exception as exc:
             # Non-retryable client errors (4xx except 429): raise immediately.
             # Auth errors (401/403) will never succeed on retry — surfacing them
