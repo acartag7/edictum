@@ -116,7 +116,7 @@ def _all_configs():
 
 CONFIGS = _all_configs()
 IDS = [c[0] for c in CONFIGS]
-PENDING_DECISION_GUARD_IDS = {"OpenAI", "LangChain", "ClaudeSDK", "Agno", "SK"}
+PENDING_DECISION_GUARD_IDS = {"OpenAI", "LangChain", "ClaudeSDK", "Agno", "SK", "GoogleADK"}
 
 
 class TestAdapterSpanEndOnPreRaise:

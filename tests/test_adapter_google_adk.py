@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import sys
 from types import ModuleType, SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from edictum import Decision, Edictum, Principal, postcondition, precondition
 from edictum.adapters.google_adk import GoogleADKAdapter
@@ -89,6 +89,19 @@ class TestGoogleADKAdapter:
         assert isinstance(result, PostCallResult)
         assert result.postconditions_passed is True
         assert result.result == "ok"
+
+    async def test_error_audit_ends_span_when_pending_decision_missing(self):
+        guard = make_guard()
+        adapter = GoogleADKAdapter(guard)
+        mock_span = MagicMock()
+
+        with patch.object(guard.telemetry, "start_tool_span", return_value=mock_span):
+            await adapter._pre(tool_name="TestTool", tool_input={}, call_id="call-1")
+
+        adapter._pending_decisions.clear()
+        await adapter._emit_error_audit("call-1", RuntimeError("boom"))
+
+        mock_span.end.assert_called_once()
 
     async def test_call_index_increments(self):
         guard = make_guard()
