@@ -1,15 +1,22 @@
 # Changelog
 
-## M1 Terminology Rename
+## 0.17.0
 
-## CLI Removal
-
-### Removed
-- **Python CLI removed.** The `edictum` CLI commands (validate, check, test, diff, replay, gate, skill) are no longer part of the Python package. Use the Go binary (`edictum-go`) for all CLI workflows. The Python package is now library-only.
+### Added
+- **Workflow runtime enforcement** — `WorkflowRuntime`, `WorkflowDefinition`, `WorkflowStage`, `WorkflowGate`, `WorkflowApproval`, `WorkflowCheck`, `WorkflowMetadata`, `WorkflowEvaluation`, `WorkflowEvidence`, `WorkflowState`, `load_workflow()`, and `load_workflow_string()` add explicit workflow loading, runtime stage gating, workflow approvals, and opt-in `exec(...)` workflow conditions (#181)
+- **Workflow adapter validation coverage** — adapter integration tests now validate workflow evidence recording for CrewAI, Google ADK, LangChain, and OpenAI Agents SDK flows (#182)
 
 ### Changed
-- Updated governance and repository markdown to use the M1 terminology consistently: rules/rulesets, ToolCall, Decision, CheckPipeline, blocked, and violations.
-- Refreshed YAML examples and reviewer guidance to use `kind: Ruleset`, `rules:`, and `action:`.
+- Updated governance and repository markdown to use the M1 terminology consistently: rules/rulesets, ToolCall, Decision, CheckPipeline, blocked, and violations (#178)
+- Refreshed YAML examples and reviewer guidance to use `kind: Ruleset`, `rules:`, and `action:` (#178)
+- Bumped `langchain-core` from 1.2.17 to 1.2.22 (#177)
+- Bumped `pygments` from 2.19.2 to 2.20.0 (#183)
+
+### Removed
+- **Python CLI removed.** The `edictum` CLI commands (validate, check, test, diff, replay, gate, skill) are no longer part of the Python package. Use the Go binary (`edictum-go`) for all CLI workflows. The Python package is now library-only. (#180)
+
+### Security
+- Bumped `cryptography` from 46.0.5 to 46.0.6 (#179)
 
 ## 0.16.0
 

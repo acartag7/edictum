@@ -4,7 +4,7 @@
 
 Runtime rule enforcement for AI agent tool calls. Deterministic pipeline: checks, output checks, session rules, principal-aware enforcement. Eight framework adapters (LangChain, CrewAI, Agno, Semantic Kernel, OpenAI Agents SDK, Claude Agent SDK, Nanobot, Google ADK). Zero runtime deps in core.
 
-Current version: 0.16.0 (PyPI: `edictum`)
+Current version: 0.17.0 (PyPI: `edictum`)
 
 ## Architecture: Core + Server
 
@@ -88,7 +88,7 @@ The split follows one rule: **evaluation = core library, coordination = server.*
 - v0.14.0: Google ADK adapter — plugin and agent callback integration for Google Agent Development Kit (8th framework adapter)
 - v0.15.0: Edictum Gate (coding assistant governance), `CollectingAuditSink`, `Edictum.from_server()`, `Edictum.reload()`, `Edictum.close()`, SSE watcher, server rule source revision tracking, `ServerAuditSink` multi-bundle support. Default audit sink changed from `StdoutAuditSink` to `CollectingAuditSink` only.
 - v0.16.0: Skill security analysis module (CLI removed — use Go binary). Ed25519 bundle signature verification (`edictum[verified]`). Server HTTPS enforcement. Batch session counter reads. Cross-SDK conformance runner. Terminology rename `shadow_*` → `observe_*` completed. Removed `ShadowContract` deprecation alias and `"shadows"` backward-compat JSON key. 14 security fixes including session injection, shell separator bypass, and redaction gaps.
-- Unreleased: Workflow runtime enforcement — `WorkflowRuntime`, `WorkflowDefinition`, `WorkflowStage`, `WorkflowGate`, `WorkflowApproval`, `WorkflowCheck`, `WorkflowMetadata`, `WorkflowEvaluation`, `WorkflowEvidence`, `WorkflowState`, `load_workflow()`, `load_workflow_string()`, explicit workflow loading for M1, runtime workflow stage gating, workflow approvals, and opt-in `exec(...)` workflow conditions.
+- v0.17.0: Workflow runtime enforcement — `WorkflowRuntime`, `WorkflowDefinition`, `WorkflowStage`, `WorkflowGate`, `WorkflowApproval`, `WorkflowCheck`, `WorkflowMetadata`, `WorkflowEvaluation`, `WorkflowEvidence`, `WorkflowState`, `load_workflow()`, `load_workflow_string()`, explicit workflow loading for M1, runtime workflow stage gating, workflow approvals, and opt-in `exec(...)` workflow conditions. Added workflow adapter evidence coverage for CrewAI, Google ADK, LangChain, and OpenAI Agents SDK. Removed the Python CLI from the package; the Go binary is canonical. Completed the M1 terminology rename across code and docs.
 
 ## Session Model
 
