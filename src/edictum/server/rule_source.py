@@ -8,7 +8,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
-from edictum.server.client import _SAFE_IDENTIFIER_RE, EdictumServerClient
+from edictum.server.client import _SAFE_IDENTIFIER_RE, EdictumServerClient, EdictumServerError
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,9 @@ _STABLE_CONNECTION_SECS = 30.0
 
 
 class ServerContractSource:
-    """Receives rule bundle updates from edictum-server via SSE.
+    """Receives ruleset updates from edictum-server via SSE.
 
-    Subscribes to /api/v1/stream and yields updated bundles.
+    Subscribes to /v1/stream and yields updated rules.
     Implements auto-reconnect with exponential backoff.
     """
 
@@ -42,7 +42,7 @@ class ServerContractSource:
         self._closed = False
 
     async def watch(self) -> AsyncIterator[dict]:
-        """Yield rule bundles as they arrive via SSE.
+        """Yield rules as they arrive via SSE.
 
         Passes ``env``, ``bundle_name``, and ``policy_version`` as query
         params so the server can filter events and detect drift.
@@ -69,7 +69,7 @@ class ServerContractSource:
                 async with httpx_sse.aconnect_sse(
                     http_client,
                     "GET",
-                    "/api/v1/stream",
+                    "/v1/stream",
                     params=params,
                     # Separate connect timeout from stream idle timeout.
                     # The default client timeout (30s) applies to all phases —
@@ -83,17 +83,36 @@ class ServerContractSource:
                     async for event in event_source.aiter_sse():
                         if self._closed:
                             return
-                        if event.event == "contract_update":
+                        if event.event in {"contract_update", "ruleset_updated"}:
                             try:
                                 bundle = json.loads(event.data)
                             except json.JSONDecodeError:
-                                logger.warning("Invalid JSON in SSE contract_update event")
+                                logger.warning("Invalid JSON in SSE %s event", event.event)
                                 continue
                             if not isinstance(bundle, dict):
-                                logger.warning("SSE contract_update payload is not an object")
+                                logger.warning("SSE %s payload is not an object", event.event)
                                 continue
-                            if "revision_hash" in bundle:
-                                self._current_revision = bundle["revision_hash"]
+                            if event.event == "ruleset_updated":
+                                ruleset_name = bundle.get("name")
+                                if not isinstance(ruleset_name, str) or not _SAFE_IDENTIFIER_RE.match(ruleset_name):
+                                    logger.warning("SSE ruleset_updated has invalid name: %r", ruleset_name)
+                                    continue
+                                current_name = self._client.bundle_name
+                                if current_name is not None and ruleset_name != current_name:
+                                    continue
+                                try:
+                                    bundle = await self._client.get(
+                                        f"/v1/rulesets/{ruleset_name}/current",
+                                        env=self._client.env,
+                                    )
+                                except (EdictumServerError, httpx.HTTPError, OSError) as exc:
+                                    logger.warning("Failed to fetch ruleset %s after SSE update: %s", ruleset_name, exc)
+                                    continue
+                            revision = bundle.get("revision_hash")
+                            if revision is None and "version" in bundle:
+                                revision = str(bundle["version"])
+                            if isinstance(revision, str):
+                                self._current_revision = revision
                             yield bundle
                         elif event.event == "assignment_changed":
                             try:

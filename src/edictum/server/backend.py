@@ -9,6 +9,8 @@ cannot be silently bypassed by a network outage.
 
 from __future__ import annotations
 
+from typing import cast
+
 from edictum.server.client import EdictumServerClient, EdictumServerError
 
 
@@ -29,7 +31,7 @@ class ServerBackend:
         All other errors propagate so the pipeline fails closed.
         """
         try:
-            response = await self._client.get(f"/api/v1/sessions/{key}")
+            response = await self._client.get(f"/v1/sessions/{key}")
             return response.get("value")
         except EdictumServerError as exc:
             if exc.status_code == 404:
@@ -38,12 +40,12 @@ class ServerBackend:
 
     async def set(self, key: str, value: str) -> None:
         """Set a value in the server session store."""
-        await self._client.put(f"/api/v1/sessions/{key}", {"value": value})
+        await self._client.put(f"/v1/sessions/{key}", {"value": value})
 
     async def delete(self, key: str) -> None:
         """Delete a key from the server session store."""
         try:
-            await self._client.delete(f"/api/v1/sessions/{key}")
+            await self._client.delete(f"/v1/sessions/{key}")
         except EdictumServerError as exc:
             if exc.status_code != 404:
                 raise
@@ -51,10 +53,10 @@ class ServerBackend:
     async def increment(self, key: str, amount: float = 1) -> float:
         """Atomically increment a counter on the server."""
         response = await self._client.post(
-            f"/api/v1/sessions/{key}/increment",
+            f"/v1/sessions/{key}/increment",
             {"amount": amount},
         )
-        return response["value"]
+        return cast(float, response["value"])
 
     async def batch_get(self, keys: list[str]) -> dict[str, str | None]:
         """Retrieve multiple session values in a single HTTP call.
@@ -63,14 +65,14 @@ class ServerBackend:
         or 405 (endpoint not available on older servers, or route pattern
         matches a catch-all that doesn't support POST).
 
-        Fail-closed: other errors propagate so the pipeline denies
+        Fail-closed: other errors propagate so the pipeline blocks
         rather than silently allowing with missing data.
         """
         if not keys:
             return {}
         try:
             response = await self._client.post(
-                "/api/v1/sessions/batch",
+                "/v1/sessions/batch",
                 {"keys": keys},
             )
             values = response.get("values", {})

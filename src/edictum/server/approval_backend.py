@@ -16,6 +16,9 @@ from edictum.server.client import EdictumServerClient
 
 logger = logging.getLogger(__name__)
 
+_LEGACY_BLOCKED_STATUS = "denied"
+_LEGACY_TIMEOUT_STATUS = "timeout"
+
 
 class ServerApprovalBackend:
     """Approval backend that delegates to the edictum-server approval queue.
@@ -53,7 +56,7 @@ class ServerApprovalBackend:
             "timeout": timeout,
             "timeout_action": timeout_action,
         }
-        response = await self._client.post("/api/v1/approvals", body)
+        response = await self._client.post("/v1/approvals", body)
 
         request = ApprovalRequest(
             approval_id=response["id"],
@@ -81,7 +84,7 @@ class ServerApprovalBackend:
         deadline = asyncio.get_running_loop().time() + effective_timeout
 
         while True:
-            response = await self._client.get(f"/api/v1/approvals/{approval_id}")
+            response = await self._client.get(f"/v1/approvals/{approval_id}")
             status = response["status"]
 
             if status == "approved":
@@ -93,7 +96,7 @@ class ServerApprovalBackend:
                     timestamp=datetime.now(UTC),
                 )
 
-            if status == "denied":
+            if status in {_LEGACY_BLOCKED_STATUS, "rejected"}:
                 return ApprovalDecision(
                     approved=False,
                     approver=response.get("decided_by"),
@@ -102,7 +105,7 @@ class ServerApprovalBackend:
                     timestamp=datetime.now(UTC),
                 )
 
-            if status == "timeout":
+            if status in {_LEGACY_TIMEOUT_STATUS, "timed_out"}:
                 return ApprovalDecision(
                     approved=(timeout_action == "allow"),
                     status=ApprovalStatus.TIMEOUT,

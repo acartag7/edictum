@@ -12,6 +12,8 @@ from edictum.audit import AuditAction, AuditEvent, AuditSink
 from edictum.server.audit_sink import ServerAuditSink
 from edictum.server.client import EdictumServerClient
 
+RULES_EVALUATED_KEY = "rules_evaluated"
+
 
 @pytest.fixture
 def mock_client():
@@ -54,13 +56,14 @@ class TestServerAuditSink:
 
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
-        assert call_args[0][0] == "/api/v1/events"
+        assert call_args[0][0] == "/v1/events"
         events = call_args[0][1]["events"]
         assert len(events) == 1
         assert events[0]["call_id"] == "call-1"
         assert events[0]["agent_id"] == "test-agent"
+        assert events[0]["bundle_name"] == "default"
         assert events[0]["tool_name"] == "read_file"
-        assert events[0]["decision"] == "call_allowed"
+        assert events[0]["action"] == "call_allowed"
 
     @pytest.mark.asyncio
     async def test_batch_flush(self, mock_client):
@@ -86,8 +89,18 @@ class TestServerAuditSink:
             principal={"role": "admin"},
             decision_source="precondition",
             decision_name="no_writes",
-            reason="Write denied",
+            reason="Write blocked",
             policy_version="v1.0",
+            hooks_evaluated=[{"id": "hook-1", "passed": True}],
+            contracts_evaluated=[{"id": "no_writes", "type": "pre", "passed": False}],
+            tool_success=False,
+            postconditions_passed=False,
+            duration_ms=17,
+            error="blocked",
+            result_summary="blocked",
+            session_attempt_count=3,
+            session_execution_count=0,
+            policy_error=True,
         )
 
         await sink.emit(event)
@@ -96,15 +109,26 @@ class TestServerAuditSink:
         payload = mock_client.post.call_args[0][1]["events"][0]
         assert payload["call_id"] == "call-42"
         assert payload["tool_name"] == "write_file"
-        assert payload["decision"] == "call_denied"
+        assert payload["action"] == "call_blocked"
         assert payload["mode"] == "enforce"
-        assert payload["payload"]["side_effect"] == "irreversible"
-        assert payload["payload"]["environment"] == "staging"
-        assert payload["payload"]["principal"] == {"role": "admin"}
-        assert payload["payload"]["decision_source"] == "precondition"
-        assert payload["payload"]["decision_name"] == "no_writes"
-        assert payload["payload"]["reason"] == "Write denied"
-        assert payload["payload"]["policy_version"] == "v1.0"
+        assert payload["bundle_name"] == "default"
+        assert payload["side_effect"] == "irreversible"
+        assert payload["environment"] == "staging"
+        assert payload["principal"] == {"role": "admin"}
+        assert payload["decision_source"] == "precondition"
+        assert payload["decision_name"] == "no_writes"
+        assert payload["reason"] == "Write blocked"
+        assert payload["policy_version"] == "v1.0"
+        assert payload["hooks_evaluated"] == [{"id": "hook-1", "passed": True}]
+        assert payload[RULES_EVALUATED_KEY] == [{"id": "no_writes", "type": "pre", "passed": False}]
+        assert payload["tool_success"] is False
+        assert payload["postconditions_passed"] is False
+        assert payload["duration_ms"] == 17
+        assert payload["error"] == "blocked"
+        assert payload["result_summary"] == "blocked"
+        assert payload["session_attempt_count"] == 3
+        assert payload["session_execution_count"] == 0
+        assert payload["policy_error"] is True
 
     @pytest.mark.asyncio
     async def test_implements_protocol(self, mock_client):
@@ -138,13 +162,19 @@ class TestServerAuditSink:
         assert sink._buffer[0]["call_id"] == "call-3"
 
     @pytest.mark.asyncio
-    async def test_event_mapping_includes_bundle_name(self, mock_client):
-        """bundle_name from client is included in mapped event payload."""
-        mock_client.bundle_name = "devops-agent"
+    async def test_event_mapping_renames_contracts_to_rules(self, mock_client):
+        """contracts_evaluated is serialized with the canonical API key."""
         sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
-        event = _make_event()
+        event = _make_event(contracts_evaluated=[{"id": "rule-1", "passed": True}])
         mapped = sink._map_event(event)
-        assert mapped["payload"]["bundle_name"] == "devops-agent"
+        assert mapped[RULES_EVALUATED_KEY] == [{"id": "rule-1", "passed": True}]
+
+    @pytest.mark.asyncio
+    async def test_event_mapping_preserves_bundle_name(self, mock_client):
+        """bundle_name stays available in the flattened server event payload."""
+        sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
+        mapped = sink._map_event(_make_event())
+        assert mapped["bundle_name"] == "default"
 
     @pytest.mark.asyncio
     async def test_event_mapping_uses_client_env_as_fallback(self, mock_client):
@@ -153,7 +183,7 @@ class TestServerAuditSink:
         sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
         event = _make_event(environment=None)
         mapped = sink._map_event(event)
-        assert mapped["payload"]["environment"] == "staging"
+        assert mapped["environment"] == "staging"
 
     @pytest.mark.asyncio
     async def test_event_mapping_preserves_event_environment(self, mock_client):
@@ -162,7 +192,7 @@ class TestServerAuditSink:
         sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
         event = _make_event(environment="staging")
         mapped = sink._map_event(event)
-        assert mapped["payload"]["environment"] == "staging"
+        assert mapped["environment"] == "staging"
 
     @pytest.mark.asyncio
     async def test_cancellation_preserves_events(self, mock_client):

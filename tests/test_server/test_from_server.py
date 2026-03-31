@@ -27,7 +27,7 @@ rules:
         contains: "rm -rf"
     then:
       action: block
-      message: "Destructive command denied."
+      message: "Destructive command blocked."
 """
 
 
@@ -44,7 +44,7 @@ def _make_client_mock(response=None, side_effect=None):
     if side_effect:
         client.get = AsyncMock(side_effect=side_effect)
     else:
-        client.get = AsyncMock(return_value=response or {"yaml_bytes": _b64_yaml()})
+        client.get = AsyncMock(return_value=response or {"yaml": VALID_BUNDLE_YAML})
     client.close = AsyncMock()
     return client
 
@@ -102,7 +102,7 @@ class TestFromServer:
                 allow_insecure=False,
             )
             client.get.assert_called_once_with(
-                "/api/v1/bundles/default/current",
+                "/v1/rulesets/default/current",
                 env="production",
             )
 
@@ -129,7 +129,7 @@ class TestFromServer:
 
             assert guard.environment == "staging"
             client.get.assert_called_once_with(
-                "/api/v1/bundles/default/current",
+                "/v1/rulesets/default/current",
                 env="staging",
             )
             await guard.close()
@@ -172,6 +172,26 @@ class TestFromServer:
                 )
 
             client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_legacy_yaml_bytes_response_still_supported(self):
+        """from_server() still accepts legacy yaml_bytes responses during transition."""
+        p_client, p_sink, p_approval, p_backend, p_source = _server_patches()
+        with p_client as mock_cls, p_sink, p_approval, p_backend, p_source as mock_src_cls:
+            client = _make_client_mock(response={"yaml_bytes": _b64_yaml()})
+            mock_cls.return_value = client
+            mock_src_cls.return_value = _make_source_mock()
+
+            guard = await Edictum.from_server(
+                "https://example.com",
+                "key",
+                "agent-1",
+                bundle_name="default",
+                auto_watch=False,
+            )
+
+            assert len(guard._state.preconditions) == 1
+            await guard.close()
 
     @pytest.mark.asyncio
     async def test_invalid_yaml_raises_config_error(self):
@@ -218,7 +238,7 @@ class TestFromServer:
                 allow_insecure=False,
             )
             client.get.assert_called_once_with(
-                "/api/v1/bundles/devops-agent/current",
+                "/v1/rulesets/devops-agent/current",
                 env="production",
             )
             await guard.close()
@@ -346,7 +366,7 @@ class TestFromServer:
             assert isinstance(guard, Edictum)
             assert len(guard._state.preconditions) == 1
             client.get.assert_called_once_with(
-                "/api/v1/bundles/my-bundle/current",
+                "/v1/rulesets/my-bundle/current",
                 env="production",
             )
             await guard.close()
