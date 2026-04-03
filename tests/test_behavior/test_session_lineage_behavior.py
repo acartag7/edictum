@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from dataclasses import FrozenInstanceError, asdict
-from pathlib import Path
 
 import pytest
 
@@ -72,11 +70,10 @@ class TestAuditEventSessionLineageSinks:
         assert data["session_id"] == "sess-stdout"
         assert data["parent_session_id"] == "sess-parent-stdout"
 
-    async def test_file_sink_includes_session_id(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
-            path = f.name
+    async def test_file_sink_includes_session_id(self, tmp_path):
+        path = tmp_path / "audit.jsonl"
 
-        sink = FileAuditSink(path)
+        sink = FileAuditSink(str(path))
         event = AuditEvent(
             action=AuditAction.CALL_EXECUTED,
             tool_name="Bash",
@@ -85,7 +82,7 @@ class TestAuditEventSessionLineageSinks:
         )
         await sink.emit(event)
 
-        data = json.loads(Path(path).read_text().strip())
+        data = json.loads(path.read_text().strip())
         assert data["session_id"] == "sess-file"
         assert data["parent_session_id"] == "sess-parent-file"
 

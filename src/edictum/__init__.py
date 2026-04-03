@@ -51,6 +51,8 @@ from edictum.storage import MemoryBackend, StorageBackend
 from edictum.telemetry import GovernanceTelemetry
 from edictum.types import HookRegistration
 from edictum.workflow import (
+    BlockedAction,
+    PendingApproval,
     WorkflowApproval,
     WorkflowCheck,
     WorkflowDefinition,
@@ -117,6 +119,8 @@ __all__ = [
     "RuleResult",
     "CompositionReport",
     "TemplateInfo",
+    "BlockedAction",
+    "PendingApproval",
     "WorkflowApproval",
     "WorkflowCheck",
     "WorkflowDefinition",

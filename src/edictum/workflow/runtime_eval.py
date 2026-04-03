@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from edictum.envelope import ToolCall
 from edictum.workflow.definition import WorkflowGate, WorkflowStage
 from edictum.workflow.evaluator import EvaluateRequest, FactResult, gate_record, parse_condition
-from edictum.workflow.result import WorkflowEvaluation, WorkflowState
+from edictum.workflow.result import BlockedAction, PendingApproval, WorkflowEvaluation, WorkflowState
 
 if TYPE_CHECKING:
     from edictum.session import Session
@@ -31,6 +32,7 @@ async def evaluate_runtime(runtime: WorkflowRuntime, session: Session, envelope:
 
         allowed, allowed_eval, invalid_eval = runtime.evaluate_current_stage(stage, envelope)
         if allowed:
+            _enrich_state(state, allowed_eval, envelope)
             if changed:
                 await runtime.save_state(session, state)
             allowed_eval.events.extend(events)
@@ -38,21 +40,24 @@ async def evaluate_runtime(runtime: WorkflowRuntime, session: Session, envelope:
 
         next_index, has_next = runtime.next_index(stage.id)
         if invalid_eval is not None and not has_next:
-            if changed:
-                await runtime.save_state(session, state)
+            _enrich_state(state, invalid_eval, envelope)
+            changed = True
+            await runtime.save_state(session, state)
             invalid_eval.events.extend(events)
             return invalid_eval
 
         completion, complete = await runtime.evaluate_completion(stage, state, envelope, has_next)
         if not complete:
             if completion.action:
-                if changed:
-                    await runtime.save_state(session, state)
+                _enrich_state(state, completion, envelope)
+                changed = True
+                await runtime.save_state(session, state)
                 completion.events.extend(events)
                 return completion
             if invalid_eval is not None:
-                if changed:
-                    await runtime.save_state(session, state)
+                _enrich_state(state, invalid_eval, envelope)
+                changed = True
+                await runtime.save_state(session, state)
                 invalid_eval.events.extend(events)
                 return invalid_eval
             if changed:
@@ -65,6 +70,7 @@ async def evaluate_runtime(runtime: WorkflowRuntime, session: Session, envelope:
 
         if not has_next:
             state.active_stage = ""
+            _enrich_state(state, WorkflowEvaluation(action="allow"), envelope)
             events.append(workflow_progress_event("workflow_completed", runtime.definition.metadata.name, stage.id, ""))
             await runtime.save_state(session, state)
             return WorkflowEvaluation(action="allow", events=events)
@@ -238,6 +244,36 @@ def workflow_metadata(
     if extra:
         metadata.update(extra)
     return metadata
+
+
+def _enrich_state(state: WorkflowState, evaluation: WorkflowEvaluation, envelope: ToolCall) -> None:
+    """Set blocked/pending enrichment fields on *state* based on *evaluation*.
+
+    Called before ``save_state`` so the persisted state snapshot always
+    reflects the latest evaluation outcome.
+    """
+    if evaluation.action == "block":
+        state.blocked_reason = evaluation.reason
+        state.last_blocked_action = BlockedAction(
+            tool=envelope.tool_name,
+            summary=evaluation.reason,
+            message=evaluation.reason,
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        state.pending_approval = None
+    elif evaluation.action == "pending_approval":
+        state.pending_approval = PendingApproval(
+            required=True,
+            stage_id=evaluation.stage_id,
+            message=evaluation.reason,
+        )
+        state.blocked_reason = None
+        state.last_blocked_action = None
+    else:
+        # allow — clear enrichment fields
+        state.blocked_reason = None
+        state.pending_approval = None
+        state.last_blocked_action = None
 
 
 def clone_state(state: WorkflowState) -> WorkflowState:
