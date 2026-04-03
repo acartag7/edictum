@@ -31,6 +31,7 @@ class ApprovalRequest:
     principal: dict | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    session_id: str | None = None
 
 
 @dataclass(frozen=True)

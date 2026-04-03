@@ -70,7 +70,12 @@ class WorkflowRuntime:
         async with self._session_lock(session):
             return await evaluate_runtime(self, session, envelope)
 
-    async def reset(self, session: Session, stage_id: str) -> None:
+    async def reset(self, session: Session, stage_id: str) -> list[dict[str, Any]]:
+        """Reset workflow to a named stage and return progress events.
+
+        Returns a list containing a ``workflow_state_updated`` progress event
+        so the caller can emit the corresponding audit event.
+        """
         async with self._session_lock(session):
             idx = self.definition.stage_index(stage_id)
             if idx is None:
@@ -84,7 +89,19 @@ class WorkflowRuntime:
                 state.evidence.stage_calls.pop(stage.id, None)
             if idx == 0:
                 state.evidence.reads = []
+            # Clear enrichment fields on reset — they reflect pre-reset state
+            state.blocked_reason = None
+            state.pending_approval = None
+            state.last_blocked_action = None
             await self.save_state(session, state)
+            return [
+                workflow_progress_event(
+                    "workflow_state_updated",
+                    self.definition.metadata.name,
+                    stage_id,
+                    "",
+                )
+            ]
 
     async def record_approval(self, session: Session, stage_id: str) -> None:
         async with self._session_lock(session):

@@ -35,6 +35,7 @@ DENIED_ALLOWLIST = {
     "_on_deny",
     "_deny(",
     "denied =",
+    'DENIED = "denied"',
     " denied,",
     'startswith("DENIED:")',
     'return f"DENIED: {reason}"',

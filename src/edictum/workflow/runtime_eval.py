@@ -247,4 +247,7 @@ def clone_state(state: WorkflowState) -> WorkflowState:
         completed_stages=list(state.completed_stages),
         approvals=dict(state.approvals),
         evidence=deepcopy(state.evidence),
+        blocked_reason=state.blocked_reason,
+        pending_approval=deepcopy(state.pending_approval),
+        last_blocked_action=deepcopy(state.last_blocked_action),
     )

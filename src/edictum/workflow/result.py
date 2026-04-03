@@ -27,6 +27,25 @@ class WorkflowEvidence:
 
 
 @dataclass
+class PendingApproval:
+    """Structured pending approval context for workflow state snapshots."""
+
+    required: bool = False
+    stage_id: str = ""
+    message: str = ""
+
+
+@dataclass
+class BlockedAction:
+    """Record of the last blocked tool call in a workflow."""
+
+    tool: str = ""
+    summary: str = ""
+    message: str = ""
+    timestamp: str = ""
+
+
+@dataclass
 class WorkflowState:
     """Persisted workflow instance state."""
 
@@ -35,6 +54,9 @@ class WorkflowState:
     completed_stages: list[str] = field(default_factory=list)
     approvals: dict[str, str] = field(default_factory=dict)
     evidence: WorkflowEvidence = field(default_factory=WorkflowEvidence)
+    blocked_reason: str | None = None
+    pending_approval: PendingApproval | None = None
+    last_blocked_action: BlockedAction | None = None
 
     def completed(self, stage_id: str) -> bool:
         return stage_id in self.completed_stages

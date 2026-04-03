@@ -6,7 +6,7 @@ import json
 
 from edictum.envelope import ToolCall
 from edictum.session import Session
-from edictum.workflow.result import WorkflowEvidence, WorkflowState
+from edictum.workflow.result import BlockedAction, PendingApproval, WorkflowEvidence, WorkflowState
 
 APPROVED_STATUS = "approved"
 MAX_WORKFLOW_EVIDENCE_ITEMS = 1000
@@ -33,6 +33,26 @@ async def load_state(session: Session, definition) -> WorkflowState:
         raise ValueError(f"workflow: decode persisted state: {exc}") from exc
 
     evidence_data = data.get("evidence") or {}
+
+    pending_raw = data.get("pending_approval")
+    pending = None
+    if isinstance(pending_raw, dict):
+        pending = PendingApproval(
+            required=bool(pending_raw.get("required", False)),
+            stage_id=str(pending_raw.get("stage_id", "")),
+            message=str(pending_raw.get("message", "")),
+        )
+
+    blocked_raw = data.get("last_blocked_action")
+    blocked = None
+    if isinstance(blocked_raw, dict):
+        blocked = BlockedAction(
+            tool=str(blocked_raw.get("tool", "")),
+            summary=str(blocked_raw.get("summary", "")),
+            message=str(blocked_raw.get("message", "")),
+            timestamp=str(blocked_raw.get("timestamp", "")),
+        )
+
     state = WorkflowState(
         session_id=session.session_id,
         active_stage=data.get("active_stage", ""),
@@ -42,6 +62,9 @@ async def load_state(session: Session, definition) -> WorkflowState:
             reads=list(evidence_data.get("reads") or []),
             stage_calls={key: list(value) for key, value in (evidence_data.get("stage_calls") or {}).items()},
         ),
+        blocked_reason=data.get("blocked_reason"),
+        pending_approval=pending,
+        last_blocked_action=blocked,
     )
     state.ensure_defaults()
     if state.active_stage and definition.stage_by_id(state.active_stage) is None:
@@ -52,6 +75,23 @@ async def load_state(session: Session, definition) -> WorkflowState:
 async def save_state(session: Session, definition, state: WorkflowState) -> None:
     state.session_id = session.session_id
     state.ensure_defaults()
+    pending_dict = None
+    if state.pending_approval is not None:
+        pending_dict = {
+            "required": state.pending_approval.required,
+            "stage_id": state.pending_approval.stage_id,
+            "message": state.pending_approval.message,
+        }
+
+    blocked_dict = None
+    if state.last_blocked_action is not None:
+        blocked_dict = {
+            "tool": state.last_blocked_action.tool,
+            "summary": state.last_blocked_action.summary,
+            "message": state.last_blocked_action.message,
+            "timestamp": state.last_blocked_action.timestamp,
+        }
+
     try:
         raw = json.dumps(
             {
@@ -63,6 +103,9 @@ async def save_state(session: Session, definition, state: WorkflowState) -> None
                     "reads": state.evidence.reads,
                     "stage_calls": state.evidence.stage_calls,
                 },
+                "blocked_reason": state.blocked_reason,
+                "pending_approval": pending_dict,
+                "last_blocked_action": blocked_dict,
             }
         )
     except TypeError as exc:

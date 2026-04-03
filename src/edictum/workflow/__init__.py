@@ -11,10 +11,12 @@ from edictum.workflow.definition import (
     WorkflowStage,
 )
 from edictum.workflow.load import load_workflow, load_workflow_string
-from edictum.workflow.result import WorkflowEvaluation, WorkflowEvidence, WorkflowState
+from edictum.workflow.result import BlockedAction, PendingApproval, WorkflowEvaluation, WorkflowEvidence, WorkflowState
 from edictum.workflow.runtime import WorkflowRuntime
 
 __all__ = [
+    "BlockedAction",
+    "PendingApproval",
     "WorkflowApproval",
     "WorkflowCheck",
     "WorkflowDefinition",
