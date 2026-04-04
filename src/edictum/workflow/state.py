@@ -141,6 +141,9 @@ def apply_evaluation_status(state: WorkflowState, evaluation: WorkflowEvaluation
         if state.blocked_reason is not None:
             state.blocked_reason = None
             changed = True
+        if state.last_blocked_action is not None:
+            state.last_blocked_action = None
+            changed = True
         return changed
 
     if state.blocked_reason is not None or state.pending_approval != default_pending_approval():
@@ -173,8 +176,15 @@ def build_workflow_event(action: str, workflow: dict[str, Any]) -> dict[str, Any
 def hydrate_workflow_events(definition, state: WorkflowState, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not events:
         return []
-    workflow = build_workflow_snapshot(definition, state)
-    return [build_workflow_event(str(event.get("action", "")), workflow) for event in events]
+    snapshot = build_workflow_snapshot(definition, state)
+    hydrated: list[dict[str, Any]] = []
+    for event in events:
+        workflow = deepcopy(snapshot)
+        event_workflow = event.get("workflow")
+        if isinstance(event_workflow, dict):
+            workflow.update(event_workflow)
+        hydrated.append(build_workflow_event(str(event.get("action", "")), workflow))
+    return hydrated
 
 
 def build_last_blocked_action_fields(envelope: ToolCall, message: str) -> dict[str, str]:

@@ -300,6 +300,87 @@ stages:
 
 
 @pytest.mark.asyncio
+async def test_pending_workflow_call_clears_last_blocked_action_snapshot():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: pending-clears-blocked-action
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    approval:
+      message: need review
+  - id: push
+    entry:
+      - condition: stage_complete("review")
+    tools: [Bash]
+"""
+    )
+    session = Session("pending-clears-blocked-action", MemoryBackend())
+
+    await _seed_state(
+        runtime,
+        session,
+        WorkflowState(
+            session_id="pending-clears-blocked-action",
+            active_stage="review",
+            completed_stages=["implement"],
+            last_blocked_action={
+                "tool": "Bash",
+                "summary": "git push origin HEAD",
+                "message": "Tool is not allowed in this workflow stage",
+                "timestamp": "2026-04-04T00:00:00Z",
+            },
+        ),
+    )
+
+    approval_gate = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin feature"}))
+    state = await runtime.state(session)
+
+    assert approval_gate.action == "pending_approval"
+    assert state.last_blocked_action is None
+    assert approval_gate.audit is not None
+    assert "last_blocked_action" not in approval_gate.audit
+
+
+@pytest.mark.asyncio
+async def test_workflow_progress_events_preserve_transition_metadata_when_hydrated():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: progress-event-metadata
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    tools: [Read]
+"""
+    )
+    session = Session("progress-event-metadata", MemoryBackend())
+    envelope = make_envelope("Edit", {"path": "src/app.py"})
+
+    decision = await runtime.evaluate(session, envelope)
+    await runtime.record_result(session, decision.stage_id, envelope)
+    next_decision = await runtime.evaluate(session, make_envelope("Read", {"path": "README.md"}))
+
+    assert len(next_decision.events) == 1
+    assert next_decision.events[0]["action"] == AuditAction.WORKFLOW_STAGE_ADVANCED.value
+    assert next_decision.events[0]["workflow"]["name"] == "progress-event-metadata"
+    assert next_decision.events[0]["workflow"]["stage_id"] == "implement"
+    assert next_decision.events[0]["workflow"]["to_stage_id"] == "review"
+    assert next_decision.events[0]["workflow"]["active_stage"] == "review"
+
+
+@pytest.mark.asyncio
 async def test_pending_workflow_call_persists_pending_approval_snapshot():
     runtime = make_runtime(
         """

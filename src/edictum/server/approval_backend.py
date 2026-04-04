@@ -54,6 +54,8 @@ class ServerApprovalBackend:
             "timeout": timeout,
             "timeout_action": timeout_action,
         }
+        if session_id is not None:
+            body["session_id"] = session_id
         response = await self._client.post("/api/v1/approvals", body)
 
         request = ApprovalRequest(

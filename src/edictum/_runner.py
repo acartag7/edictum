@@ -10,7 +10,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum._exceptions import EdictumDenied, EdictumToolError
-from edictum.approval import ApprovalStatus
+from edictum.approval import ApprovalStatus, _request_approval_with_session_compat
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import create_envelope
 from edictum.otel import has_otel
@@ -322,7 +322,8 @@ async def _resolve_pending_approval(
     current = pre
     for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
         principal_dict = asdict(envelope.principal) if envelope.principal else None
-        approval_request = await self._approval_backend.request_approval(
+        approval_request = await _request_approval_with_session_compat(
+            self._approval_backend,
             tool_name=envelope.tool_name,
             tool_args=envelope.args,
             message=current.approval_message or current.reason or "",

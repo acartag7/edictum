@@ -77,6 +77,7 @@ class TestServerApprovalBackend:
 
         assert request.session_id == "workflow-session-123"
         assert backend._pending["approval-session"].session_id == "workflow-session-123"
+        assert mock_client.post.call_args.args[1]["session_id"] == "workflow-session-123"
 
     @pytest.mark.asyncio
     async def test_wait_for_decision_approved(self, mock_client):

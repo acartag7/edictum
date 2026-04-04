@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -67,6 +68,52 @@ class ApprovalBackend(Protocol):
         approval_id: str,
         timeout: int | None = None,
     ) -> ApprovalDecision: ...
+
+
+def _approval_backend_accepts_session_id(backend: ApprovalBackend) -> bool:
+    """Return True when request_approval accepts session_id or **kwargs."""
+    try:
+        parameters = inspect.signature(backend.request_approval).parameters.values()
+    except (TypeError, ValueError):
+        return True
+    return any(
+        parameter.name == "session_id" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+
+
+def _is_unexpected_session_id_error(exc: TypeError) -> bool:
+    message = str(exc)
+    return "unexpected keyword argument" in message and "session_id" in message
+
+
+async def _request_approval_with_session_compat(
+    backend: ApprovalBackend,
+    tool_name: str,
+    tool_args: dict[str, Any],
+    message: str,
+    *,
+    timeout: int = 300,
+    timeout_action: str = "block",
+    principal: dict | None = None,
+    metadata: dict[str, Any] | None = None,
+    session_id: str | None = None,
+) -> ApprovalRequest:
+    kwargs: dict[str, Any] = {
+        "timeout": timeout,
+        "timeout_action": timeout_action,
+        "principal": principal,
+    }
+    if metadata is not None:
+        kwargs["metadata"] = metadata
+    if session_id is None or not _approval_backend_accepts_session_id(backend):
+        return await backend.request_approval(tool_name, tool_args, message, **kwargs)
+    try:
+        return await backend.request_approval(tool_name, tool_args, message, session_id=session_id, **kwargs)
+    except TypeError as exc:
+        if _is_unexpected_session_id_error(exc):
+            return await backend.request_approval(tool_name, tool_args, message, **kwargs)
+        raise
 
 
 class LocalApprovalBackend:

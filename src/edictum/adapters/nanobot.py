@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
-from edictum.approval import ApprovalStatus
+from edictum.approval import ApprovalStatus, _request_approval_with_session_compat
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
 from edictum.pipeline import CheckPipeline
@@ -266,7 +266,8 @@ class GovernedToolRegistry:
             return f"[DENIED] {reason}"
 
         principal_dict = asdict(envelope.principal) if envelope.principal else None
-        approval_request = await self._guard._approval_backend.request_approval(
+        approval_request = await _request_approval_with_session_compat(
+            self._guard._approval_backend,
             tool_name=envelope.tool_name,
             tool_args=envelope.args,
             message=decision.approval_message or decision.reason or "",

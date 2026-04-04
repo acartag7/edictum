@@ -135,6 +135,60 @@ class TestGovernedToolRegistry:
         mock_backend.wait_for_decision.assert_called_once()
         assert mock_backend.request_approval.call_args.kwargs["session_id"] == "approval-session"
 
+    async def test_execute_approval_flow_supports_legacy_backend_without_session_id(self):
+        @precondition("*")
+        def require_approval(tool_call):
+            return Decision.fail("needs approval")
+
+        require_approval._edictum_effect = "ask"
+        require_approval._edictum_timeout = 60
+        require_approval._edictum_timeout_action = "block"
+
+        class LegacyApprovalBackend:
+            def __init__(self):
+                self.request: ApprovalRequest | None = None
+
+            async def request_approval(
+                self,
+                tool_name: str,
+                tool_args: dict[str, str],
+                message: str,
+                *,
+                timeout: int = 300,
+                timeout_action: str = "block",
+                principal: dict | None = None,
+                metadata: dict | None = None,
+            ) -> ApprovalRequest:
+                self.request = ApprovalRequest(
+                    approval_id="req-legacy",
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    message=message,
+                    timeout=timeout,
+                    timeout_action=timeout_action,
+                    principal=principal,
+                    metadata=metadata or {},
+                )
+                return self.request
+
+            async def wait_for_decision(self, approval_id: str, timeout: int | None = None) -> ApprovalDecision:
+                return ApprovalDecision(
+                    approved=True,
+                    approver="legacy",
+                    status=ApprovalStatus.APPROVED,
+                )
+
+        backend = LegacyApprovalBackend()
+        guard = make_guard(rules=[require_approval], approval_backend=backend)
+        inner = make_registry()
+        governed = GovernedToolRegistry(inner, guard, session_id="approval-session")
+
+        result = await governed.execute("read_file", {"path": "/tmp/test.txt"})
+
+        assert result == "contents of /tmp/test.txt"
+        assert backend.request is not None
+        assert backend.request.session_id is None
+
     async def test_execute_approval_denied(self):
         @precondition("*")
         def require_approval(tool_call):
