@@ -64,6 +64,21 @@ class TestServerApprovalBackend:
         assert backend._pending["approval-abc"].timeout_action == "allow"
 
     @pytest.mark.asyncio
+    async def test_request_approval_preserves_session_id(self, mock_client):
+        mock_client.post.return_value = {"id": "approval-session", "status": "pending"}
+        backend = ServerApprovalBackend(mock_client)
+
+        request = await backend.request_approval(
+            "tool",
+            {},
+            "msg",
+            session_id="workflow-session-123",
+        )
+
+        assert request.session_id == "workflow-session-123"
+        assert backend._pending["approval-session"].session_id == "workflow-session-123"
+
+    @pytest.mark.asyncio
     async def test_wait_for_decision_approved(self, mock_client):
         mock_client.post.return_value = {"id": "approval-1", "status": "pending"}
         mock_client.get.return_value = {
