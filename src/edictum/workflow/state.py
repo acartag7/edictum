@@ -134,11 +134,7 @@ def apply_evaluation_status(state: WorkflowState, evaluation: WorkflowEvaluation
         return changed
 
     if evaluation.action == "pending_approval":
-        pending_approval = {
-            "required": True,
-            "stage_id": evaluation.stage_id,
-            "message": evaluation.reason,
-        }
+        pending_approval = _build_pending_approval(evaluation.stage_id, evaluation.reason)
         if state.pending_approval != pending_approval:
             state.pending_approval = pending_approval
             changed = True
@@ -202,7 +198,7 @@ def summarize_tool_call(envelope: ToolCall) -> str:
     if envelope.bash_command:
         return _safe_status_text(_REDACTION_POLICY.redact_bash_command(envelope.bash_command), envelope.tool_name)
     if envelope.file_path:
-        return _safe_status_text(envelope.file_path, envelope.tool_name)
+        return _safe_status_text(_REDACTION_POLICY.redact_bash_command(envelope.file_path), envelope.tool_name)
     return envelope.tool_name
 
 
@@ -244,12 +240,25 @@ def _safe_status_text(value: str, fallback: str) -> str:
         return fallback
 
 
+def _build_pending_approval(stage_id: str, message: str) -> dict[str, Any]:
+    return {
+        "required": True,
+        "stage_id": _safe_status_text(stage_id, ""),
+        "message": _safe_status_text(message, ""),
+    }
+
+
 def _coerce_pending_approval(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return default_pending_approval()
-    pending = dict(value)
-    pending.setdefault("required", False)
-    return pending
+    if not bool(value.get("required", False)):
+        return default_pending_approval()
+    stage_id = value.get("stage_id")
+    message = value.get("message")
+    return _build_pending_approval(
+        stage_id if isinstance(stage_id, str) else "",
+        message if isinstance(message, str) else "",
+    )
 
 
 def _coerce_optional_dict(value: Any) -> dict[str, Any] | None:

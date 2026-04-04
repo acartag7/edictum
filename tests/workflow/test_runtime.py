@@ -179,6 +179,45 @@ stages:
 
 
 @pytest.mark.asyncio
+async def test_workflow_state_round_trip_normalizes_pending_approval_shape():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: pending-approval-normalized
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("pending-approval-normalized", MemoryBackend())
+
+    await _seed_state(
+        runtime,
+        session,
+        WorkflowState(
+            session_id="pending-approval-normalized",
+            active_stage="implement",
+            pending_approval={
+                "required": True,
+                "stage_id": "implement",
+                "message": "Approve after review",
+                "extra": {"unexpected": "value"},
+            },
+        ),
+    )
+
+    state = await runtime.state(session)
+
+    assert state.pending_approval == {
+        "required": True,
+        "stage_id": "implement",
+        "message": "Approve after review",
+    }
+
+
+@pytest.mark.asyncio
 async def test_blocked_workflow_call_persists_blocked_snapshot():
     runtime = make_runtime(
         """
@@ -203,6 +242,30 @@ stages:
     assert state.last_blocked_action["tool"] == "Bash"
     assert state.last_blocked_action["summary"] == "git push origin HEAD"
     assert state.last_blocked_action["message"] == "Tool is not allowed in this workflow stage"
+
+
+@pytest.mark.asyncio
+async def test_blocked_workflow_file_path_summary_is_redacted():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: blocked-file-path-redacted
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("blocked-file-path-redacted", MemoryBackend())
+    envelope = make_envelope("Read", {"path": "https://alice:secret@example.com/private.txt"})
+
+    decision = await runtime.evaluate(session, envelope)
+    state = await runtime.state(session)
+
+    assert decision.action == "block"
+    assert state.last_blocked_action is not None
+    assert state.last_blocked_action["summary"] == "https://alice:[REDACTED]@example.com/private.txt"
 
 
 @pytest.mark.asyncio
