@@ -52,12 +52,25 @@ _ACTION_ALIASES = {
 }
 
 
+def _resolve_env_path(value: str) -> list[Path]:
+    path = Path(value)
+    if path.is_absolute():
+        return [path]
+    return [path, _REPO_ROOT / path]
+
+
 def _find_workflow_adapter_dir() -> Path | None:
     candidates: list[Path] = []
 
-    env = os.environ.get("EDICTUM_SCHEMAS_DIR")
-    if env:
-        candidates.append(Path(env) / "fixtures" / "workflow-adapter-conformance")
+    fixtures_env = os.environ.get("EDICTUM_FIXTURES_DIR")
+    if fixtures_env:
+        for path in _resolve_env_path(fixtures_env):
+            candidates.append(path / "workflow-adapter-conformance")
+
+    schemas_env = os.environ.get("EDICTUM_SCHEMAS_DIR")
+    if schemas_env:
+        for path in _resolve_env_path(schemas_env):
+            candidates.append(path / "fixtures" / "workflow-adapter-conformance")
 
     candidates.append(_REPO_ROOT / "edictum-schemas" / "fixtures" / "workflow-adapter-conformance")
     candidates.append(_REPO_ROOT.parent / "edictum-schemas" / "fixtures" / "workflow-adapter-conformance")
