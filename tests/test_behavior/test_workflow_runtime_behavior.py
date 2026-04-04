@@ -1,0 +1,90 @@
+"""Behavior tests for workflow runtime stage moves."""
+
+from __future__ import annotations
+
+import pytest
+
+from edictum.session import Session
+from edictum.storage import MemoryBackend
+from edictum.workflow import WorkflowEvidence, WorkflowState
+from edictum.workflow.state import save_state
+from tests.workflow.conftest import make_runtime
+
+
+@pytest.mark.asyncio
+async def test_set_stage_stage_id_changes_active_stage_and_preserves_evidence():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: behavior-set-stage
+stages:
+  - id: read-context
+    tools: [Read]
+  - id: implement
+    entry:
+      - condition: stage_complete("read-context")
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    tools: [Read]
+"""
+    )
+    session = Session("behavior-set-stage", MemoryBackend())
+    state = WorkflowState(
+        session_id="behavior-set-stage",
+        active_stage="read-context",
+        completed_stages=[],
+        approvals={"review": "approved"},
+        evidence=WorkflowEvidence(
+            reads=["spec.md"],
+            stage_calls={"review": ["git push origin feature"]},
+        ),
+        blocked_reason="Tool is not allowed in this workflow stage",
+        pending_approval={
+            "required": True,
+            "stage_id": "read-context",
+            "message": "approve",
+        },
+        last_blocked_action={
+            "tool": "Bash",
+            "summary": "git push origin feature",
+            "message": "Tool is not allowed in this workflow stage",
+            "timestamp": "2026-04-04T00:00:00Z",
+        },
+    )
+    state.ensure_defaults()
+    await save_state(session, runtime.definition, state)
+
+    await runtime.set_stage(session, "review")
+    state = await runtime.state(session)
+
+    assert state.active_stage == "review"
+    assert state.completed_stages == ["read-context", "implement"]
+    assert state.approvals == {"review": "approved"}
+    assert state.evidence.reads == ["spec.md"]
+    assert state.evidence.stage_calls == {"review": ["git push origin feature"]}
+    assert state.blocked_reason is None
+    assert state.pending_approval == {"required": False}
+    assert state.last_blocked_action is None
+
+
+@pytest.mark.asyncio
+async def test_set_stage_stage_id_rejects_unknown_stage():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: behavior-set-stage-unknown
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("behavior-set-stage-unknown", MemoryBackend())
+
+    with pytest.raises(ValueError, match='workflow: unknown set stage "review"'):
+        await runtime.set_stage(session, "review")
