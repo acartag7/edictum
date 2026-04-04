@@ -125,3 +125,48 @@ stages:
     assert state.active_stage == "review"
     assert state.completed_stages == ["implement"]
     assert state.approvals == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.security
+async def test_set_stage_backward_into_pre_approved_stage_preserves_approval():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: behavior-set-stage-preserved-approval
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    approval:
+      message: Review required before push
+  - id: push
+    entry:
+      - condition: stage_complete("review")
+    tools: [Bash]
+"""
+    )
+    session = Session("behavior-set-stage-preserved-approval", MemoryBackend())
+    state = WorkflowState(
+        session_id="behavior-set-stage-preserved-approval",
+        active_stage="push",
+        completed_stages=["implement", "review"],
+        approvals={"review": "approved"},
+    )
+    state.ensure_defaults()
+    await save_state(session, runtime.definition, state)
+
+    await runtime.set_stage(session, "review")
+
+    decision = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin feature"}))
+    state = await runtime.state(session)
+
+    assert decision.action == "allow"
+    assert decision.stage_id == "push"
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["implement", "review"]
+    assert state.approvals == {"review": "approved"}
