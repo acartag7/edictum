@@ -232,7 +232,7 @@ async def _from_server(
     guard._verify_signatures = verify_signatures
     guard._signing_public_key = signing_public_key
 
-    if audit_sink is None and effective_workflow_runtime is not None:
+    if effective_workflow_runtime is not None and hasattr(effective_sink, "_workflow_snapshot_provider"):
 
         async def _workflow_snapshot_provider(event: Any) -> dict[str, Any] | None:
             session_id = getattr(event, "session_id", None)
