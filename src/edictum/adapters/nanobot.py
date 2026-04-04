@@ -89,11 +89,7 @@ class GovernedToolRegistry:
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
             principal=self._resolve_principal(name, args),
-            metadata=(
-                {"parent_session_id": self._parent_session_id}
-                if self._parent_session_id is not None
-                else {}
-            ),
+            metadata=({"parent_session_id": self._parent_session_id} if self._parent_session_id is not None else {}),
         )
         self._call_index += 1
 
