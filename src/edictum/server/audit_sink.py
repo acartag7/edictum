@@ -101,19 +101,20 @@ class ServerAuditSink:
             snapshot = await provider(event)
         except Exception:
             logger.warning("Failed to load workflow snapshot for audit event", exc_info=True)
-            if isinstance(workflow, dict):
-                return deepcopy(workflow)
-            return None
+            return self._degraded_workflow_snapshot(workflow)
 
         if not isinstance(snapshot, dict):
-            if isinstance(workflow, dict):
-                return deepcopy(workflow)
-            return None
+            return self._degraded_workflow_snapshot(workflow)
 
         merged = deepcopy(snapshot)
         if isinstance(workflow, dict):
             merged.update(deepcopy(workflow))
         return merged
+
+    def _degraded_workflow_snapshot(self, workflow: Any) -> dict[str, Any]:
+        degraded = deepcopy(workflow) if isinstance(workflow, dict) else {}
+        degraded["_snapshot_error"] = True
+        return degraded
 
     def _needs_workflow_snapshot(self, event: Any, workflow: Any) -> bool:
         action = getattr(getattr(event, "action", None), "value", getattr(event, "action", None))

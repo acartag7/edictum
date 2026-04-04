@@ -42,7 +42,8 @@ class GateAuditEvent:
     side_effect: str  # tool category as side_effect label
 
     # Governance decision — same names as core AuditEvent
-    action: str  # "call_allowed" | "call_denied" | "call_would_deny"
+    action: str  # WAL values: "call_allowed" | "call_denied" | "call_would_deny"
+    # Upconverted to server wire values by _to_console_event via _ACTION_MAP.
     decision_source: str | None
     decision_name: str | None  # rule_id
     reason: str | None

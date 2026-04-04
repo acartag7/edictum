@@ -253,6 +253,27 @@ class TestServerAuditSink:
         sink._workflow_snapshot_provider.assert_awaited_once_with(event)
 
     @pytest.mark.asyncio
+    async def test_emit_marks_workflow_snapshot_errors_in_payload(self, mock_client):
+        sink = ServerAuditSink(mock_client, batch_size=50, flush_interval=999)
+        sink._workflow_snapshot_provider = AsyncMock(side_effect=RuntimeError("storage unavailable"))
+        event = _make_event(
+            action=AuditAction.WORKFLOW_STAGE_ADVANCED,
+            session_id="session-123",
+            workflow={"stage_id": "implement", "to_stage_id": "local-review"},
+        )
+
+        await sink.emit(event)
+        await sink.flush()
+
+        payload = mock_client.post.call_args.args[1]["events"][0]
+        assert payload["workflow"] == {
+            "stage_id": "implement",
+            "to_stage_id": "local-review",
+            "_snapshot_error": True,
+        }
+        sink._workflow_snapshot_provider.assert_awaited_once_with(event)
+
+    @pytest.mark.asyncio
     async def test_cancellation_preserves_events(self, mock_client):
         """CancelledError during POST must not lose events from the buffer."""
 
