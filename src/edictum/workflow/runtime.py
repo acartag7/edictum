@@ -303,6 +303,8 @@ class WorkflowRuntime:
             failure, blocked = await self.evaluate_gates(stage, state, envelope, stage.exit)
             if blocked:
                 return []
+        elif stage.approval is None:
+            return []
         if stage.approval is not None and state.approvals.get(stage.id) != "approved":
             return []
         if not state.completed(stage.id):

@@ -15,6 +15,7 @@ class WorkflowMetadata:
     """Workflow document identity."""
 
     name: str
+    version: str = ""
     description: str = ""
 
 

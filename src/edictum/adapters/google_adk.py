@@ -13,7 +13,8 @@ from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
 from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import CheckPipeline
-from edictum.session import Session
+from edictum.session import Session, _validate_session_id
+from edictum.workflow.state import build_workflow_snapshot
 
 logger = logging.getLogger(__name__)
 _MAX_WORKFLOW_APPROVAL_ROUNDS = 32
@@ -60,6 +61,7 @@ class GoogleADKAdapter:
         self._principal = principal
         self._principal_resolver = principal_resolver
         self._on_postcondition_warn = on_postcondition_warn
+        self._parent_session_id: str | None = None
 
     @property
     def session_id(self) -> str:
@@ -91,6 +93,16 @@ class GoogleADKAdapter:
                 )
         return None
 
+    def _audit_parent_session_id(self) -> str | None:
+        value = self._parent_session_id
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            _validate_session_id(value)
+        except ValueError:
+            return None
+        return value
+
     async def _pre(
         self,
         tool_name: str,
@@ -113,6 +125,9 @@ class GoogleADKAdapter:
                 metadata["adk_invocation_id"] = invocation_id
             if agent_name:
                 metadata["adk_agent_name"] = agent_name
+        parent_session_id = self._audit_parent_session_id()
+        if parent_session_id is not None:
+            metadata["parent_session_id"] = parent_session_id
 
         envelope = create_envelope(
             tool_name=tool_name,
@@ -167,7 +182,13 @@ class GoogleADKAdapter:
                 result, decision = await self._resolve_pending_approval(envelope, decision, span)
                 if result is not None:
                     return result  # span ended inside _handle_approval
-                # Approved -- fall through to allow
+                await self._emit_audit_pre(envelope, decision)
+                if self._guard._on_allow:
+                    try:
+                        self._guard._on_allow(envelope)
+                    except Exception:
+                        logger.exception("on_allow callback raised")
+                span.set_attribute("governance.action", "allowed")
                 self._pending[call_id] = (envelope, span)
                 self._pending_decisions[call_id] = decision
                 return None
@@ -182,6 +203,8 @@ class GoogleADKAdapter:
                                 run_id=envelope.run_id,
                                 call_id=envelope.call_id,
                                 call_index=envelope.call_index,
+                                session_id=self._session_id,
+                                parent_session_id=self._audit_parent_session_id(),
                                 tool_name=envelope.tool_name,
                                 tool_args=self._guard.redaction.redact_args(envelope.args),
                                 side_effect=envelope.side_effect.value,
@@ -252,6 +275,10 @@ class GoogleADKAdapter:
                     decision.workflow_stage_id,
                     envelope,
                 )
+            workflow = decision.workflow
+            if decision.workflow_involved and self._guard._workflow_runtime is not None:
+                workflow_state = await self._guard._workflow_runtime.state(self._session)
+                workflow = build_workflow_snapshot(self._guard._workflow_runtime.definition, workflow_state)
 
             # Record in session
             await self._session.record_execution(envelope.tool_name, success=tool_success)
@@ -264,6 +291,8 @@ class GoogleADKAdapter:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -277,7 +306,7 @@ class GoogleADKAdapter:
                     mode=self._guard.mode,
                     policy_version=self._guard.policy_version,
                     policy_error=post_decision.policy_error,
-                    workflow=decision.workflow,
+                    workflow=workflow,
                 )
             )
             await self._emit_workflow_events(envelope, workflow_events)
@@ -342,6 +371,8 @@ class GoogleADKAdapter:
                 run_id=envelope.run_id,
                 call_id=envelope.call_id,
                 call_index=envelope.call_index,
+                session_id=self._session_id,
+                parent_session_id=self._audit_parent_session_id(),
                 tool_name=envelope.tool_name,
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
@@ -376,6 +407,8 @@ class GoogleADKAdapter:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -409,6 +442,8 @@ class GoogleADKAdapter:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
