@@ -364,6 +364,11 @@ stages:
                 "message": "Only review-safe git commands allowed",
                 "timestamp": "2026-04-04T00:00:00Z",
             },
+            last_recorded_evidence={
+                "tool": "Read",
+                "summary": "specs/017.md",
+                "timestamp": "2026-04-04T00:00:01Z",
+            },
         ),
     )
 
@@ -380,6 +385,11 @@ stages:
         "summary": "git push origin HEAD",
         "message": "Only review-safe git commands allowed",
         "timestamp": "2026-04-04T00:00:00Z",
+    }
+    assert state.last_recorded_evidence == {
+        "tool": "Read",
+        "summary": "specs/017.md",
+        "timestamp": "2026-04-04T00:00:01Z",
     }
 
 
@@ -731,10 +741,11 @@ stages:
     assert state.approvals["review"] == "approved"
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    assert state.active_stage == "push"
 
     actions = [event.action for event in guard.local_sink.events]
     assert AuditAction.WORKFLOW_STAGE_ADVANCED in actions
-    assert AuditAction.WORKFLOW_COMPLETED in actions
+    assert AuditAction.WORKFLOW_COMPLETED not in actions
 
 
 @pytest.mark.asyncio

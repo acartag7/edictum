@@ -14,7 +14,8 @@ from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
 from edictum.findings import Finding, PostCallResult, build_findings
 from edictum.pipeline import CheckPipeline
-from edictum.session import Session
+from edictum.session import Session, validate_session_id
+from edictum.workflow.state import build_workflow_snapshot
 
 logger = logging.getLogger(__name__)
 _MAX_WORKFLOW_APPROVAL_ROUNDS = 32
@@ -58,6 +59,7 @@ class OpenAIAgentsAdapter:
         self._pending_decisions: dict[str, Any] = {}
         self._principal = principal
         self._principal_resolver = principal_resolver
+        self._parent_session_id: str | None = None
 
     @property
     def session_id(self) -> str:
@@ -72,6 +74,16 @@ class OpenAIAgentsAdapter:
         if self._principal_resolver is not None:
             return self._principal_resolver(tool_name, tool_input)
         return self._principal
+
+    def _audit_parent_session_id(self) -> str | None:
+        value = self._parent_session_id
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            validate_session_id(value)
+        except ValueError:
+            return None
+        return value
 
     def as_guardrails(
         self,
@@ -227,6 +239,8 @@ class OpenAIAgentsAdapter:
                                 run_id=envelope.run_id,
                                 call_id=envelope.call_id,
                                 call_index=envelope.call_index,
+                                session_id=self._session_id,
+                                parent_session_id=self._audit_parent_session_id(),
                                 tool_name=envelope.tool_name,
                                 tool_args=self._guard.redaction.redact_args(envelope.args),
                                 side_effect=envelope.side_effect.value,
@@ -298,6 +312,10 @@ class OpenAIAgentsAdapter:
                     decision.workflow_stage_id,
                     envelope,
                 )
+            workflow = decision.workflow
+            if decision.workflow_involved and self._guard._workflow_runtime is not None:
+                workflow_state = await self._guard._workflow_runtime.state(self._session)
+                workflow = build_workflow_snapshot(self._guard._workflow_runtime.definition, workflow_state)
 
             # Record in session
             await self._session.record_execution(envelope.tool_name, success=tool_success)
@@ -310,6 +328,8 @@ class OpenAIAgentsAdapter:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -323,7 +343,7 @@ class OpenAIAgentsAdapter:
                     mode=self._guard.mode,
                     policy_version=self._guard.policy_version,
                     policy_error=post_decision.policy_error,
-                    workflow=decision.workflow,
+                    workflow=workflow,
                 )
             )
             await self._emit_workflow_events(envelope, workflow_events)
@@ -366,6 +386,8 @@ class OpenAIAgentsAdapter:
                 run_id=envelope.run_id,
                 call_id=envelope.call_id,
                 call_index=envelope.call_index,
+                session_id=self._session_id,
+                parent_session_id=self._audit_parent_session_id(),
                 tool_name=envelope.tool_name,
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
@@ -400,6 +422,8 @@ class OpenAIAgentsAdapter:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,

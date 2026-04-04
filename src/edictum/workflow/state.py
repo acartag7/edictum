@@ -55,6 +55,7 @@ async def load_state(session: Session, definition) -> WorkflowState:
         blocked_reason=data.get("blocked_reason"),
         pending_approval=_coerce_pending_approval(data.get("pending_approval")),
         last_blocked_action=_coerce_optional_dict(data.get("last_blocked_action")),
+        last_recorded_evidence=_coerce_recorded_evidence(data.get("last_recorded_evidence")),
     )
     state.ensure_defaults()
     if state.active_stage and definition.stage_by_id(state.active_stage) is None:
@@ -79,6 +80,7 @@ async def save_state(session: Session, definition, state: WorkflowState) -> None
                 "blocked_reason": state.blocked_reason,
                 "pending_approval": state.pending_approval,
                 "last_blocked_action": state.last_blocked_action,
+                "last_recorded_evidence": state.last_recorded_evidence,
             }
         )
     except TypeError as exc:
@@ -94,6 +96,9 @@ def record_approval(state: WorkflowState, stage_id: str) -> None:
 
 def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall) -> None:
     state.ensure_defaults()
+    recorded_evidence_fields = build_last_recorded_evidence_fields(envelope)
+    if _recorded_evidence_changed(state.last_recorded_evidence, recorded_evidence_fields):
+        state.last_recorded_evidence = build_last_recorded_evidence(recorded_evidence_fields)
     if envelope.tool_name == "Read" and envelope.file_path:
         state.evidence.reads = _append_unique_capped(
             state.evidence.reads,
@@ -166,6 +171,8 @@ def build_workflow_snapshot(definition, state: WorkflowState) -> dict[str, Any]:
         snapshot["version"] = version
     if state.last_blocked_action is not None:
         snapshot["last_blocked_action"] = deepcopy(state.last_blocked_action)
+    if state.last_recorded_evidence is not None:
+        snapshot["last_recorded_evidence"] = deepcopy(state.last_recorded_evidence)
     return snapshot
 
 
@@ -204,6 +211,21 @@ def build_last_blocked_action(fields: dict[str, str]) -> dict[str, str]:
     }
 
 
+def build_last_recorded_evidence_fields(envelope: ToolCall) -> dict[str, str]:
+    return {
+        "tool": envelope.tool_name,
+        "summary": summarize_tool_call(envelope),
+    }
+
+
+def build_last_recorded_evidence(fields: dict[str, str]) -> dict[str, str]:
+    return {
+        "tool": fields["tool"],
+        "summary": fields["summary"],
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+
 def summarize_tool_call(envelope: ToolCall) -> str:
     if envelope.bash_command:
         return _safe_status_text(_REDACTION_POLICY.redact_bash_command(envelope.bash_command), envelope.tool_name)
@@ -220,6 +242,12 @@ def _blocked_action_changed(current: dict[str, Any] | None, fields: dict[str, st
         or current.get("summary") != fields["summary"]
         or current.get("message") != fields["message"]
     )
+
+
+def _recorded_evidence_changed(current: dict[str, Any] | None, fields: dict[str, str]) -> bool:
+    if current is None:
+        return True
+    return current.get("tool") != fields["tool"] or current.get("summary") != fields["summary"]
 
 
 def _append_unique_capped(items: list[str], item: str, limit: int) -> list[str]:
@@ -275,3 +303,23 @@ def _coerce_optional_dict(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     return dict(value)
+
+
+def _coerce_recorded_evidence(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    tool = value.get("tool")
+    summary = value.get("summary")
+    timestamp = value.get("timestamp")
+    if not isinstance(tool, str) or not isinstance(summary, str) or not isinstance(timestamp, str):
+        return None
+    safe_tool = _safe_status_text(tool, "")
+    safe_summary = _safe_status_text(summary, "")
+    safe_timestamp = _safe_status_text(timestamp, "")
+    if not safe_tool or not safe_summary or not safe_timestamp:
+        return None
+    return {
+        "tool": safe_tool,
+        "summary": safe_summary,
+        "timestamp": safe_timestamp,
+    }

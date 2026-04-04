@@ -12,7 +12,8 @@ from edictum.approval import ApprovalStatus, _request_approval_with_session_comp
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
 from edictum.pipeline import CheckPipeline
-from edictum.session import Session
+from edictum.session import Session, validate_session_id
+from edictum.workflow.state import build_workflow_snapshot
 
 logger = logging.getLogger(__name__)
 _MAX_WORKFLOW_APPROVAL_ROUNDS = 32
@@ -61,6 +62,16 @@ class GovernedToolRegistry:
             return self._principal_resolver(tool_name, tool_input)
         return self._principal
 
+    def _audit_parent_session_id(self) -> str | None:
+        value = self._parent_session_id
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            validate_session_id(value)
+        except ValueError:
+            return None
+        return value
+
     # -- Delegate ToolRegistry methods to inner --
 
     def register(self, name: str, handler: Callable, description: str = "") -> None:
@@ -79,6 +90,7 @@ class GovernedToolRegistry:
         so the LLM can see the reason and adjust.
         """
         call_id = str(uuid.uuid4())
+        parent_session_id = self._audit_parent_session_id()
 
         envelope = create_envelope(
             tool_name=name,
@@ -89,7 +101,7 @@ class GovernedToolRegistry:
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
             principal=self._resolve_principal(name, args),
-            metadata=({"parent_session_id": self._parent_session_id} if self._parent_session_id is not None else {}),
+            metadata=({"parent_session_id": parent_session_id} if parent_session_id is not None else {}),
         )
         self._call_index += 1
 
@@ -137,7 +149,7 @@ class GovernedToolRegistry:
                                     call_id=envelope.call_id,
                                     call_index=envelope.call_index,
                                     session_id=self._session_id,
-                                    parent_session_id=self._parent_session_id,
+                                    parent_session_id=parent_session_id,
                                     tool_name=envelope.tool_name,
                                     tool_args=self._guard.redaction.redact_args(envelope.args),
                                     side_effect=envelope.side_effect.value,
@@ -184,6 +196,10 @@ class GovernedToolRegistry:
                     decision.workflow_stage_id,
                     envelope,
                 )
+            workflow = decision.workflow
+            if decision.workflow_involved and self._guard._workflow_runtime is not None:
+                workflow_state = await self._guard._workflow_runtime.state(self._session)
+                workflow = build_workflow_snapshot(self._guard._workflow_runtime.definition, workflow_state)
 
             await self._session.record_execution(name, success=tool_success)
 
@@ -195,7 +211,7 @@ class GovernedToolRegistry:
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
                     session_id=self._session_id,
-                    parent_session_id=self._parent_session_id,
+                    parent_session_id=parent_session_id,
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -209,7 +225,7 @@ class GovernedToolRegistry:
                     mode=self._guard.mode,
                     policy_version=self._guard.policy_version,
                     policy_error=post_decision.policy_error,
-                    workflow=decision.workflow,
+                    workflow=workflow,
                 )
             )
             await self._emit_workflow_events(envelope, workflow_events)
@@ -330,7 +346,7 @@ class GovernedToolRegistry:
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
                     session_id=self._session_id,
-                    parent_session_id=self._parent_session_id,
+                    parent_session_id=self._audit_parent_session_id(),
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -353,7 +369,7 @@ class GovernedToolRegistry:
                 call_id=envelope.call_id,
                 call_index=envelope.call_index,
                 session_id=self._session_id,
-                parent_session_id=self._parent_session_id,
+                parent_session_id=self._audit_parent_session_id(),
                 tool_name=envelope.tool_name,
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,

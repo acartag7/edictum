@@ -42,6 +42,7 @@ class WorkflowState:
     blocked_reason: str | None = None
     pending_approval: dict[str, Any] = field(default_factory=default_pending_approval)
     last_blocked_action: dict[str, Any] | None = None
+    last_recorded_evidence: dict[str, Any] | None = None
 
     def completed(self, stage_id: str) -> bool:
         return stage_id in self.completed_stages

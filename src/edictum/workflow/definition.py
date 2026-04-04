@@ -16,6 +16,7 @@ class WorkflowMetadata:
 
     name: str
     description: str = ""
+    version: str = ""
 
 
 @dataclass(frozen=True)

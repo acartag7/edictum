@@ -13,6 +13,7 @@ from edictum.adapters.langchain import LangChainAdapter
 from edictum.adapters.nanobot import GovernedToolRegistry
 from edictum.adapters.openai_agents import OpenAIAgentsAdapter
 from edictum.adapters.semantic_kernel import SemanticKernelAdapter
+from edictum.audit import AuditAction
 from edictum.session import Session
 from edictum.storage import MemoryBackend
 
@@ -75,6 +76,21 @@ async def _state(guard: Edictum, session_id: str):
     return await runtime.state(Session(session_id, guard.backend))
 
 
+def _assert_last_recorded_evidence(guard: Edictum, session_id: str, tool: str, summary: str) -> None:
+    events = [
+        event
+        for event in guard.local_sink.events
+        if event.action == AuditAction.CALL_EXECUTED and event.session_id == session_id
+    ]
+    assert events
+    workflow = events[-1].workflow
+    assert workflow is not None
+    evidence = workflow.get("last_recorded_evidence")
+    assert evidence is not None
+    assert evidence["tool"] == tool
+    assert evidence["summary"] == summary
+
+
 @pytest.mark.asyncio
 async def test_langchain_adapter_workflow_approval_advances_and_completes():
     guard = _build_guard()
@@ -92,11 +108,12 @@ async def test_langchain_adapter_workflow_approval_advances_and_completes():
     await adapter._post_tool_call(push_request, "ok")
 
     state = await _state(guard, "langchain-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "langchain-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -111,11 +128,12 @@ async def test_openai_adapter_workflow_approval_advances_and_completes():
     await adapter._post("push-1", "ok")
 
     state = await _state(guard, "openai-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "openai-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -137,11 +155,12 @@ async def test_crewai_adapter_workflow_approval_advances_and_completes():
     await adapter._after_hook(push_context)
 
     state = await _state(guard, "crewai-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "crewai-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -156,11 +175,12 @@ async def test_google_adapter_workflow_approval_advances_and_completes():
     await adapter._post("push-1", "ok")
 
     state = await _state(guard, "google-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "google-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -175,11 +195,12 @@ async def test_agno_adapter_workflow_approval_advances_and_completes():
     await adapter._post("push-1", "ok", tool_success=True)
 
     state = await _state(guard, "agno-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "agno-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -194,11 +215,12 @@ async def test_claude_adapter_workflow_approval_advances_and_completes():
     assert await adapter._post_tool_use("push-1", "ok") == {}
 
     state = await _state(guard, "claude-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "claude-approval", "Bash", "git push origin branch")
 
 
 @pytest.mark.asyncio
@@ -213,11 +235,12 @@ async def test_semantic_kernel_adapter_workflow_approval_advances_and_completes(
     await adapter._post("push-1", "ok")
 
     state = await _state(guard, "sk-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "sk-approval", "Bash", "git push origin branch")
 
 
 class _InnerRegistry:
@@ -245,8 +268,9 @@ async def test_nanobot_adapter_workflow_approval_advances_and_completes():
     assert await registry.execute("Bash", {"command": "git push origin branch"}) == "ok"
 
     state = await _state(guard, "nanobot-approval")
-    assert state.active_stage == ""
-    assert state.completed_stages == ["read-context", "review", "push"]
+    assert state.active_stage == "push"
+    assert state.completed_stages == ["read-context", "review"]
     assert state.approvals == {"review": "approved"}
     assert state.evidence.reads == ["spec.md"]
     assert state.evidence.stage_calls["push"] == ["git push origin branch"]
+    _assert_last_recorded_evidence(guard, "nanobot-approval", "Bash", "git push origin branch")

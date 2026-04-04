@@ -58,7 +58,7 @@ def load_workflow_string(content: str | bytes) -> WorkflowDefinition:
 def _parse_definition(data: dict[str, Any]) -> WorkflowDefinition:
     _reject_unknown_fields(data, {"apiVersion", "kind", "metadata", "stages"}, "workflow")
     metadata_data = _require_mapping(data.get("metadata"), "workflow metadata")
-    _reject_unknown_fields(metadata_data, {"name", "description"}, "workflow metadata")
+    _reject_unknown_fields(metadata_data, {"name", "version", "description"}, "workflow metadata")
 
     stages_data = data.get("stages")
     if not isinstance(stages_data, list):
@@ -73,6 +73,7 @@ def _parse_definition(data: dict[str, Any]) -> WorkflowDefinition:
         kind=str(data.get("kind", "")),
         metadata=WorkflowMetadata(
             name=str(metadata_data.get("name", "")),
+            version=str(metadata_data.get("version", "")),
             description=str(metadata_data.get("description", "")),
         ),
         stages=tuple(stages),
