@@ -10,6 +10,7 @@ from edictum import Decision, Edictum, Principal, postcondition, precondition
 from edictum.adapters.nanobot import GovernedToolRegistry, NanobotAdapter
 from edictum.approval import ApprovalDecision, ApprovalRequest, ApprovalStatus
 from edictum.audit import AuditAction
+from edictum.envelope import create_envelope
 from edictum.storage import MemoryBackend
 from tests.conftest import NullAuditSink
 
@@ -126,12 +127,67 @@ class TestGovernedToolRegistry:
 
         guard = make_guard(rules=[require_approval], approval_backend=mock_backend)
         inner = make_registry()
-        governed = GovernedToolRegistry(inner, guard)
+        governed = GovernedToolRegistry(inner, guard, session_id="approval-session")
 
         result = await governed.execute("read_file", {"path": "/tmp/test.txt"})
         assert result == "contents of /tmp/test.txt"
         mock_backend.request_approval.assert_called_once()
         mock_backend.wait_for_decision.assert_called_once()
+        assert mock_backend.request_approval.call_args.kwargs["session_id"] == "approval-session"
+
+    async def test_execute_approval_flow_supports_legacy_backend_without_session_id(self):
+        @precondition("*")
+        def require_approval(tool_call):
+            return Decision.fail("needs approval")
+
+        require_approval._edictum_effect = "ask"
+        require_approval._edictum_timeout = 60
+        require_approval._edictum_timeout_action = "block"
+
+        class LegacyApprovalBackend:
+            def __init__(self):
+                self.request: ApprovalRequest | None = None
+
+            async def request_approval(
+                self,
+                tool_name: str,
+                tool_args: dict[str, str],
+                message: str,
+                *,
+                timeout: int = 300,
+                timeout_action: str = "block",
+                principal: dict | None = None,
+                metadata: dict | None = None,
+            ) -> ApprovalRequest:
+                self.request = ApprovalRequest(
+                    approval_id="req-legacy",
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    message=message,
+                    timeout=timeout,
+                    timeout_action=timeout_action,
+                    principal=principal,
+                    metadata=metadata or {},
+                )
+                return self.request
+
+            async def wait_for_decision(self, approval_id: str, timeout: int | None = None) -> ApprovalDecision:
+                return ApprovalDecision(
+                    approved=True,
+                    approver="legacy",
+                    status=ApprovalStatus.APPROVED,
+                )
+
+        backend = LegacyApprovalBackend()
+        guard = make_guard(rules=[require_approval], approval_backend=backend)
+        inner = make_registry()
+        governed = GovernedToolRegistry(inner, guard, session_id="approval-session")
+
+        result = await governed.execute("read_file", {"path": "/tmp/test.txt"})
+
+        assert result == "contents of /tmp/test.txt"
+        assert backend.request is not None
+        assert backend.request.session_id is None
 
     async def test_execute_approval_denied(self):
         @precondition("*")
@@ -220,6 +276,20 @@ class TestGovernedToolRegistry:
         child = governed.for_subagent()
         assert child.session_id != "parent"  # Gets its own session
 
+    async def test_for_subagent_emits_parent_session_lineage(self):
+        sink = NullAuditSink()
+        guard = make_guard(audit_sink=sink)
+        inner = make_registry()
+        governed = GovernedToolRegistry(inner, guard, session_id="parent")
+
+        child = governed.for_subagent(session_id="child-1")
+        result = await child.execute("read_file", {"path": "/tmp/test.txt"})
+
+        assert result == "contents of /tmp/test.txt"
+        assert len(sink.events) >= 2
+        assert {event.session_id for event in sink.events} == {"child-1"}
+        assert {event.parent_session_id for event in sink.events} == {"parent"}
+
     async def test_set_principal(self):
         @precondition("*")
         def require_admin(tool_call):
@@ -265,13 +335,42 @@ class TestGovernedToolRegistry:
         sink = NullAuditSink()
         guard = make_guard(audit_sink=sink)
         inner = make_registry()
-        governed = GovernedToolRegistry(inner, guard)
+        governed = GovernedToolRegistry(inner, guard, session_id="nanobot-session")
 
         await governed.execute("read_file", {"path": "/tmp/test.txt"})
 
         actions = [e.action for e in sink.events]
         assert AuditAction.CALL_ALLOWED in actions
         assert AuditAction.CALL_EXECUTED in actions
+        assert {event.session_id for event in sink.events} == {"nanobot-session"}
+
+    async def test_workflow_state_updated_events_use_correct_audit_action(self):
+        sink = NullAuditSink()
+        guard = make_guard(audit_sink=sink)
+        inner = make_registry()
+        governed = GovernedToolRegistry(inner, guard, session_id="nanobot-session")
+        envelope = create_envelope(
+            tool_name="read_file",
+            tool_input={"path": "/tmp/test.txt"},
+            run_id="nanobot-session",
+            call_index=0,
+            tool_use_id="call-1",
+            environment=guard.environment,
+            registry=guard.tool_registry,
+        )
+
+        await governed._emit_workflow_events(
+            envelope,
+            [
+                {
+                    "action": AuditAction.WORKFLOW_STATE_UPDATED.value,
+                    "workflow": {"name": "nanobot-workflow", "active_stage": "review"},
+                }
+            ],
+        )
+
+        assert sink.events[-1].action == AuditAction.WORKFLOW_STATE_UPDATED
+        assert sink.events[-1].session_id == "nanobot-session"
 
     async def test_audit_events_on_block(self):
         @precondition("*")

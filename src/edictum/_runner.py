@@ -10,12 +10,12 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 from edictum._exceptions import EdictumDenied, EdictumToolError
-from edictum.approval import ApprovalStatus
+from edictum.approval import ApprovalStatus, _request_approval_with_session_compat
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import create_envelope
 from edictum.otel import has_otel
 from edictum.pipeline import CheckPipeline, PreDecision
-from edictum.session import Session
+from edictum.session import Session, _validate_session_id
 
 if TYPE_CHECKING:
     from edictum._guard import Edictum
@@ -87,7 +87,7 @@ async def _run(
 
         # Pre-execute
         pre = await pipeline.pre_execute(envelope, session)
-        await _emit_workflow_events(self, envelope, pre.workflow_events)
+        await _emit_workflow_events(self, envelope, session, pre.workflow_events)
 
         # Handle pending_approval: request approval from backend
         approval_audit_handled = False
@@ -161,6 +161,8 @@ async def _run(
                         action=AuditAction.CALL_WOULD_DENY,
                         run_id=envelope.run_id,
                         call_id=envelope.call_id,
+                        session_id=session.session_id,
+                        parent_session_id=_parent_session_id(envelope),
                         tool_name=envelope.tool_name,
                         tool_args=self.redaction.redact_args(envelope.args),
                         side_effect=envelope.side_effect.value,
@@ -191,6 +193,8 @@ async def _run(
                 action=observe_action,
                 run_id=envelope.run_id,
                 call_id=envelope.call_id,
+                session_id=session.session_id,
+                parent_session_id=_parent_session_id(envelope),
                 tool_name=envelope.tool_name,
                 tool_args=self.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
@@ -235,6 +239,8 @@ async def _run(
             action=post_action,
             run_id=envelope.run_id,
             call_id=envelope.call_id,
+            session_id=session.session_id,
+            parent_session_id=_parent_session_id(envelope),
             tool_name=envelope.tool_name,
             tool_args=self.redaction.redact_args(envelope.args),
             side_effect=envelope.side_effect.value,
@@ -252,7 +258,7 @@ async def _run(
         )
         await self.audit_sink.emit(post_event)
         _emit_otel_governance_span(self, post_event)
-        await _emit_workflow_events(self, envelope, workflow_events)
+        await _emit_workflow_events(self, envelope, session, workflow_events)
 
         span.set_attribute("governance.tool_success", tool_success)
         span.set_attribute("governance.postconditions_passed", post.postconditions_passed)
@@ -275,6 +281,8 @@ async def _emit_run_pre_audit(self: Edictum, envelope, session, action: AuditAct
         action=action,
         run_id=envelope.run_id,
         call_id=envelope.call_id,
+        session_id=session.session_id,
+        parent_session_id=_parent_session_id(envelope),
         tool_name=envelope.tool_name,
         tool_args=self.redaction.redact_args(envelope.args),
         side_effect=envelope.side_effect.value,
@@ -314,13 +322,15 @@ async def _resolve_pending_approval(
     current = pre
     for _ in range(_MAX_WORKFLOW_APPROVAL_ROUNDS):
         principal_dict = asdict(envelope.principal) if envelope.principal else None
-        approval_request = await self._approval_backend.request_approval(
+        approval_request = await _request_approval_with_session_compat(
+            self._approval_backend,
             tool_name=envelope.tool_name,
             tool_args=envelope.args,
             message=current.approval_message or current.reason or "",
             timeout=current.approval_timeout,
             timeout_action=current.approval_timeout_action,
             principal=principal_dict,
+            session_id=session.session_id,
         )
         await _emit_run_pre_audit(self, envelope, session, AuditAction.CALL_APPROVAL_REQUESTED, current)
         decision = await self._approval_backend.wait_for_decision(
@@ -346,14 +356,19 @@ async def _resolve_pending_approval(
 
         await self._workflow_runtime.record_approval(session, current.workflow_stage_id)
         current = await pipeline.pre_execute(envelope, session)
-        await _emit_workflow_events(self, envelope, current.workflow_events)
+        await _emit_workflow_events(self, envelope, session, current.workflow_events)
         if current.action != "pending_approval":
             return True, decision, current, False
 
     raise RuntimeError(f"workflow: exceeded maximum approval rounds ({_MAX_WORKFLOW_APPROVAL_ROUNDS})")
 
 
-async def _emit_workflow_events(self: Edictum, envelope, events: list[dict[str, Any]]) -> None:
+async def _emit_workflow_events(
+    self: Edictum,
+    envelope,
+    session: Session,
+    events: list[dict[str, Any]],
+) -> None:
     for record in events:
         workflow = record.get("workflow")
         action_name = record.get("action")
@@ -363,6 +378,8 @@ async def _emit_workflow_events(self: Edictum, envelope, events: list[dict[str, 
             action=AuditAction.WORKFLOW_STAGE_ADVANCED,
             run_id=envelope.run_id,
             call_id=envelope.call_id,
+            session_id=session.session_id,
+            parent_session_id=_parent_session_id(envelope),
             tool_name=envelope.tool_name,
             tool_args=self.redaction.redact_args(envelope.args),
             side_effect=envelope.side_effect.value,
@@ -374,8 +391,24 @@ async def _emit_workflow_events(self: Edictum, envelope, events: list[dict[str, 
         )
         if action_name == AuditAction.WORKFLOW_COMPLETED.value:
             event.action = AuditAction.WORKFLOW_COMPLETED
+        elif action_name == AuditAction.WORKFLOW_STATE_UPDATED.value:
+            event.action = AuditAction.WORKFLOW_STATE_UPDATED
         await self.audit_sink.emit(event)
         _emit_otel_governance_span(self, event)
+
+
+def _parent_session_id(envelope) -> str | None:
+    metadata = getattr(envelope, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("parent_session_id")
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        _validate_session_id(value)
+    except ValueError:
+        return None
+    return value
 
 
 def _emit_otel_governance_span(self: Edictum, audit_event: AuditEvent) -> None:

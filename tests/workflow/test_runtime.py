@@ -65,7 +65,7 @@ async def test_shared_workflow_fixtures():
                 assert expect["message_contains"] in decision.reason, step["id"]
             if expect.get("approval_requested_for"):
                 assert decision.audit is not None
-                assert decision.audit["approval_requested_for"] == expect["approval_requested_for"], step["id"]
+                assert decision.audit["pending_approval"]["stage_id"] == expect["approval_requested_for"], step["id"]
             if decision.action == "allow" and step["execution"] == "success":
                 await runtime.record_result(session, decision.stage_id, envelope)
 
@@ -112,11 +112,312 @@ stages:
     allowed = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin feature"}))
     assert allowed.action == "allow"
 
-    await runtime.reset(session, "implement")
+    events = await runtime.reset(session, "implement")
     state = await runtime.state(session)
     assert state.active_stage == "implement"
     assert state.completed_stages == []
     assert state.approvals == {}
+    assert state.pending_approval == {"required": False}
+    assert state.blocked_reason is None
+    assert len(events) == 1
+    assert events[0]["action"] == AuditAction.WORKFLOW_STATE_UPDATED.value
+    assert events[0]["workflow"]["name"] == "approval-reset"
+    assert events[0]["workflow"]["active_stage"] == "implement"
+    assert events[0]["workflow"]["pending_approval"] == {"required": False}
+
+
+@pytest.mark.asyncio
+async def test_workflow_state_persistence_round_trip_preserves_enriched_fields():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: snapshot-roundtrip
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("snapshot-roundtrip", MemoryBackend())
+
+    await _seed_state(
+        runtime,
+        session,
+        WorkflowState(
+            session_id="snapshot-roundtrip",
+            active_stage="implement",
+            blocked_reason="Only review-safe git commands allowed",
+            pending_approval={
+                "required": True,
+                "stage_id": "implement",
+                "message": "Approve after local review",
+            },
+            last_blocked_action={
+                "tool": "Bash",
+                "summary": "git push origin HEAD",
+                "message": "Only review-safe git commands allowed",
+                "timestamp": "2026-04-04T00:00:00Z",
+            },
+        ),
+    )
+
+    state = await runtime.state(session)
+
+    assert state.blocked_reason == "Only review-safe git commands allowed"
+    assert state.pending_approval == {
+        "required": True,
+        "stage_id": "implement",
+        "message": "Approve after local review",
+    }
+    assert state.last_blocked_action == {
+        "tool": "Bash",
+        "summary": "git push origin HEAD",
+        "message": "Only review-safe git commands allowed",
+        "timestamp": "2026-04-04T00:00:00Z",
+    }
+
+
+@pytest.mark.asyncio
+async def test_workflow_state_round_trip_normalizes_pending_approval_shape():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: pending-approval-normalized
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("pending-approval-normalized", MemoryBackend())
+
+    await _seed_state(
+        runtime,
+        session,
+        WorkflowState(
+            session_id="pending-approval-normalized",
+            active_stage="implement",
+            pending_approval={
+                "required": True,
+                "stage_id": "implement",
+                "message": "Approve after review",
+                "extra": {"unexpected": "value"},
+            },
+        ),
+    )
+
+    state = await runtime.state(session)
+
+    assert state.pending_approval == {
+        "required": True,
+        "stage_id": "implement",
+        "message": "Approve after review",
+    }
+
+
+@pytest.mark.asyncio
+async def test_blocked_workflow_call_persists_blocked_snapshot():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: blocked-snapshot
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("blocked-snapshot", MemoryBackend())
+
+    decision = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin HEAD"}))
+    state = await runtime.state(session)
+
+    assert decision.action == "block"
+    assert state.blocked_reason == "Tool is not allowed in this workflow stage"
+    assert state.pending_approval == {"required": False}
+    assert state.last_blocked_action is not None
+    assert state.last_blocked_action["tool"] == "Bash"
+    assert state.last_blocked_action["summary"] == "git push origin HEAD"
+    assert state.last_blocked_action["message"] == "Tool is not allowed in this workflow stage"
+
+
+@pytest.mark.asyncio
+async def test_blocked_workflow_file_path_summary_is_redacted():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: blocked-file-path-redacted
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("blocked-file-path-redacted", MemoryBackend())
+    envelope = make_envelope("Read", {"path": "https://alice:secret@example.com/private.txt"})
+
+    decision = await runtime.evaluate(session, envelope)
+    state = await runtime.state(session)
+
+    assert decision.action == "block"
+    assert state.last_blocked_action is not None
+    assert state.last_blocked_action["summary"] == "https://alice:[REDACTED]@example.com/private.txt"
+
+
+@pytest.mark.asyncio
+async def test_repeated_blocked_workflow_call_preserves_last_blocked_action_timestamp():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: blocked-snapshot-stable
+stages:
+  - id: implement
+    tools: [Edit]
+"""
+    )
+    session = Session("blocked-snapshot-stable", MemoryBackend())
+    envelope = make_envelope("Bash", {"command": "git push origin HEAD"})
+
+    first = await runtime.evaluate(session, envelope)
+    first_state = await runtime.state(session)
+    second = await runtime.evaluate(session, envelope)
+    second_state = await runtime.state(session)
+
+    assert first.action == "block"
+    assert second.action == "block"
+    assert first_state.last_blocked_action is not None
+    assert second_state.last_blocked_action is not None
+    assert first_state.last_blocked_action["timestamp"] == second_state.last_blocked_action["timestamp"]
+    assert first.audit is not None
+    assert second.audit is not None
+    assert first.audit["last_blocked_action"]["timestamp"] == second.audit["last_blocked_action"]["timestamp"]
+
+
+@pytest.mark.asyncio
+async def test_pending_workflow_call_clears_last_blocked_action_snapshot():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: pending-clears-blocked-action
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    approval:
+      message: need review
+  - id: push
+    entry:
+      - condition: stage_complete("review")
+    tools: [Bash]
+"""
+    )
+    session = Session("pending-clears-blocked-action", MemoryBackend())
+
+    await _seed_state(
+        runtime,
+        session,
+        WorkflowState(
+            session_id="pending-clears-blocked-action",
+            active_stage="review",
+            completed_stages=["implement"],
+            last_blocked_action={
+                "tool": "Bash",
+                "summary": "git push origin HEAD",
+                "message": "Tool is not allowed in this workflow stage",
+                "timestamp": "2026-04-04T00:00:00Z",
+            },
+        ),
+    )
+
+    approval_gate = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin feature"}))
+    state = await runtime.state(session)
+
+    assert approval_gate.action == "pending_approval"
+    assert state.last_blocked_action is None
+    assert approval_gate.audit is not None
+    assert "last_blocked_action" not in approval_gate.audit
+
+
+@pytest.mark.asyncio
+async def test_workflow_progress_events_preserve_transition_metadata_when_hydrated():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: progress-event-metadata
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    tools: [Read]
+"""
+    )
+    session = Session("progress-event-metadata", MemoryBackend())
+    envelope = make_envelope("Edit", {"path": "src/app.py"})
+
+    decision = await runtime.evaluate(session, envelope)
+    await runtime.record_result(session, decision.stage_id, envelope)
+    next_decision = await runtime.evaluate(session, make_envelope("Read", {"path": "README.md"}))
+
+    assert len(next_decision.events) == 1
+    assert next_decision.events[0]["action"] == AuditAction.WORKFLOW_STAGE_ADVANCED.value
+    assert next_decision.events[0]["workflow"]["name"] == "progress-event-metadata"
+    assert next_decision.events[0]["workflow"]["stage_id"] == "implement"
+    assert next_decision.events[0]["workflow"]["to_stage_id"] == "review"
+    assert next_decision.events[0]["workflow"]["active_stage"] == "review"
+
+
+@pytest.mark.asyncio
+async def test_pending_workflow_call_persists_pending_approval_snapshot():
+    runtime = make_runtime(
+        """
+apiVersion: edictum/v1
+kind: Workflow
+metadata:
+  name: pending-snapshot
+stages:
+  - id: implement
+    tools: [Edit]
+  - id: review
+    entry:
+      - condition: stage_complete("implement")
+    approval:
+      message: need review
+  - id: push
+    entry:
+      - condition: stage_complete("review")
+    tools: [Bash]
+"""
+    )
+    session = Session("pending-snapshot", MemoryBackend())
+
+    edit = make_envelope("Edit", {"path": "src/app.py"})
+    decision = await runtime.evaluate(session, edit)
+    await runtime.record_result(session, decision.stage_id, edit)
+
+    approval_gate = await runtime.evaluate(session, make_envelope("Bash", {"command": "git push origin feature"}))
+    state = await runtime.state(session)
+
+    assert approval_gate.action == "pending_approval"
+    assert state.blocked_reason is None
+    assert state.pending_approval == {
+        "required": True,
+        "stage_id": "review",
+        "message": "need review",
+    }
 
 
 @pytest.mark.asyncio

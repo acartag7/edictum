@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
-from edictum.approval import ApprovalStatus
+from edictum.approval import ApprovalStatus, _request_approval_with_session_compat
 from edictum.audit import AuditAction, AuditEvent
 from edictum.envelope import Principal, create_envelope
 from edictum.pipeline import CheckPipeline
@@ -45,6 +45,7 @@ class GovernedToolRegistry:
         self._call_index = 0
         self._principal = principal
         self._principal_resolver = principal_resolver
+        self._parent_session_id: str | None = None
 
     @property
     def session_id(self) -> str:
@@ -88,6 +89,7 @@ class GovernedToolRegistry:
             environment=self._guard.environment,
             registry=self._guard.tool_registry,
             principal=self._resolve_principal(name, args),
+            metadata=({"parent_session_id": self._parent_session_id} if self._parent_session_id is not None else {}),
         )
         self._call_index += 1
 
@@ -134,6 +136,8 @@ class GovernedToolRegistry:
                                     run_id=envelope.run_id,
                                     call_id=envelope.call_id,
                                     call_index=envelope.call_index,
+                                    session_id=self._session_id,
+                                    parent_session_id=self._parent_session_id,
                                     tool_name=envelope.tool_name,
                                     tool_args=self._guard.redaction.redact_args(envelope.args),
                                     side_effect=envelope.side_effect.value,
@@ -190,6 +194,8 @@ class GovernedToolRegistry:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._parent_session_id,
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -260,13 +266,15 @@ class GovernedToolRegistry:
             return f"[DENIED] {reason}"
 
         principal_dict = asdict(envelope.principal) if envelope.principal else None
-        approval_request = await self._guard._approval_backend.request_approval(
+        approval_request = await _request_approval_with_session_compat(
+            self._guard._approval_backend,
             tool_name=envelope.tool_name,
             tool_args=envelope.args,
             message=decision.approval_message or decision.reason or "",
             timeout=decision.approval_timeout,
             timeout_action=decision.approval_timeout_action,
             principal=principal_dict,
+            session_id=self._session_id,
         )
 
         await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_APPROVAL_REQUESTED)
@@ -313,12 +321,16 @@ class GovernedToolRegistry:
             action = AuditAction.WORKFLOW_STAGE_ADVANCED
             if action_name == AuditAction.WORKFLOW_COMPLETED.value:
                 action = AuditAction.WORKFLOW_COMPLETED
+            elif action_name == AuditAction.WORKFLOW_STATE_UPDATED.value:
+                action = AuditAction.WORKFLOW_STATE_UPDATED
             await self._guard.audit_sink.emit(
                 AuditEvent(
                     action=action,
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
+                    parent_session_id=self._parent_session_id,
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
                     side_effect=envelope.side_effect.value,
@@ -340,6 +352,8 @@ class GovernedToolRegistry:
                 run_id=envelope.run_id,
                 call_id=envelope.call_id,
                 call_index=envelope.call_index,
+                session_id=self._session_id,
+                parent_session_id=self._parent_session_id,
                 tool_name=envelope.tool_name,
                 tool_args=self._guard.redaction.redact_args(envelope.args),
                 side_effect=envelope.side_effect.value,
@@ -383,13 +397,15 @@ class GovernedToolRegistry:
         Shares the same guard and inner registry but gets its own session.
         Used by SubagentManager to propagate governance to child agents.
         """
-        return GovernedToolRegistry(
+        child = GovernedToolRegistry(
             inner=self._inner,
             guard=self._guard,
             session_id=session_id,
             principal=self._principal,
             principal_resolver=self._principal_resolver,
         )
+        child._parent_session_id = self._session_id
+        return child
 
 
 class NanobotAdapter:
