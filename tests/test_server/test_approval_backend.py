@@ -116,6 +116,24 @@ class TestServerApprovalBackend:
         assert decision.status == ApprovalStatus.DENIED
 
     @pytest.mark.asyncio
+    async def test_wait_for_decision_legacy_denied_status(self, mock_client):
+        mock_client.post.return_value = {"id": "approval-legacy-denied", "status": "pending"}
+        mock_client.get.return_value = {
+            "status": "denied",
+            "decided_by": "security@example.com",
+            "decision_reason": "Legacy rejection",
+        }
+
+        backend = ServerApprovalBackend(mock_client, poll_interval=0.01)
+        await backend.request_approval("tool", {}, "msg")
+
+        decision = await backend.wait_for_decision("approval-legacy-denied")
+        assert decision.approved is False
+        assert decision.approver == "security@example.com"
+        assert decision.reason == "Legacy rejection"
+        assert decision.status == ApprovalStatus.DENIED
+
+    @pytest.mark.asyncio
     async def test_wait_for_decision_server_timed_out(self, mock_client):
         mock_client.post.return_value = {"id": "approval-3", "status": "pending"}
         mock_client.get.return_value = {"status": "timed_out"}
@@ -137,6 +155,27 @@ class TestServerApprovalBackend:
 
         decision = await backend.wait_for_decision("approval-4")
         assert decision.approved is True
+        assert decision.status == ApprovalStatus.TIMEOUT
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("timeout_action", "approved"),
+        [("block", False), ("allow", True)],
+    )
+    async def test_wait_for_decision_legacy_timeout_status_respects_timeout_action(
+        self,
+        mock_client,
+        timeout_action,
+        approved,
+    ):
+        mock_client.post.return_value = {"id": "approval-legacy-timeout", "status": "pending"}
+        mock_client.get.return_value = {"status": "timeout"}
+
+        backend = ServerApprovalBackend(mock_client, poll_interval=0.01)
+        await backend.request_approval("tool", {}, "msg", timeout_action=timeout_action)
+
+        decision = await backend.wait_for_decision("approval-legacy-timeout")
+        assert decision.approved is approved
         assert decision.status == ApprovalStatus.TIMEOUT
 
     @pytest.mark.asyncio
