@@ -136,6 +136,7 @@ class GovernedToolRegistry:
                                     run_id=envelope.run_id,
                                     call_id=envelope.call_id,
                                     call_index=envelope.call_index,
+                                    session_id=self._session_id,
                                     parent_session_id=self._parent_session_id,
                                     tool_name=envelope.tool_name,
                                     tool_args=self._guard.redaction.redact_args(envelope.args),
@@ -193,6 +194,7 @@ class GovernedToolRegistry:
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
                     parent_session_id=self._parent_session_id,
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
@@ -271,6 +273,7 @@ class GovernedToolRegistry:
             timeout=decision.approval_timeout,
             timeout_action=decision.approval_timeout_action,
             principal=principal_dict,
+            session_id=self._session_id,
         )
 
         await self._emit_audit_pre(envelope, decision, audit_action=AuditAction.CALL_APPROVAL_REQUESTED)
@@ -317,12 +320,15 @@ class GovernedToolRegistry:
             action = AuditAction.WORKFLOW_STAGE_ADVANCED
             if action_name == AuditAction.WORKFLOW_COMPLETED.value:
                 action = AuditAction.WORKFLOW_COMPLETED
+            elif action_name == AuditAction.WORKFLOW_STATE_UPDATED.value:
+                action = AuditAction.WORKFLOW_STATE_UPDATED
             await self._guard.audit_sink.emit(
                 AuditEvent(
                     action=action,
                     run_id=envelope.run_id,
                     call_id=envelope.call_id,
                     call_index=envelope.call_index,
+                    session_id=self._session_id,
                     parent_session_id=self._parent_session_id,
                     tool_name=envelope.tool_name,
                     tool_args=self._guard.redaction.redact_args(envelope.args),
@@ -345,6 +351,7 @@ class GovernedToolRegistry:
                 run_id=envelope.run_id,
                 call_id=envelope.call_id,
                 call_index=envelope.call_index,
+                session_id=self._session_id,
                 parent_session_id=self._parent_session_id,
                 tool_name=envelope.tool_name,
                 tool_args=self._guard.redaction.redact_args(envelope.args),
