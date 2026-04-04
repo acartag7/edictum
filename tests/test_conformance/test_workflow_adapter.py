@@ -56,7 +56,7 @@ def _resolve_env_path(value: str) -> list[Path]:
     path = Path(value)
     if path.is_absolute():
         return [path]
-    return [path, _REPO_ROOT / path]
+    return [path, Path.cwd() / path, _REPO_ROOT / path]
 
 
 def _find_workflow_adapter_dir() -> Path | None:
@@ -76,8 +76,12 @@ def _find_workflow_adapter_dir() -> Path | None:
     candidates.append(_REPO_ROOT.parent / "edictum-schemas" / "fixtures" / "workflow-adapter-conformance")
 
     for candidate in candidates:
-        if candidate.is_dir():
+        if candidate.is_dir() and any(candidate.glob("*.workflow-adapter.yaml")):
             return candidate
+
+    for root in (Path.cwd(), _REPO_ROOT, _REPO_ROOT.parent):
+        for fixture in root.glob("**/workflow-adapter-conformance/*.workflow-adapter.yaml"):
+            return fixture.parent
     return None
 
 
