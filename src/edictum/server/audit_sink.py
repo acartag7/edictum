@@ -1,4 +1,4 @@
-"""Server-backed audit sink with batching."""
+"""Server-backed decision-log sink with batching."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ _WORKFLOW_PROGRESS_ACTIONS = frozenset(
 
 
 class ServerAuditSink:
-    """Audit sink that sends events to the edictum-server.
+    """Decision-log sink that sends events to the edictum-server.
 
     Batches events and flushes periodically or when batch is full.
     """
@@ -148,7 +148,7 @@ class ServerAuditSink:
             "decision_name": event.decision_name,
             "reason": event.reason,
             "hooks_evaluated": deepcopy(getattr(event, "hooks_evaluated", [])),
-            "rules_evaluated": deepcopy(getattr(event, "contracts_evaluated", [])),
+            "contracts_evaluated": deepcopy(getattr(event, "contracts_evaluated", [])),
             "mode": event.mode,
             "policy_version": event.policy_version,
             "timestamp": event.timestamp.isoformat(),
