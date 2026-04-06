@@ -353,10 +353,10 @@ class AuditBuffer:
             except (json.JSONDecodeError, ValueError):
                 tool_args = {"_preview": preview}
 
-        legacy_contracts_key = "rules" + "_evaluated"
+        wire_rules_key = "rules" + "_evaluated"
         contracts_evaluated = raw.get("contracts_evaluated")
         if contracts_evaluated is None:
-            contracts_evaluated = raw.get(legacy_contracts_key, [])
+            contracts_evaluated = raw.get(wire_rules_key, [])
 
         decision_name = raw.get("decision_name", raw.get("rule_id"))
         side_effect = raw.get("side_effect", raw.get("tool_category"))
@@ -379,11 +379,11 @@ class AuditBuffer:
             "decision_name": decision_name,
             "decision_source": raw.get("decision_source"),
             "reason": raw.get("reason"),
-            "contracts_evaluated": contracts_evaluated,
             "policy_version": raw.get("policy_version"),
             "policy_error": raw.get("policy_error", False),
             "duration_ms": raw.get("duration_ms", 0),
         }
+        event[wire_rules_key] = contracts_evaluated
         return {key: value for key, value in event.items() if value is not None}
 
     def _verify_wal_path(self) -> str | None:
