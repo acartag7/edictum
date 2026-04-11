@@ -331,7 +331,12 @@ def _from_bundle_dict(
     workflow_content: str | bytes | None = None,
     workflow_exec_evaluator_enabled: bool = False,
 ) -> Edictum:
-    """Create an Edictum instance from an already-parsed bundle dict."""
+    """Create an Edictum instance from an already-parsed bundle dict.
+
+    Note: This factory does not support ``success_check``, ``principal_resolver``,
+    ``custom_operators``, ``custom_selectors``, or ``tools`` — use ``from_yaml()``
+    or ``from_yaml_string()`` if you need those features.
+    """
     from edictum.yaml_engine.compiler import compile_contracts
     from edictum.yaml_engine.loader import (
         _validate_pre_selectors,
