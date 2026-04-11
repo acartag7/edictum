@@ -52,11 +52,7 @@ async def load_state(session: Session, definition) -> WorkflowState:
         evidence=WorkflowEvidence(
             reads=list(evidence_data.get("reads") or []),
             stage_calls={key: list(value) for key, value in (evidence_data.get("stage_calls") or {}).items()},
-            mcp_results={
-                k: [_coerce_mcp_result(r) for r in v]
-                for k, v in mcp_raw.items()
-                if isinstance(v, list)
-            },
+            mcp_results={k: [_coerce_mcp_result(r) for r in v] for k, v in mcp_raw.items() if isinstance(v, list)},
         ),
         blocked_reason=data.get("blocked_reason"),
         pending_approval=_coerce_pending_approval(data.get("pending_approval")),
