@@ -37,6 +37,13 @@ def compile_contracts(bundle: dict, *, custom_operators: dict | None = None) -> 
     return _compile(bundle, custom_operators=custom_operators)
 
 
+def resolve_ruleset_extends(rulesets: dict, name: str) -> dict:
+    """Resolve extends: inheritance for a named ruleset. See :func:`loader.resolve_ruleset_extends`."""
+    from edictum.yaml_engine.loader import resolve_ruleset_extends as _resolve
+
+    return _resolve(rulesets, name)
+
+
 __all__ = [
     "BundleHash",
     "CompiledBundle",
@@ -48,4 +55,5 @@ __all__ = [
     "compose_bundles",
     "load_bundle",
     "load_bundle_string",
+    "resolve_ruleset_extends",
 ]

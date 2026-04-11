@@ -43,6 +43,7 @@ async def load_state(session: Session, definition) -> WorkflowState:
         raise ValueError(f"workflow: decode persisted state: {exc}") from exc
 
     evidence_data = data.get("evidence") or {}
+    mcp_raw = evidence_data.get("mcp_results") or {}
     state = WorkflowState(
         session_id=session.session_id,
         active_stage=data.get("active_stage", ""),
@@ -51,6 +52,7 @@ async def load_state(session: Session, definition) -> WorkflowState:
         evidence=WorkflowEvidence(
             reads=list(evidence_data.get("reads") or []),
             stage_calls={key: list(value) for key, value in (evidence_data.get("stage_calls") or {}).items()},
+            mcp_results={k: [dict(r) for r in v] for k, v in mcp_raw.items()},
         ),
         blocked_reason=data.get("blocked_reason"),
         pending_approval=_coerce_pending_approval(data.get("pending_approval")),
@@ -76,6 +78,7 @@ async def save_state(session: Session, definition, state: WorkflowState) -> None
                 "evidence": {
                     "reads": state.evidence.reads,
                     "stage_calls": state.evidence.stage_calls,
+                    "mcp_results": state.evidence.mcp_results,
                 },
                 "blocked_reason": state.blocked_reason,
                 "pending_approval": state.pending_approval,
@@ -94,7 +97,7 @@ def record_approval(state: WorkflowState, stage_id: str) -> None:
     clear_runtime_status(state)
 
 
-def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall) -> None:
+def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall, mcp_result: dict | None = None) -> None:
     state.ensure_defaults()
     recorded_evidence_fields = build_last_recorded_evidence_fields(envelope)
     if _recorded_evidence_changed(state.last_recorded_evidence, recorded_evidence_fields):
@@ -112,6 +115,11 @@ def record_result(state: WorkflowState, stage_id: str, envelope: ToolCall) -> No
             calls,
             _validate_evidence_string(envelope.bash_command),
             MAX_WORKFLOW_EVIDENCE_ITEMS,
+        )
+    if mcp_result is not None:
+        existing = state.evidence.mcp_results.get(envelope.tool_name, [])
+        state.evidence.mcp_results[envelope.tool_name] = _append_dict_capped(
+            existing, dict(mcp_result), MAX_WORKFLOW_EVIDENCE_ITEMS
         )
 
 
@@ -265,6 +273,12 @@ def _append_unique_capped(items: list[str], item: str, limit: int) -> list[str]:
 
 
 def _append_capped(items: list[str], item: str, limit: int) -> list[str]:
+    if len(items) >= limit:
+        return items
+    return [*items, item]
+
+
+def _append_dict_capped(items: list[dict], item: dict, limit: int) -> list[dict]:
     if len(items) >= limit:
         return items
     return [*items, item]

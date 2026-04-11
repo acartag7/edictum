@@ -402,6 +402,32 @@ class Edictum:
         )
 
     @classmethod
+    def from_bundle_dict(
+        cls,
+        bundle: dict,
+        policy_version: str,
+        *,
+        mode: str | None = None,
+        audit_sink: AuditSink | list[AuditSink] | None = None,
+        redaction: RedactionPolicy | None = None,
+        backend: StorageBackend | None = None,
+        environment: str = "production",
+    ) -> Edictum:
+        """Create an Edictum instance from an already-parsed bundle dict."""
+        from edictum._factory import _from_bundle_dict
+
+        return _from_bundle_dict(
+            cls,
+            bundle,
+            policy_version,
+            mode=mode,
+            audit_sink=audit_sink,
+            redaction=redaction,
+            backend=backend,
+            environment=environment,
+        )
+
+    @classmethod
     def from_yaml_string(
         cls,
         content: str | bytes,

@@ -314,6 +314,42 @@ def _from_yaml_string(
     )
 
 
+def _from_bundle_dict(
+    cls: type[Edictum],
+    bundle: dict,
+    policy_version: str,
+    *,
+    mode: str | None = None,
+    audit_sink: AuditSink | list[AuditSink] | None = None,
+    redaction: RedactionPolicy | None = None,
+    backend: StorageBackend | None = None,
+    environment: str = "production",
+) -> Edictum:
+    """Create an Edictum instance from an already-parsed bundle dict."""
+    from edictum.yaml_engine.compiler import compile_contracts
+
+    compiled = compile_contracts(bundle)
+    return _build_guard_from_compiled(
+        cls,
+        compiled,
+        bundle,
+        policy_version,
+        mode=mode,
+        tools=None,
+        audit_sink=audit_sink,
+        redaction=redaction,
+        backend=backend,
+        environment=environment,
+        on_block=None,
+        on_allow=None,
+        success_check=None,
+        principal=None,
+        principal_resolver=None,
+        approval_backend=None,
+        workflow_runtime=None,
+    )
+
+
 def _from_template(
     cls: type[Edictum],
     name: str,
