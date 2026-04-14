@@ -1,4 +1,4 @@
-"""Upload skill scan results to an Edictum Console server.
+"""Upload skill scan results to an Edictum Control Plane server.
 
 Lives in edictum.server (requires edictum[server] / httpx) to respect
 the tier boundary: networking belongs to the server layer, not core.
@@ -18,7 +18,7 @@ def upload_scan_results(
     server_url: str,
     skills_dir: str,
 ) -> tuple[bool, str]:
-    """POST scan results to Console. Returns (success, message).
+    """POST scan results to the control plane. Returns (success, message).
 
     Reads ``EDICTUM_CONSOLE_TOKEN`` from the environment for
     authentication. If unset, sends the request without auth

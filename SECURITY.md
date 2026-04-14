@@ -29,8 +29,7 @@ This policy covers:
 
 - **edictum** -- core Python library (this repo, [PyPI](https://pypi.org/project/edictum/))
 - **edictum gate** -- coding assistant governance layer (`pip install edictum[gate]`)
-- **edictum-api** -- hosted control-plane API ([GitHub](https://github.com/edictum-ai/edictum-api))
-- **edictum-app** -- hosted control-plane frontend ([GitHub](https://github.com/edictum-ai/edictum-app))
+- **Edictum Control Plane** -- hosted approvals, audit, and fleet monitoring surface ([Docs](https://docs.edictum.ai/docs/control-plane))
 
 ## Safe Harbor
 

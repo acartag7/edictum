@@ -191,7 +191,7 @@ def _run_check_inner(
             return format_handler.format_output("allow", None, None, 0)
         return format_handler.format_output("block", None, "Denied: failed to load rules", 0)
 
-    # Write rule manifest for Console coverage reporting
+    # Write rule manifest for control-plane coverage reporting
     _write_contract_manifest(existing_paths, guard, config)
 
     # Evaluate
@@ -238,7 +238,7 @@ def _run_check_inner(
 
     duration_ms = (time.perf_counter_ns() - start) // 1_000_000
 
-    # Resolve agent_id: prefer console config, fall back to hostname-user
+    # Resolve agent_id: prefer control-plane config, fall back to hostname-user
     console_config = getattr(config, "console", None)
     agent_id = getattr(console_config, "agent_id", "") if console_config else ""
     if not agent_id:
@@ -279,11 +279,11 @@ def _write_contract_manifest(
     guard: Any,
     config: Any,
 ) -> None:
-    """Write rule manifest for Console coverage reporting.
+    """Write rule manifest for control-plane coverage reporting.
 
     Creates a lightweight JSON file with rule IDs, tools, types, and modes.
-    flush_to_console() reads this and includes it as agent_manifest in the sync
-    payload so Console can populate the coverage dashboard.
+    The sync helper reads this and includes it as agent_manifest in the sync
+    payload so the control plane can populate the coverage dashboard.
 
     Only rewrites when policy_version changes (cheap string comparison).
     """

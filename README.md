@@ -12,7 +12,7 @@ Runtime rule enforcement for AI agent tool calls.
 
 **Prompts are suggestions. Rules are enforcement.** The LLM cannot talk its way past a rule.
 
-**55us overhead** · **Python, TypeScript, and Go SDKs** · **Zero runtime deps** · **Fail-closed by default**
+**55us overhead** · **18 adapters across Python, TypeScript, Go** · **Zero runtime deps** · **Fail-closed by default**
 
 ```bash
 pip install edictum[yaml]
@@ -169,13 +169,13 @@ pip install edictum[gate]
 
 The Python package ships the Gate library and integrations. For command-line workflows, use the Go binary in [edictum-go](https://github.com/edictum-ai/edictum-go) -- that is the canonical Edictum CLI.
 
-Supports Claude Code, Cursor, Copilot CLI, Gemini CLI, and OpenCode. Self-protection rules prevent the assistant from disabling governance. Optional sync to the hosted control plane for centralized audit.
+Supports Claude Code, Cursor, Copilot CLI, Gemini CLI, and OpenCode. Self-protection rules prevent the assistant from disabling governance. Optional sync to the [Edictum Control Plane](https://docs.edictum.ai/docs/control-plane) for centralized audit.
 
 See the [Gate guide](https://docs.edictum.ai/docs/guides/gate) for setup.
 
-## Edictum Console
+## Edictum Control Plane
 
-Optional self-hostable operations console for governed agents. Rule management, live hot-reload via SSE, human-in-the-loop approvals, audit event feeds, and fleet monitoring.
+Optional hosted control plane for governed agents. Ruleset management, live hot-reload via SSE, human-in-the-loop approvals, audit event feeds, and fleet monitoring.
 
 ```python
 guard = await Edictum.from_server(
@@ -185,7 +185,7 @@ guard = await Edictum.from_server(
 )
 ```
 
-See the [console docs](https://docs.edictum.ai/docs/console) for the current control-plane surface.
+See the [control-plane docs](https://docs.edictum.ai/docs/control-plane) for the current control-plane surface.
 
 ## Research & Real-World Impact
 
@@ -207,7 +207,7 @@ pip install edictum[yaml]        # + YAML rule parsing
 pip install edictum[otel]        # + OpenTelemetry span emission
 pip install edictum[gate]        # + coding assistant governance library
 pip install edictum[verified]    # + Ed25519 bundle signature verification
-pip install edictum[server]      # + server SDK (connect to Edictum Console)
+pip install edictum[server]      # + server SDK (connect to the Edictum Control Plane)
 pip install edictum[all]         # everything in this Python package
 ```
 
@@ -239,10 +239,9 @@ For CLI workflows, use the Go binary in [edictum-go](https://github.com/edictum-
 | Repo | Language | What it does |
 |------|----------|-------------|
 | [edictum](https://github.com/edictum-ai/edictum) | Python | Core library -- this repo |
-| [edictum-ts](https://github.com/edictum-ai/edictum-ts) | TypeScript | Core + adapters (Claude SDK, LangChain, OpenAI Agents, Vercel AI) |
+| [edictum-ts](https://github.com/edictum-ai/edictum-ts) | TypeScript | Core + adapters (Claude SDK, LangChain, OpenAI Agents, OpenClaw, Vercel AI) |
 | [edictum-go](https://github.com/edictum-ai/edictum-go) | Go | Core + adapters (ADK Go, Anthropic, Eino, Genkit, LangChain Go) |
-| [edictum-api](https://github.com/edictum-ai/edictum-api) | Go | Hosted control-plane API: runs, approvals, notifications, audit |
-| [edictum-app](https://github.com/edictum-ai/edictum-app) | React | Hosted control-plane UI: runs, approvals, policies, settings |
+| [Control-plane docs](https://docs.edictum.ai/docs/control-plane) | Docs | Hosted control plane: approvals, audit, policies, fleet monitoring |
 | [edictum-schemas](https://github.com/edictum-ai/edictum-schemas) | JSON Schema | Rule bundle schema + cross-SDK conformance fixtures |
 | [edictum-demo](https://github.com/edictum-ai/edictum-demo) | Python | Scenario demos, adversarial tests, benchmarks, Grafana observability |
 | [Documentation](https://docs.edictum.ai) | MDX | Full docs site |

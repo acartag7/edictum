@@ -1,4 +1,4 @@
-"""Gate audit buffer — WAL write + batch flush to Console."""
+"""Gate audit buffer — WAL write + batch flush to the control plane."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class GateAuditEvent:
 
     # Governance decision — same names as core AuditEvent
     action: str  # WAL values: "call_allowed" | "call_denied" | "call_would_deny"
-    # Upconverted to server wire values by _to_console_event via _ACTION_MAP.
+    # Upconverted to server wire values via _ACTION_MAP.
     decision_source: str | None
     decision_name: str | None  # rule_id
     reason: str | None
@@ -95,7 +95,7 @@ def _verdict_to_action(decision: str, mode: str) -> str:
 def _contracts_to_dicts(evaluation_result: Any) -> list[dict]:
     """Extract rule evaluation details from EvaluationResult.
 
-    Field names match what the console dashboard expects:
+    Field names match what the control-plane dashboard expects:
     - name (dashboard reads c.name for display)
     - type (dashboard reads c.type for badge)
     """
@@ -200,7 +200,7 @@ class AuditBuffer:
         self._redaction_config = redaction_config
 
     def write(self, event: GateAuditEvent, console_config: Any = None) -> None:
-        """Append event to WAL, then auto-flush to console if due. Never raises."""
+        """Append event to WAL, then auto-flush to the control plane if due. Never raises."""
         try:
             # Ensure directory exists
             self._buffer_path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,7 +222,7 @@ class AuditBuffer:
             print(f"Gate audit write error: {exc}", file=sys.stderr)
             return
 
-        # Auto-flush to console if configured and interval has elapsed
+        # Auto-flush to the control plane if configured and interval has elapsed
         if console_config and getattr(console_config, "url", ""):
             self._maybe_flush_async(console_config)
 
@@ -233,7 +233,7 @@ class AuditBuffer:
             now = time.time()
 
             # Default 30s between flushes — fast enough to feel live, rare enough
-            # to avoid hammering the console on busy sessions
+            # to avoid hammering the control plane on busy sessions
             interval = 30
 
             if marker.exists():
@@ -246,7 +246,7 @@ class AuditBuffer:
 
             # Update marker BEFORE forking to prevent concurrent flushes.
             # NOTE: This is not atomic — two concurrent gate checks can both read a
-            # stale marker and both fork. This is acceptable because console ingestion
+            # stale marker and both fork. This is acceptable because control-plane ingestion
             # is idempotent by call_id, so duplicate flushes are harmless.
             marker.write_text(str(now))
 
@@ -390,7 +390,7 @@ class AuditBuffer:
         return real_path
 
     def flush_to_console(self, console_config: Any) -> int:
-        """Batch POST buffered events to Console. Returns count sent."""
+        """Batch POST buffered events to the control plane. Returns count sent."""
         if not self._buffer_path.exists():
             return 0
 
@@ -442,7 +442,7 @@ class AuditBuffer:
                 pass
             return 0
 
-        # Map WAL events to Console schema
+        # Map WAL events to the control-plane schema
         console_events = [self._to_console_event(e) for e in raw_events]
 
         # Read rule manifest for coverage reporting
