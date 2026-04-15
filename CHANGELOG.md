@@ -4,6 +4,7 @@
 
 ### Added
 - **v0.18 workflow shared semantics** — workflow definitions now support wildcard stage tools, terminal stages, MCP evidence checks, and ruleset inheritance via `extends` (#199)
+- **`Edictum.from_bundle_dict()`** — new factory method for constructing a guard from a pre-parsed ruleset dict with workflow content and hosted-runtime options (#199)
 - **Python server client parity** — the Python SDK now exposes the hosted/server capabilities needed to stay aligned with the control-plane surface (#189)
 - **Non-destructive stage moves and lineage state** — workflow state now carries session lineage and supports explicit non-destructive stage transitions (#187, #188)
 
@@ -12,6 +13,9 @@
 
 ### Changed
 - Refreshed docs and repository wording to use the current control-plane naming consistently (#202, #203)
+
+### Security
+- **MCP result coercion hardening** — `_coerce_mcp_result` now runs on ingest and load paths, `None` values coerce to empty strings, and non-list `mcp_results` payloads are skipped instead of being interpreted loosely (#199)
 
 ## 0.17.0
 
