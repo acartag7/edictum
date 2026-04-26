@@ -1,4 +1,4 @@
-"""Edictum — Runtime safety for AI agents."""
+"""Edictum -- runtime control layer for AI agent behavior."""
 
 from __future__ import annotations
 
