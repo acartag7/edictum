@@ -59,6 +59,8 @@ jobs:
       - name: Audit Python dependencies
         # CVE-2026-4539: pygments 2.19.2 — no upstream fix available yet (latest on PyPI).
         # Transitive dep from pdoc, pytest, rich. Remove ignore when patched version ships.
-        run: pip-audit --ignore-vuln CVE-2026-4539
+        # CVE-2026-3219: pip 26.0.1 — no upstream fix available yet (latest on PyPI).
+        # Installed by the CI Python toolchain. Remove ignore when patched version ships.
+        run: pip-audit --ignore-vuln CVE-2026-4539 --ignore-vuln CVE-2026-3219
       - name: Security boundary tests
         run: pytest -m security -v --tb=short
